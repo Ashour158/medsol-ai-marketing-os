@@ -1,2 +1,29 @@
-import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common'; import {PrismaService} from './prisma.service.js'; import {ApproveObjectCommand} from '@medsol/contracts';
-@Injectable() export class ApprovalService{constructor(private readonly db:PrismaService){} async approve(cmd:ApproveObjectCommand){const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;return this.db.$transaction(async tx=>{const a=await tx.approval.findFirst({where:{id:cmd.approvalId,organizationId:cmd.organizationId}});if(!a)throw new NotFoundException('Approval not found in tenant');if(a.decision!=='PENDING')throw new BadRequestException('Approval is already decided');if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');const next=await tx.approval.update({where:{id:a.id},data:{decision:cmd.decision,decidedBy:cmd.approverUserId,rationale:cmd.rationale,decidedAt:new Date()}});await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'ApproveObject',correlationId:cmd.correlationId,status:'COMPLETED',response:{approvalId:a.id,decision:next.decision}}});await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'APPROVAL_DECIDED',objectType:a.objectType,objectId:a.objectId,before:{decision:a.decision},after:{decision:next.decision,rationale:cmd.rationale},correlationId:cmd.correlationId}});return{approvalId:a.id,decision:next.decision}})}}
+import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {PrismaService} from './prisma.service.js';
+import {ApproveObjectCommand} from '@medsol/contracts';
+import {assertCampaignTransition} from '@medsol/domain';
+import {randomUUID} from 'node:crypto';
+@Injectable() export class ApprovalService{
+ constructor(private readonly db:PrismaService){}
+ async approve(cmd:ApproveObjectCommand){
+  const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
+  return this.db.$transaction(async tx=>{
+   const a=await tx.approval.findFirst({where:{id:cmd.approvalId,organizationId:cmd.organizationId}});if(!a)throw new NotFoundException('Approval not found in tenant');
+   if(a.decision!=='PENDING')throw new BadRequestException('Approval is already decided');
+   if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
+   const next=await tx.approval.update({where:{id:a.id},data:{decision:cmd.decision,decidedBy:cmd.approverUserId,rationale:cmd.rationale,decidedAt:new Date()}});
+   if(next.decision==='APPROVED' || next.decision==='APPROVED_WITH_CONDITIONS'){
+    if(next.objectType==='Campaign'){
+     const c=await tx.campaign.findFirst({where:{id:next.objectId,organizationId:cmd.organizationId}});if(!c)throw new NotFoundException('Approval target campaign not found');
+     assertCampaignTransition(c.status,'APPROVED');
+     const updated=await tx.campaign.update({where:{id:c.id},data:{status:'APPROVED',version:{increment:1}}});
+     await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'CAMPAIGN_APPROVED',objectType:'Campaign',objectId:c.id,before:{status:c.status,version:c.version},after:{status:updated.status,version:updated.version},correlationId:cmd.correlationId}});
+     await tx.outboxEvent.create({data:{organizationId:cmd.organizationId,eventId:randomUUID(),eventType:'CampaignApproved',aggregateType:'Campaign',aggregateId:c.id,payload:{campaignId:c.id,status:updated.status,approvalId:a.id},correlationId:cmd.correlationId}});
+    }
+   }
+   await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'ApproveObject',correlationId:cmd.correlationId,status:'COMPLETED',response:{approvalId:a.id,decision:next.decision}}});
+   await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'APPROVAL_DECIDED',objectType:a.objectType,objectId:a.objectId,before:{decision:a.decision},after:{decision:next.decision,rationale:cmd.rationale},correlationId:cmd.correlationId}});
+   return{approvalId:a.id,decision:next.decision};
+  });
+ }
+}
