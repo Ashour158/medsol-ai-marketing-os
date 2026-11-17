@@ -1,0 +1,10 @@
+CREATE TYPE "WorkflowExecutionStatus" AS ENUM ('RUNNING','WAITING_APPROVAL','COMPLETED','FAILED','BLOCKED','CANCELLED');
+CREATE TABLE "WorkflowExecution" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"workflowType" TEXT NOT NULL,"status" "WorkflowExecutionStatus" NOT NULL DEFAULT 'RUNNING',"currentStep" TEXT NOT NULL,"correlationId" TEXT NOT NULL,"causationId" TEXT,"input" JSONB NOT NULL,"output" JSONB,"error" JSONB,"version" INTEGER NOT NULL DEFAULT 1,"startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,"completedAt" TIMESTAMP(3),CONSTRAINT "WorkflowExecution_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "WorkflowStepExecution" ("id" TEXT NOT NULL,"workflowExecutionId" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"stepKey" TEXT NOT NULL,"status" TEXT NOT NULL,"attempt" INTEGER NOT NULL DEFAULT 1,"input" JSONB,"output" JSONB,"error" JSONB,"startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"completedAt" TIMESTAMP(3),CONSTRAINT "WorkflowStepExecution_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "WorkflowExecution_organizationId_status_idx" ON "WorkflowExecution"("organizationId","status");
+CREATE INDEX "WorkflowExecution_organizationId_correlationId_idx" ON "WorkflowExecution"("organizationId","correlationId");
+CREATE UNIQUE INDEX "WorkflowStepExecution_workflowExecutionId_stepKey_key" ON "WorkflowStepExecution"("workflowExecutionId","stepKey");
+CREATE INDEX "WorkflowStepExecution_organizationId_status_idx" ON "WorkflowStepExecution"("organizationId","status");
+ALTER TABLE "WorkflowExecution" ADD CONSTRAINT "WorkflowExecution_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "WorkflowStepExecution" ADD CONSTRAINT "WorkflowStepExecution_workflowExecutionId_fkey" FOREIGN KEY ("workflowExecutionId") REFERENCES "WorkflowExecution"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "WorkflowStepExecution" ADD CONSTRAINT "WorkflowStepExecution_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
