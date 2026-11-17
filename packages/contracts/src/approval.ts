@@ -1,0 +1,2 @@
+export type ApprovalDecision='PENDING'|'APPROVED'|'REJECTED'|'APPROVED_WITH_CONDITIONS';
+export type ApprovalRequest={id:string;organizationId:string;objectType:string;objectId:string;requiredAuthority:string;riskLevel:'R0'|'R1'|'R2'|'R3'|'R4';decision:ApprovalDecision};
