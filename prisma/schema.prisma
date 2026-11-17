@@ -5,7 +5,7 @@ enum ApprovalDecision { PENDING APPROVED REJECTED APPROVED_WITH_CONDITIONS }
 enum RiskLevel { R0 R1 R2 R3 R4 }
 enum AgentStatus { ACTIVE PAUSED RETIRED }
 enum AuditActorType { HUMAN AGENT SYSTEM }
-model Organization { id String @id @default(cuid()); name String; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; users User[]; agents Agent[]; objectives MarketingObjective[]; products MarketingProduct[]; campaigns Campaign[]; approvals Approval[]; auditEvents AuditEvent[]; commandReceipts CommandReceipt[]; outboxEvents OutboxEvent[] }
+model Organization { id String @id @default(cuid()); name String; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; users User[]; agents Agent[]; objectives MarketingObjective[]; products MarketingProduct[]; campaigns Campaign[]; approvals Approval[]; auditEvents AuditEvent[]; commandReceipts CommandReceipt[]; outboxEvents OutboxEvent[]; workflows WorkflowExecution[]; workflowSteps WorkflowStepExecution[] }
 model User { id String @id @default(cuid()); organizationId String; email String; name String; role String; createdAt DateTime @default(now()); organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict); @@unique([organizationId,email]); @@index([organizationId]) }
 model Agent { id String @id; organizationId String; name String; status AgentStatus @default(ACTIVE); version Int @default(1); capabilities Json; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict); executions AgentExecution[]; @@index([organizationId,status]) }
 model AgentExecution { id String @id @default(cuid()); organizationId String; agentId String; correlationId String; causationId String?; input Json; decision Json?; status String; startedAt DateTime @default(now()); completedAt DateTime?; agent Agent @relation(fields:[agentId],references:[id],onDelete:Restrict); organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict); @@index([organizationId,correlationId]) }
@@ -16,3 +16,44 @@ model Approval { id String @id @default(cuid()); organizationId String; objectTy
 model AuditEvent { id String @id @default(cuid()); organizationId String; actorType AuditActorType; actorId String; action String; objectType String; objectId String; before Json?; after Json?; correlationId String; causationId String?; occurredAt DateTime @default(now()); organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict); @@index([organizationId,occurredAt]); @@index([organizationId,objectType,objectId]) }
 model CommandReceipt { id String @id @default(cuid()); organizationId String; commandId String; commandType String; correlationId String; status String; response Json?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict); @@unique([organizationId,commandId]) }
 model OutboxEvent { id String @id @default(cuid()); organizationId String; eventId String; eventType String; aggregateType String; aggregateId String; version Int @default(1); payload Json; correlationId String; causationId String?; occurredAt DateTime @default(now()); publishedAt DateTime?; organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict); @@unique([organizationId,eventId]); @@index([organizationId,publishedAt,occurredAt]) }
+
+enum WorkflowExecutionStatus { RUNNING WAITING_APPROVAL COMPLETED FAILED BLOCKED CANCELLED }
+
+model WorkflowExecution {
+ id String @id @default(cuid())
+ organizationId String
+ workflowType String
+ status WorkflowExecutionStatus @default(RUNNING)
+ currentStep String
+ correlationId String
+ causationId String?
+ input Json
+ output Json?
+ error Json?
+ version Int @default(1)
+ startedAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ completedAt DateTime?
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ steps WorkflowStepExecution[]
+ @@index([organizationId,status])
+ @@index([organizationId,correlationId])
+}
+
+model WorkflowStepExecution {
+ id String @id @default(cuid())
+ workflowExecutionId String
+ organizationId String
+ stepKey String
+ status String
+ attempt Int @default(1)
+ input Json?
+ output Json?
+ error Json?
+ startedAt DateTime @default(now())
+ completedAt DateTime?
+ workflow WorkflowExecution @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ @@unique([workflowExecutionId,stepKey])
+ @@index([organizationId,status])
+}
