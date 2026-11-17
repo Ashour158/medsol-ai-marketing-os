@@ -1,3 +1,3 @@
+import {describe,it,expect} from 'vitest';
 import {evaluateRisk} from '../src/index.js';
-const r1=evaluateRisk({capability:'CREATE_CAMPAIGN',grantedCapabilities:['CREATE_CAMPAIGN'],riskLevel:'R1'}); if(!r1.allowed||r1.approvalRequired)throw new Error('R1 policy failed');
-const r4=evaluateRisk({capability:'PUBLISH',grantedCapabilities:['PUBLISH'],riskLevel:'R4'}); if(r4.allowed||!r4.approvalRequired)throw new Error('R4 policy failed');
+describe('policy',()=>{it('allows R1 autonomy',()=>expect(evaluateRisk({capability:'x',grantedCapabilities:['x'],riskLevel:'R1'})).toMatchObject({allowed:true,approvalRequired:false}));it('requires R2 approval',()=>expect(evaluateRisk({capability:'x',grantedCapabilities:['x'],riskLevel:'R2'})).toMatchObject({allowed:true,approvalRequired:true,humanAuthorityRequired:true}));it('blocks R4 AI execution',()=>expect(evaluateRisk({capability:'x',grantedCapabilities:['x'],riskLevel:'R4'})).toMatchObject({allowed:false,humanAuthorityRequired:true}));it('denies missing capability',()=>expect(evaluateRisk({capability:'x',grantedCapabilities:[],riskLevel:'R1'})).toMatchObject({allowed:false}));});
