@@ -2,12 +2,14 @@ import {BadRequestException,ForbiddenException,Injectable,NotFoundException} fro
 import {PrismaService} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
-import {randomUUID} from 'node:crypto'; import {MarketingWorkflowService} from './marketing-workflow.service.js';
+import {randomUUID} from 'node:crypto';
+import {MarketingWorkflowService} from './marketing-workflow.service.js';
+
 @Injectable() export class ApprovalService{
  constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService){}
  async approve(cmd:ApproveObjectCommand){
   const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
-  return this.db.$transaction(async tx=>{
+  const result=await this.db.$transaction(async tx=>{
    const a=await tx.approval.findFirst({where:{id:cmd.approvalId,organizationId:cmd.organizationId}});if(!a)throw new NotFoundException('Approval not found in tenant');
    if(a.decision!=='PENDING')throw new BadRequestException('Approval is already decided');
    if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
@@ -23,7 +25,9 @@ import {randomUUID} from 'node:crypto'; import {MarketingWorkflowService} from '
    }
    await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'ApproveObject',correlationId:cmd.correlationId,status:'COMPLETED',response:{approvalId:a.id,decision:next.decision}}});
    await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'APPROVAL_DECIDED',objectType:a.objectType,objectId:a.objectId,before:{decision:a.decision},after:{decision:next.decision,rationale:cmd.rationale},correlationId:cmd.correlationId}});
-   if(next.decision==='APPROVED' || next.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(cmd.correlationId,cmd.organizationId,{approvalId:a.id,decision:next.decision}); return{approvalId:a.id,decision:next.decision};
+   return{approvalId:a.id,decision:next.decision};
   });
+  if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(cmd.correlationId,cmd.organizationId,result);
+  return result;
  }
 }
