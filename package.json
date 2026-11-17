@@ -1,0 +1,8 @@
+{
+  "name": "@medsol/ai-marketing-os",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.12.4",
+  "scripts": {"build":"pnpm -r build","test":"pnpm -r test","typecheck":"pnpm -r typecheck","dev":"pnpm --parallel --filter @medsol/api --filter @medsol/web dev"},
+  "devDependencies": {"typescript":"^5.9.2"}
+}
