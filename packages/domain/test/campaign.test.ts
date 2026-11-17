@@ -1,3 +1,3 @@
-import {canTransitionCampaign} from '../src/index.js';
-if(!canTransitionCampaign('IDEA','ASSESSMENT')) throw new Error('expected valid transition');
-if(canTransitionCampaign('IDEA','LIVE')) throw new Error('expected invalid transition');
+import {describe,it,expect} from 'vitest';
+import {assertCampaignTransition,canTransitionCampaign} from '../src/index.js';
+describe('campaign state machine',()=>{it('allows canonical transition',()=>expect(canTransitionCampaign('IDEA','ASSESSMENT')).toBe(true));it('rejects governance bypass',()=>expect(()=>assertCampaignTransition('PROPOSED','APPROVED')).toThrow());it('rejects terminal mutation',()=>expect(()=>assertCampaignTransition('ARCHIVED','LIVE')).toThrow());});
