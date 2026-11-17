@@ -1,0 +1,4 @@
+export type RiskLevel="R0"|"R1"|"R2"|"R3"|"R4";
+export interface PolicyInput{capability:string;grantedCapabilities:readonly string[];riskLevel:RiskLevel}
+export interface PolicyDecision{allowed:boolean;approvalRequired:boolean;reason:string}
+export function evaluateRisk(i:PolicyInput):PolicyDecision{if(!i.grantedCapabilities.includes(i.capability))return{allowed:false,approvalRequired:false,reason:"Capability not granted"};if(i.riskLevel==="R4")return{allowed:false,approvalRequired:true,reason:"R4 requires human authority"};if(i.riskLevel==="R2"||i.riskLevel==="R3")return{allowed:true,approvalRequired:true,reason:`${i.riskLevel} requires approval by policy`};return{allowed:true,approvalRequired:false,reason:"Autonomous execution permitted"}}
