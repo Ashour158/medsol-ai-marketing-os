@@ -1,7 +1,7 @@
 import { z } from 'zod';
 export const CreateCampaignCommandSchema = z.object({commandId:z.string().min(1),organizationId:z.string().min(1),correlationId:z.string().min(1),causationId:z.string().optional(),code:z.string().regex(/^[A-Z0-9_-]+$/),name:z.string().min(2),objectiveId:z.string().min(1),productId:z.string().optional(),riskLevel:z.enum(['R0','R1','R2','R3','R4']).default('R1')});
 export type CreateCampaignCommand=z.infer<typeof CreateCampaignCommandSchema>;
-export const TransitionCampaignCommandSchema=z.object({commandId:z.string().min(1),organizationId:z.string().min(1),correlationId:z.string().min(1),causationId:z.string().optional(),campaignId:z.string().min(1),to:z.string().min(1)});
+export const TransitionCampaignCommandSchema=z.object({commandId:z.string().min(1),organizationId:z.string().min(1),correlationId:z.string().min(1),causationId:z.string().optional(),campaignId:z.string().min(1),to:z.enum(['IDEA','ASSESSMENT','PROPOSED','APPROVAL_PENDING','APPROVED','PLANNING','IN_PRODUCTION','REVIEW','READY','LIVE','OPTIMIZING','COMPLETED','ANALYZED','LEARNED','ARCHIVED']),expectedVersion:z.number().int().positive().optional(),workflowExecutionId:z.string().optional()});
 export type TransitionCampaignCommand=z.infer<typeof TransitionCampaignCommandSchema>;
 export const ApproveObjectCommandSchema=z.object({commandId:z.string().min(1),organizationId:z.string().min(1),correlationId:z.string().min(1),approvalId:z.string().min(1),approverUserId:z.string().min(1),decision:z.enum(['APPROVED','REJECTED','APPROVED_WITH_CONDITIONS']),rationale:z.string().min(1)});
 export type ApproveObjectCommand=z.infer<typeof ApproveObjectCommandSchema>;
