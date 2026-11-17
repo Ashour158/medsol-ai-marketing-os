@@ -25,14 +25,19 @@ import {randomUUID} from 'node:crypto';
   const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
   return this.db.$transaction(async tx=>{
    const c=await tx.campaign.findFirst({where:{id:cmd.campaignId,organizationId:cmd.organizationId}});if(!c)throw new NotFoundException('Campaign not found in tenant');
+   if(cmd.expectedVersion!==undefined && c.version!==cmd.expectedVersion)throw new ConflictException('Campaign version is stale; refresh the authoritative campaign state before retrying');
    try{assertCampaignTransition(c.status,cmd.to)}catch(e){throw new BadRequestException((e as Error).message)}
-   if(cmd.to==='APPROVAL_PENDING'&&['R2','R3'].includes(c.riskLevel)){await tx.approval.create({data:{organizationId:c.organizationId,objectType:'Campaign',objectId:c.id,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:c.riskLevel}})}
+   if(cmd.to==='APPROVAL_PENDING'&&['R2','R3'].includes(c.riskLevel)){
+    const existing=await tx.approval.findFirst({where:{organizationId:c.organizationId,objectType:'Campaign',objectId:c.id,decision:'PENDING'}});
+    if(!existing)await tx.approval.create({data:{organizationId:c.organizationId,objectType:'Campaign',objectId:c.id,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:c.riskLevel,workflowExecutionId:cmd.workflowExecutionId}});
+    else if(cmd.workflowExecutionId && !existing.workflowExecutionId)await tx.approval.update({where:{id:existing.id},data:{workflowExecutionId:cmd.workflowExecutionId}});
+   }
    if(cmd.to==='APPROVED'&&c.riskLevel==='R4')throw new BadRequestException('R4 cannot be approved by an AI transition');
    const next=await tx.campaign.update({where:{id:c.id},data:{status:cmd.to as any,version:{increment:1}}});
    const response={campaignId:c.id,status:next.status,version:next.version};
    await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'TransitionCampaign',correlationId:cmd.correlationId,status:'COMPLETED',response}});
    await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType,actorId:actorType==='AGENT'?'MKT-OPS-001':(cmd.causationId??'human'),action:'CAMPAIGN_STATUS_CHANGED',objectType:'Campaign',objectId:c.id,before:{status:c.status,version:c.version},after:{status:next.status,version:next.version},correlationId:cmd.correlationId,causationId:cmd.causationId}});
-   await this.outbox.enqueue(tx,{organizationId:cmd.organizationId,eventId:randomUUID(),eventType:'CampaignStatusChanged',aggregateType:'Campaign',aggregateId:c.id,payload:{campaignId:c.id,from:c.status,to:next.status,version:next.version},correlationId:cmd.correlationId,causationId:cmd.causationId});
+   await this.outbox.enqueue(tx,{organizationId:cmd.organizationId,eventId:randomUUID(),eventType:'CampaignStatusChanged',aggregateType:'Campaign',aggregateId:c.id,payload:{campaignId:c.id,from:c.status,to:next.status,version:next.version},correlationId:cmd.correlationId,causationId:cmd.causationId,version:next.version});
    return response;
   });
  }
