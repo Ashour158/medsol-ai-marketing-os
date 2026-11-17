@@ -1,0 +1,3 @@
+# Production Readiness Gates
+
+Before production: authentication and authorization, tenant isolation/RLS, secrets management, persistent workflow orchestration, Kafka durability/schema registry, idempotency keys, optimistic concurrency, audit retention, observability, rate limits, model gateway controls, tool sandboxing, backup/restore testing, disaster recovery, CI/CD, dependency scanning, SAST, contract tests, E2E tests and human approval paths.

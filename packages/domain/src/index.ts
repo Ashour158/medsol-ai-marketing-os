@@ -1,3 +1,4 @@
-export const CAMPAIGN_TRANSITIONS:Record<string,readonly string[]>={IDEA:["ASSESSMENT"],ASSESSMENT:["PROPOSED"],PROPOSED:["APPROVAL_PENDING"],APPROVAL_PENDING:["APPROVED"],APPROVED:["PLANNING"],PLANNING:["IN_PRODUCTION"],IN_PRODUCTION:["REVIEW"],REVIEW:["READY"],READY:["LIVE"],LIVE:["OPTIMIZING","COMPLETED"],OPTIMIZING:["LIVE","COMPLETED"],COMPLETED:["ANALYZED"],ANALYZED:["LEARNED"],LEARNED:["ARCHIVED"],ARCHIVED:[]};
+export const CAMPAIGN_TRANSITIONS:Record<string,readonly string[]>={IDEA:['ASSESSMENT'],ASSESSMENT:['PROPOSED'],PROPOSED:['APPROVAL_PENDING'],APPROVAL_PENDING:['APPROVED'],APPROVED:['PLANNING'],PLANNING:['IN_PRODUCTION'],IN_PRODUCTION:['REVIEW'],REVIEW:['READY'],READY:['LIVE'],LIVE:['OPTIMIZING','COMPLETED'],OPTIMIZING:['LIVE','COMPLETED'],COMPLETED:['ANALYZED'],ANALYZED:['LEARNED'],LEARNED:['ARCHIVED'],ARCHIVED:[]};
 export function canTransitionCampaign(from:string,to:string){return CAMPAIGN_TRANSITIONS[from]?.includes(to)??false}
 export function assertCampaignTransition(from:string,to:string){if(!canTransitionCampaign(from,to))throw new Error(`Invalid campaign transition: ${from} -> ${to}`)}
+export * from './campaign.js';
