@@ -1,10 +1,3 @@
-import 'reflect-metadata';
-import {NestFactory} from '@nestjs/core';
-import {Body,Controller,Get,Module,Post} from '@nestjs/common';
-import {MarketingRequestSchema} from '@medsol/contracts';
-@Controller() class AppController{
- @Get('health') health(){return{status:'ok',service:'medsol-ai-marketing-api',version:'0.1.0'}}
- @Post('marketing/requests') assess(@Body() body:unknown){const request=MarketingRequestSchema.parse(body);const correlationId=crypto.randomUUID();return{status:'ASSESSED',traceId:correlationId,request,decisions:[{agentId:'MKT-CMO-001',action:'ASSESS_OBJECTIVE',riskLevel:'R1'},{agentId:'MKT-STR-001',action:'ASSESS_MARKET',riskLevel:'R1'}],nextStep:'CAMPAIGN_PROPOSAL'}}
-}
-@Module({controllers:[AppController]})class AppModule{}
-async function bootstrap(){const app=await NestFactory.create(AppModule);app.enableCors();await app.listen(Number(process.env.PORT??3001))}bootstrap();
+import 'reflect-metadata'; import {NestFactory} from '@nestjs/core'; import {Body,Controller,Get,Module,Post} from '@nestjs/common'; import {MarketingRequestSchema,CreateCampaignCommandSchema,TransitionCampaignCommandSchema,ApproveObjectCommandSchema} from '@medsol/contracts'; import {PrismaService} from './prisma.service.js'; import {OutboxService} from './outbox.service.js'; import {CampaignService} from './campaign.service.js'; import {ApprovalService} from './approval.service.js'; import {MarketingOrchestratorService} from './marketing-orchestrator.service.js';
+@Controller() class AppController{constructor(private readonly orchestrator:MarketingOrchestratorService,private readonly campaigns:CampaignService,private readonly approvals:ApprovalService){} @Get('health') health(){return{status:'ok',service:'medsol-ai-marketing-api',version:'0.2.0'}} @Post('marketing/requests') assess(@Body() b:unknown){return this.orchestrator.assess(MarketingRequestSchema.parse(b))} @Post('marketing/campaigns') create(@Body() b:unknown){return this.campaigns.create(CreateCampaignCommandSchema.parse(b))} @Post('marketing/campaigns/transition') transition(@Body() b:unknown){return this.campaigns.transition(TransitionCampaignCommandSchema.parse(b))} @Post('marketing/approvals/decide') approve(@Body() b:unknown){return this.approvals.approve(ApproveObjectCommandSchema.parse(b))}}
+@Module({controllers:[AppController],providers:[PrismaService,OutboxService,CampaignService,ApprovalService,MarketingOrchestratorService]}) class AppModule{} async function bootstrap(){const app=await NestFactory.create(AppModule);app.enableCors();await app.listen(Number(process.env.PORT??3001))} bootstrap();
