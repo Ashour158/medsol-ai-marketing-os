@@ -69,3 +69,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R2F-A default-deny governed publication release gate
 
 [R2F-A release barrier Reuse Map, policy and outstanding production gates](docs/blueprint-v2/R2F_GOVERNED_PUBLISHING_RELEASE_BARRIER.md). Twenty-three individual, fail-closed social release requirements are evaluated in the existing @medsol/policy authority. The verified-OIDC CampaignPublicationService exposes immutable media/brand/rights/credential checks and authenticated, read-only release readiness in the existing Publication Studio. The current live prerequisites are deliberately unavailable and cannot be bypassed through a browser or agent; no external publisher, POST send endpoint or PUBLISHED database state is introduced. All unverified provider outcomes require independent source readback and are OUTCOME_UNKNOWN, never auto retried.
+
+### R2F-B approval lifetime semantics aligned with scheduled execution
+
+[Read the R2F-B exact approval execution-window correction](docs/blueprint-v2/R2F_B_EXACT_APPROVAL_EXECUTION_WINDOW.md). The canonical ExactCreativeScope/ApprovalService/DAM/Publication services now reject approval expiries that precede the scheduled release or fail to provide a minimum five-minute execution margin. This fixes a previously detected sandbox-only policy mismatch. Historical incompatible approvals remain immutable audit records and require a new exact-version human approval, while live external sending stays blocked.
