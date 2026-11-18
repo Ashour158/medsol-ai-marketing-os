@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { MarketingLearningService } from './marketing-learning.service.js';
+import { MarketingReadService } from './marketing-read.service.js';
 import { PrismaService } from './prisma.service.js';
 import { AgentService } from './agent.service.js';
 import { BrainRunLedgerService } from './brain-run-ledger.service.js';
@@ -8,7 +9,7 @@ import { nextAgentCapability } from '@medsol/agent-runtime';
 /** Operator-triggered, single-claim brain execution. No automatic takeover of ambiguous effects. */
 @Injectable()
 export class BrainRunExecutorService {
- constructor(private readonly db:PrismaService,private readonly agents:AgentService,private readonly ledger:BrainRunLedgerService,@Optional() private readonly learning?:MarketingLearningService){}
+ constructor(private readonly db:PrismaService,private readonly agents:AgentService,private readonly ledger:BrainRunLedgerService,@Optional() private readonly learning?:MarketingLearningService,@Optional() private readonly reads?:MarketingReadService){}
  async execute(organizationId:string,runId:string){
   const run=await this.ledger.get(organizationId,runId);
   if(run.status==='REVIEW_REQUIRED')return run;
@@ -18,6 +19,7 @@ export class BrainRunExecutorService {
   let causationId:string|undefined;
   try{
    const trendBrief=this.learning?await this.learning.trendBrief(organizationId):null;
+   const authorityContext=this.reads?await this.reads.brainAuthorityContext(organizationId,run.input as Record<string,unknown>):null;
    const citedTrends=trendBrief?.topics.slice(0,5).map(x=>({topic:x.topic,sector:x.sector,status:x.status,evidence:x.evidence.slice(0,3)}))??[];
    for(const step of run.steps){
     if(step.status==='COMPLETED'){causationId=step.executionId??undefined;continue;}
@@ -27,7 +29,7 @@ export class BrainRunExecutorService {
     const result=await this.agents.execute(step.agentId,{
      organizationId,correlationId:run.correlationId,
      ...(causationId?{causationId}:{}),
-     input:{...input,upstreamExecutionId:causationId??null,brainRunId:runId,trendContext:{verified:false,source:'LEARNING_SIGNAL_REGISTRY',topics:citedTrends}},
+     input:{...input,upstreamExecutionId:causationId??null,brainRunId:runId,trendContext:{verified:false,source:'LEARNING_SIGNAL_REGISTRY',topics:citedTrends},authorityContext},
      capabilities:[capability]
     });
     if(!result.decision.executionAllowed)throw new ConflictException('Agent decision denied');
