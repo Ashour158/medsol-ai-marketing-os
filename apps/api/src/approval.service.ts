@@ -20,14 +20,16 @@ import {MarketingWorkflowService} from './marketing-workflow.service.js';
      assertCampaignTransition(c.status,'APPROVED');
      const updated=await tx.campaign.update({where:{id:c.id},data:{status:'APPROVED',version:{increment:1}}});
      await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'CAMPAIGN_APPROVED',objectType:'Campaign',objectId:c.id,before:{status:c.status,version:c.version},after:{status:updated.status,version:updated.version},correlationId:cmd.correlationId}});
-     await tx.outboxEvent.create({data:{organizationId:cmd.organizationId,eventId:randomUUID(),eventType:'CampaignApproved',aggregateType:'Campaign',aggregateId:c.id,payload:{campaignId:c.id,status:updated.status,approvalId:a.id},correlationId:cmd.correlationId}});
+     await tx.outboxEvent.create({data:{organizationId:cmd.organizationId,eventId:randomUUID(),eventType:'CampaignApproved',aggregateType:'Campaign',aggregateId:c.id,payload:{campaignId:c.id,status:updated.status,approvalId:a.id},correlationId:cmd.correlationId,version:updated.version}});
     }
    }
-   await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'ApproveObject',correlationId:cmd.correlationId,status:'COMPLETED',response:{approvalId:a.id,decision:next.decision}}});
+   await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'ApproveObject',correlationId:cmd.correlationId,status:'COMPLETED',response:{approvalId:a.id,decision:next.decision,workflowExecutionId:a.workflowExecutionId}}});
    await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'APPROVAL_DECIDED',objectType:a.objectType,objectId:a.objectId,before:{decision:a.decision},after:{decision:next.decision,rationale:cmd.rationale},correlationId:cmd.correlationId}});
-   return{approvalId:a.id,decision:next.decision};
+   if(next.decision==='REJECTED')await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'APPROVAL_BLOCKED_WORKFLOW',objectType:'WorkflowExecution',objectId:a.workflowExecutionId??a.id,before:{status:'WAITING_APPROVAL'},after:{status:'BLOCKED',approvalId:a.id},correlationId:cmd.correlationId}});
+   return{approvalId:a.id,decision:next.decision,workflowExecutionId:a.workflowExecutionId};
   });
   if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(cmd.correlationId,cmd.organizationId,result);
+  if(result.decision==='REJECTED') await this.workflows.blockAfterApprovalRejection(result.approvalId,cmd.organizationId,cmd.rationale);
   return result;
  }
 }
