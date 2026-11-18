@@ -153,6 +153,8 @@ export class IntegrationOAuthLifecycleService{
        token.refreshToken.length<8||token.refreshToken.length>8192)))
     throw new ConflictException('Untrusted provider token response; cannot attest account');
    const credentials=await this.scoped(org,async tx=>{
+    if(attempt.expiresAt<=new Date())
+     throw new ConflictException('OAuth authorization window expired during exchange');
     const active=await tx.integrationConnection.findFirst({where:{
      organizationId:org,id:attempt.integrationConnectionId,status:'PENDING_VERIFICATION'}});
     if(!active||active.providerKey!==attempt.providerKey)
