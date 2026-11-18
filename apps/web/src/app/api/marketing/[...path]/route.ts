@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, sameOrigin, unseal, type Session } from "../../../../lib/marketing-auth";
 
-const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products", "me", "brain", "operations", "learning", "brand", "command-center", "performance"]);
+const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products", "me", "brain", "operations", "learning", "brand", "command-center", "performance", "architecture"]);
 const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001";
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
@@ -9,6 +9,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const [resource, id, action, operation] = path;
   if (!resource || !routes.has(resource) || path.length > 5 ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "architecture" && !(path.length === 2 && id === "blueprint" && request.method === "GET")) ||
       (resource === "performance" && !((path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
         (path.length===2&&request.method==="POST"&&(id==="ingest"||id==="review")))) ||

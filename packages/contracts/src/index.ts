@@ -6,3 +6,6 @@ export const CampaignCreatedEventSchema=z.object({eventId:z.string(),organizatio
 export type MarketingRequest=z.infer<typeof MarketingRequestSchema>;
 export type CampaignCreatedEvent=z.infer<typeof CampaignCreatedEventSchema>;
 export * from './events.js'; export * from './approval.js'; export * from './commands.js';
+// v2 is a target-state inventory, never an execution authority.
+export * from './blueprint-v2.js';
+export * from './blueprint-v2-compiler.js';
