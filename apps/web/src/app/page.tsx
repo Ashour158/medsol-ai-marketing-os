@@ -26,6 +26,10 @@ export default function Home() {
   const [agentDetail, setAgentDetail] = useState<unknown>(null);
   const [brainPlan, setBrainPlan] = useState<unknown>(null);
   const [brainAssessment, setBrainAssessment] = useState<unknown>(null);
+  const [brainRuns, setBrainRuns] = useState<Array<{id:string;status:string;commandKey:string;updatedAt:string;currentAgentId?:string|null}>>([]);
+  const [brainRunId, setBrainRunId] = useState("");
+  const [brainRunDetail, setBrainRunDetail] = useState<unknown>(null);
+  const [quarantineReason, setQuarantineReason] = useState("");
   const [learningSignals, setLearningSignals] = useState<unknown>(null);
   const [skillProposals, setSkillProposals] = useState<unknown>(null);
   const [agentHistory, setAgentHistory] = useState<Array<{id:string;agentId:string;status:string}>>([]);
@@ -181,6 +185,33 @@ export default function Home() {
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainPlan(await call("brain/plan")))}>Load brain map</button>
         <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => setBrainAssessment(await call("brain/assess", {requestedOutcome:goal,correlationId:crypto.randomUUID()})))}>Run 13-agent review</button>
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { const [signals,proposals]=await Promise.all([call("learning/signals"),call("learning/proposals")]);setLearningSignals(signals);setSkillProposals(proposals); })}>Refresh learning intelligence</button>
+      </div>
+      <div style={{ marginTop: 20, padding: 16, border: "1px solid #dbe4ed", borderRadius: 10 }}>
+        <h3>Durable brain execution operations</h3>
+        <p style={{ color: "#64748b", fontSize: 13 }}>Only authorized operators may quarantine runs inactive for more than 15 minutes. Quarantine never retries a possibly completed agent action.</p>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRuns(await call("brain/runs") as typeof brainRuns))}>Load persisted brain runs</button>
+        {brainRuns.length > 0 && <label style={{ display: "block", marginTop: 12 }}>Select brain run
+          <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);}}>
+            <option value="">Select run</option>
+            {brainRuns.map(r => <option value={r.id} key={r.id}>{r.id} · {r.status}</option>)}
+          </select>
+        </label>}
+        {brainRunId && <div style={{ marginTop: 12 }}>
+          <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRunDetail(await call("brain/runs/" + encodeURIComponent(brainRunId))))}>Inspect persisted checkpoints</button>
+          {brainRunDetail !== null && <details open><summary>Run evidence</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainRunDetail,null,2)}</pre></details>}
+          {brainRuns.find(r => r.id === brainRunId)?.status === "RUNNING" && <>
+            <label style={{ display: "block", marginTop: 12 }}>Quarantine rationale
+              <textarea style={fieldStyle} value={quarantineReason} onChange={e => setQuarantineReason(e.target.value)} placeholder="Describe the stale execution, evidence checked, and operator decision"/>
+            </label>
+            <button style={{...buttonStyle,background:"#9f3030",marginTop:12}} disabled={busy || quarantineReason.trim().length < 12} onClick={() => perform(async () => {
+              if (!window.confirm("Quarantine this stale run? No agents will be retried automatically.")) return;
+              await call("brain/runs/" + encodeURIComponent(brainRunId) + "/quarantine",{reason:quarantineReason.trim()});
+              setBrainRunDetail(await call("brain/runs/" + encodeURIComponent(brainRunId)));
+              setBrainRuns(await call("brain/runs") as typeof brainRuns);
+              setQuarantineReason("");
+            })}>Quarantine stale execution</button>
+          </>}
+        </div>}
       </div>
       {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}
       {brainAssessment !== null && <details open><summary>13-agent review trace</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainAssessment,null,2)}</pre></details>}
