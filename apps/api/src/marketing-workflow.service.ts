@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { MarketingRequest } from '@medsol/contracts';
+import { MarketingRequest, MarketingRequestSchema } from '@medsol/contracts';
 import { PrismaService } from './prisma.service.js';
 import { AgentService } from './agent.service.js';
 import { CampaignService } from './campaign.service.js';
@@ -14,22 +14,41 @@ export class MarketingWorkflowService {
   async start(request: MarketingRequest): Promise<WorkflowResult> {
     const correlationId = randomUUID();
     const workflow = await this.db.workflowExecution.create({ data: { organizationId: request.organizationId, workflowType: 'MARKETING_CAMPAIGN_LIFECYCLE', currentStep: 'CMO_ASSESSMENT', correlationId, input: request as any } });
+    return this.execute(workflow.id, request, correlationId);
+  }
+
+  async resume(id: string, organizationId: string): Promise<WorkflowResult> {
+    const workflow = await this.db.workflowExecution.findFirst({ where: { id, organizationId } });
+    if (!workflow) throw new NotFoundException('Workflow execution not found in tenant');
+    if (['WAITING_APPROVAL', 'COMPLETED', 'BLOCKED', 'CANCELLED'].includes(workflow.status)) {
+      return { workflowExecutionId: workflow.id, status: workflow.status, currentStep: workflow.currentStep, correlationId: workflow.correlationId, output: workflow.output ?? undefined };
+    }
+    if (workflow.status === 'RUNNING') throw new ConflictException('Workflow already running; stale RUNNING recovery requires a lease');
+    const claimed = await this.db.workflowExecution.updateMany({
+      where: { id, organizationId, status: 'FAILED', version: workflow.version },
+      data: { status: 'RUNNING', currentStep: 'RECOVERING', completedAt: null, version: { increment: 1 } }
+    });
+    if (claimed.count !== 1) throw new ConflictException('Workflow recovery already claimed');
+    return this.execute(workflow.id, MarketingRequestSchema.parse(workflow.input), workflow.correlationId);
+  }
+
+  private async execute(workflowId: string, request: MarketingRequest, correlationId: string): Promise<WorkflowResult> {
     try {
-      const cmo = await this.step(workflow.id, 'CMO_ASSESSMENT', request, () => this.agents.execute('MKT-CMO-001', { organizationId: request.organizationId, correlationId, input: request, capabilities: ['ASSESS_OBJECTIVE'] }));
-      const strategy = await this.step(workflow.id, 'STRATEGY_ASSESSMENT', { request, cmo: cmo.decision.payload }, () => this.agents.execute('MKT-STR-001', { organizationId: request.organizationId, correlationId, causationId: cmo.executionId, input: { request, cmo: cmo.decision.payload }, capabilities: ['ASSESS_MARKET'] }));
-      if (!request.objectiveId) return this.finish(workflow.id, 'OBJECTIVE_REQUIRED', { cmo: cmo.decision.payload, strategy: strategy.decision.payload, nextAction: 'Provide objectiveId before campaign creation.' });
+      const cmo = await this.step(workflowId, 'CMO_ASSESSMENT', request, () => this.agents.execute('MKT-CMO-001', { organizationId: request.organizationId, correlationId, input: request, capabilities: ['ASSESS_OBJECTIVE'] }));
+      const strategy = await this.step(workflowId, 'STRATEGY_ASSESSMENT', { request, cmo: cmo.decision.payload }, () => this.agents.execute('MKT-STR-001', { organizationId: request.organizationId, correlationId, causationId: cmo.executionId, input: { request, cmo: cmo.decision.payload }, capabilities: ['ASSESS_MARKET'] }));
+      if (!request.objectiveId) return this.finish(workflowId, 'OBJECTIVE_REQUIRED', { cmo: cmo.decision.payload, strategy: strategy.decision.payload, nextAction: 'Provide objectiveId before campaign creation.' });
       const code = 'MKT-' + Date.now().toString(36).toUpperCase() + '-' + randomUUID().slice(0, 6).toUpperCase();
-      const campaign = await this.step(workflow.id, 'CAMPAIGN_CREATION', { request, strategy: strategy.decision.payload }, () => this.campaigns.create({ commandId: workflow.id + ':CAMPAIGN_CREATION', correlationId, organizationId: request.organizationId, objectiveId: request.objectiveId!, productId: request.productId, code, name: request.requestedOutcome, riskLevel: 'R2' }));
+      const campaign = await this.step(workflowId, 'CAMPAIGN_CREATION', { request, strategy: strategy.decision.payload }, () => this.campaigns.create({ commandId: workflowId + ':CAMPAIGN_CREATION', correlationId, organizationId: request.organizationId, objectiveId: request.objectiveId!, productId: request.productId, code, name: request.requestedOutcome, riskLevel: 'R2' }));
       const transitions = [['ASSESSMENT', 'CAMPAIGN_ASSESSMENT'], ['PROPOSED', 'CAMPAIGN_PROPOSAL'], ['APPROVAL_PENDING', 'APPROVAL_GATE']] as const;
       let last = campaign;
       for (const [to, stepKey] of transitions) {
         const currentVersion = (last as { version: number }).version;
-        last = await this.step(workflow.id, stepKey, last, () => this.campaigns.transition({ commandId: workflow.id + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: campaign.campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflow.id }));
+        last = await this.step(workflowId, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: campaign.campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
       }
-      await this.db.workflowExecution.update({ where: { id: workflow.id }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } });
-      return { workflowExecutionId: workflow.id, status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', correlationId, output: { campaign: last, message: 'Campaign is waiting for human approval.' } };
+      await this.db.workflowExecution.update({ where: { id: workflowId }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } });
+      return { workflowExecutionId: workflowId, status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', correlationId, output: { campaign: last, message: 'Campaign is waiting for human approval.' } };
     } catch (error) {
-      await this.db.workflowExecution.update({ where: { id: workflow.id }, data: { status: 'FAILED', currentStep: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date(), version: { increment: 1 } });
+      await this.db.workflowExecution.update({ where: { id: workflowId }, data: { status: 'FAILED', currentStep: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date(), version: { increment: 1 } });
       throw error;
     }
   }
