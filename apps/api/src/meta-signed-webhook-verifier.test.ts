@@ -6,6 +6,48 @@ const raw=Buffer.from(JSON.stringify({object:'page',
  entry:[{id:'page123',changes:[{field:'feed'}]}]}));
 const sign=(bytes:Uint8Array,key=secret)=>
  'sha256='+createHmac('sha256',key).update(bytes).digest('hex');
+describe('R2E-C signed Meta post claim isolation',()=>{
+ const now=Math.floor(Date.now()/1000);
+ const pageId='123456789012';
+ const payload=(val:unknown,overrides:Record<string,unknown>={})=>
+  Buffer.from(JSON.stringify({object:'page',entry:[{
+   id:pageId,time:now,changes:[{field:'feed',value:val}],...overrides
+  }]}));
+ it('extracts only an exact signed page feed post addition',()=>{
+  const raw=payload({item:'post',verb:'add',post_id:pageId+'_987654321000'});
+  const result=verifySignedMetaWebhook(raw,sign(raw),secret);
+  expect(result.postClaim).toEqual({
+   accountRef:pageId,postRef:pageId+'_987654321000',
+   eventAt:new Date(now*1000)
+  });
+ });
+ it('does not promote unrelated signed notifications to post references',()=>{
+  const cases=[
+   payload({item:'post',verb:'edit',post_id:pageId+'_987654321000'}),
+   payload({item:'comment',verb:'add',post_id:pageId+'_987654321000'}),
+   payload({item:'post',verb:'add',post_id:'999999999999_987654321000'}),
+   payload({item:'post',verb:'add',post_id:pageId+'_987654321000'},
+    {time:now-60*60*24*45}),
+   payload({item:'post',verb:'add',post_id:pageId+'_987654321000'},
+    {time:now+60*60}),
+   payload({item:'post',verb:'add',post_id:pageId+'_987654321000'},
+    {id:'not-a-provider-id'}),
+   Buffer.from(JSON.stringify({object:'instagram',
+    entry:[{id:pageId,time:now,changes:[{
+     field:'feed',value:{item:'post',verb:'add',post_id:pageId+'_987654321000'}
+    }]}]}))
+  ];
+  for(const raw of cases)
+   expect(verifySignedMetaWebhook(raw,sign(raw),secret).postClaim).toBeNull();
+ });
+ it('rejects tampered post identifiers before any candidate is accepted',()=>{
+  const raw=payload({item:'post',verb:'add',post_id:pageId+'_987654321000'});
+  const tampered=Buffer.from(raw);
+  tampered[tampered.length-8]=tampered[tampered.length-8]!^1;
+  expect(()=>verifySignedMetaWebhook(tampered,sign(raw),secret)).toThrow('signature');
+ });
+});
+
 describe('R2E-A Meta raw-byte signature conformance reference cases',()=>{
  it('accepts exact raw signed page and instagram bodies without claiming receipt authority',()=>{
   const checked=verifySignedMetaWebhook(raw,sign(raw),secret);
