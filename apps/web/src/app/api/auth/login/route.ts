@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authConfig, challenge, FLOW_COOKIE, randomToken, seal, secureCookie } from "../../../../lib/marketing-auth";
+import { authConfig, entraScope, challenge, FLOW_COOKIE, randomToken, seal, secureCookie } from "../../../../lib/marketing-auth";
 
 export async function GET() {
   try {
@@ -17,7 +17,7 @@ export async function GET() {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", cfg.clientId);
     url.searchParams.set("redirect_uri", cfg.origin + "/api/auth/callback");
-    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("scope", "openid profile " + entraScope());
     url.searchParams.set("state", state);
     url.searchParams.set("nonce", nonce);
     url.searchParams.set("code_challenge", challenge(verifier));
