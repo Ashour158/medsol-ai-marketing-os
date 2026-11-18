@@ -34,6 +34,11 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 }
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
+  if(method==='GET'&&path==='/marketing/tenancy/roles')return 'READ_TENANCY';
+  if(method==='POST'&&(path==='/marketing/tenancy/roles'||
+   path==='/marketing/tenancy/roles/assign'||
+   /^\/marketing\/tenancy\/roles\/[^/]+\/disable$/.test(path)))
+   return 'MANAGE_TENANT';
   if(method==='GET'&&(path==='/marketing/tenancy/brands'||path==='/marketing/tenancy/agency-grants'))
    return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/tenancy/brands'||
