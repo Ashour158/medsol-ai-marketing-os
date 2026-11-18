@@ -83,7 +83,20 @@ export class BrainRunLedgerService {
    const changed=await tx.brainRunStep.updateMany({where:{id:next.id,organizationId,status:'PENDING'},data:{status:'COMPLETED',executionId,startedAt:execution.startedAt,completedAt:new Date()}});
    if(changed.count!==1)throw new ConflictException('Checkpoint already claimed');
    const completed=run.steps.every(s=>s.id===next.id||s.status==='COMPLETED');
-   await tx.brainRun.update({where:{id:run.id},data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:completed?null:run.steps[next.ordinal+1]?.agentId??null,...(completed?{completedAt:new Date()}:{})}});
+   const nextAgentId=completed?null:run.steps[next.ordinal+1]?.agentId??null;
+   await tx.brainRun.update({where:{id:run.id},data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:nextAgentId,...(completed?{completedAt:new Date()}:{})}});
+   await tx.outboxEvent.create({data:{
+    organizationId, eventId:'brain:'+run.id+':step:'+next.ordinal,
+    eventType:'BRAIN_AGENT_STEP_COMPLETED',aggregateType:'BrainRun',aggregateId:run.id,version:1,
+    payload:{runId:run.id,agentId,stage:next.stage,ordinal:next.ordinal,executionId,nextAgentId,externalEffectsAuthorized:false},
+    correlationId:run.correlationId,causationId:executionId
+   }});
+   if(completed)await tx.outboxEvent.create({data:{
+    organizationId,eventId:'brain:'+run.id+':review',eventType:'BRAIN_RUN_REVIEW_REQUIRED',
+    aggregateType:'BrainRun',aggregateId:run.id,version:1,
+    payload:{runId:run.id,totalSteps:run.steps.length,approved:false,externalEffectsAuthorized:false},
+    correlationId:run.correlationId,causationId:executionId
+   }});
    return{runId,agentId,executionId,completed,requiresHumanReview:true};
   });
  }
