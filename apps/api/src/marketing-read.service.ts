@@ -1,9 +1,30 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service.js';
 
 @Injectable()
 export class MarketingReadService {
   constructor(private readonly db: PrismaService) {}
+  /** Trusted tenant-scoped catalogue lookup used by the Brain; not regulatory verification. */
+  async brainAuthorityContext(organizationId: string, input: {productId?:unknown;objectiveId?:unknown}) {
+    const productId=input.productId;
+    const objectiveId=input.objectiveId;
+    if((productId!==undefined&&typeof productId!=='string')||
+       (objectiveId!==undefined&&typeof objectiveId!=='string'))throw new BadRequestException('Invalid authority reference');
+    const [product,objective]=await Promise.all([
+      productId?this.db.marketingProduct.findFirst({
+       where:{id:productId,organizationId,lifecycle:'ACTIVE'},
+       select:{id:true,code:true,name:true,vendor:true,lifecycle:true}
+      }):Promise.resolve(null),
+      objectiveId?this.db.marketingObjective.findFirst({
+       where:{id:objectiveId,organizationId,status:'ACTIVE'},
+       select:{id:true,name:true,description:true,status:true}
+      }):Promise.resolve(null)
+    ]);
+    if(productId&&!product)throw new NotFoundException('Active product not found in tenant catalogue');
+    if(objectiveId&&!objective)throw new NotFoundException('Active objective not found in tenant catalogue');
+    return {source:'TENANT_MARKETING_CATALOG',product,objective,
+      declarationsVerified:true,scientificClaimsVerified:false,regulatoryApprovalVerified:false};
+  }
   async overview(organizationId: string) {
     const [campaigns, objectives, products, workflows, pendingApprovals, recentAgents] = await Promise.all([
       this.db.campaign.count({ where: { organizationId } }),
