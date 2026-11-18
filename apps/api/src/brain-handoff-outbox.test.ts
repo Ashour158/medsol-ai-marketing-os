@@ -2,7 +2,7 @@ import {describe,it,expect,vi} from 'vitest';
 import {BrainRunLedgerService} from './brain-run-ledger.service.js';
 function fixture(last:boolean){
  const steps=last?[
-  {id:'s0',agentId:'MKT-CMO-001',stage:'STRATEGY',ordinal:0,status:'COMPLETED'},
+  {id:'s0',agentId:'MKT-CMO-001',stage:'STRATEGY',ordinal:0,status:'COMPLETED',executionId:'prior-ex'},
   {id:'s1',agentId:'MKT-SCI-001',stage:'GOVERNANCE',ordinal:1,status:'PENDING'}
  ]:[
   {id:'s0',agentId:'MKT-CMO-001',stage:'STRATEGY',ordinal:0,status:'PENDING'},
