@@ -5,7 +5,7 @@ import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
 import {MarketingWorkflowService} from './marketing-workflow.service.js';
-import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
+import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
 
 @Injectable() export class ApprovalService{
  constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService){}
@@ -33,7 +33,7 @@ import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scop
     const scope=a.scope;
     if(!isExactCreativeScope(scope)||!a.scopeDigest||!a.scopeExpiresAt||
        a.scopeExpiresAt<=new Date()||new Date(scope.scheduledAt)<=new Date()||
-       Date.parse(scope.expiresAt)<=Date.parse(scope.scheduledAt)+300000||
+       Date.parse(scope.expiresAt)<=Date.parse(scope.scheduledAt)+EXACT_APPROVAL_EXECUTION_GRACE_MS||
        a.scopeExpiresAt.getTime()!==Date.parse(scope.expiresAt)||
        a.creativeAssetRevisionId!==a.objectId||
        exactCreativeScopeHash(scope)!==a.scopeDigest)
