@@ -28,6 +28,7 @@ export type PublicationPreflight={
  integrationEvidence:{
   destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
   mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
+  mediaMalwareScanClean:boolean;
   encryptedTokenReceivedPendingAttestation:boolean;
   accountReadbackObserved:boolean;accountReadbackFresh:boolean;
   customerDestinationBound:false;
@@ -127,6 +128,7 @@ export class CampaignPublicationService{
     providerKey:connection?.providerKey??null,
     mediaBytesReadbackVerified:matchingEvidence,
     mediaObjectVersion:matchingEvidence?evidence!.objectVersion:null,
+    mediaMalwareScanClean:matchingEvidence&&evidence?.malwareScanStatus==='CLEAN',
     encryptedTokenReceivedPendingAttestation:connection?.status==='PENDING_VERIFICATION'&&
       pendingCredential?.status==='PENDING_ATTESTATION'&&
       pendingCredential.tokenExpiresAt>new Date(),
