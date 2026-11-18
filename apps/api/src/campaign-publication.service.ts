@@ -96,7 +96,7 @@ export class CampaignPublicationService{
     reasons.push('current_approved_brand_master_required');
    const now=Date.now();
    if(Date.parse(scope.expiresAt)<=now||Date.parse(scope.scheduledAt)<=now||
-      Date.parse(scope.expiresAt)>=Date.parse(scope.scheduledAt)||
+      Date.parse(scope.expiresAt)<=Date.parse(scope.scheduledAt)+300000||
       !approval?.scopeExpiresAt||approval.scopeExpiresAt.getTime()!==Date.parse(scope.expiresAt))
     reasons.push('current_schedule_and_approval_expiry_required');
    if(!revision?.rightsReviewedAt||revision.rightsExpiresAt.getTime()<=Date.parse(scope.scheduledAt))
@@ -414,7 +414,7 @@ export class CampaignPublicationService{
     // sandbox scopes may expire earlier; such plans are never live-ready.
     scheduleWithinApprovedWindow:exactScope&&
      Number.isFinite(Date.parse(scope.scheduledAt))&&
-     Date.parse(scope.scheduledAt)<=Date.parse(scope.expiresAt)&&
+     Date.parse(scope.scheduledAt)+300000<Date.parse(scope.expiresAt)&&
      Date.parse(scope.expiresAt)>now,
     noTenantOrBrandEmergencyHold:false,
     operatorEgressUnlocked:false,
