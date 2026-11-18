@@ -11,9 +11,9 @@ const ACCEPTED_SECTORS=new Set(['genomics','sequencing','molecular diagnostics',
  * Stable ties preserve the provider order; nobody can inject a new destination.
  */
 export function rankLiteratureMetadata<T extends {title?:string;abstractText?:string}>(query:string,rows:readonly T[]):T[] {
- const terms=[...new Set(query.normalize('NFKC').toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter(t=>t.length>=3))].slice(0,20);
+ const terms=[...new Set(query.normalize('NFKC').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(t=>t.length>=3))].slice(0,20);
  const words=(value:unknown):Set<string>=>new Set(typeof value==='string'?
-  value.normalize('NFKC').toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter(Boolean):[]);
+  value.normalize('NFKC').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean):[]);
  const scored=rows.map((row,index)=>{
   const title=words(row.title),abstract=words(row.abstractText);
   const score=terms.reduce((total,term)=>total+(title.has(term)?5:0)+(abstract.has(term)?1:0),0);
