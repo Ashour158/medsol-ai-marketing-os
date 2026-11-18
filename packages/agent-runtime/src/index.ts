@@ -20,3 +20,5 @@ export * from './marketing-brain.js';
 export * from './skill-evaluation.js';
 
 export * from './domain-intelligence.js';
+
+export * from './domain-work-packages.js';
