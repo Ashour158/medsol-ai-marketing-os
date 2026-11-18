@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {TARGET_ENGINES,TARGET_WORKFLOWS,TARGET_STUDIOS,TARGET_BRAINS,TARGET_PERSONAS,
   TARGET_COUNTS,RELEASE_GATES,getBlueprintV2Inventory} from './blueprint-v2.js';
 
-describe('Master Blueprint v2.0 complete declarative coverage',()=>{
+describe('Master Blueprint v2.1 complete declarative coverage',()=>{
  it('keeps every unique blueprint identifier in one canonical target register',()=>{
   const expectIds=(rows:readonly {id:string}[],expected:number,regex:RegExp)=>{
    expect(rows).toHaveLength(expected);
@@ -10,15 +10,15 @@ describe('Master Blueprint v2.0 complete declarative coverage',()=>{
    expect(new Set(ids).size).toBe(expected);
    for(const id of ids)expect(id).toMatch(regex);
   };
-  expectIds(TARGET_ENGINES,TARGET_COUNTS.engines,/^E(?:0[1-9]|[12][0-9]|3[0-3])$/);
-  expectIds(TARGET_WORKFLOWS,TARGET_COUNTS.workflows,/^WF(?:0[1-9]|[12][0-9]|3[0-6])$/);
+  expectIds(TARGET_ENGINES,TARGET_COUNTS.engines,/^E(?:0[1-9]|[12][0-9]|3[0-6])$/);
+  expectIds(TARGET_WORKFLOWS,TARGET_COUNTS.workflows,/^WF(?:0[1-9]|[12][0-9]|3[0-9]|4[01])$/);
   expectIds(TARGET_STUDIOS,TARGET_COUNTS.studios,/^S(?:0[1-9]|1[0-3])$/);
   expectIds(TARGET_BRAINS,TARGET_COUNTS.brains,/^B(?:0[1-9]|10)$/);
   expectIds(TARGET_PERSONAS,TARGET_COUNTS.personas,/^AG-[A-Z]+$/);
   expect(TARGET_ENGINES.map(x=>x.id)).toEqual(
-   Array.from({length:33},(_,i)=>'E'+String(i+1).padStart(2,'0')));
+   Array.from({length:36},(_,i)=>'E'+String(i+1).padStart(2,'0')));
   expect(TARGET_WORKFLOWS.map(x=>x.id)).toEqual(
-   Array.from({length:36},(_,i)=>'WF'+String(i+1).padStart(2,'0')));
+   Array.from({length:41},(_,i)=>'WF'+String(i+1).padStart(2,'0')));
  });
  it('never represents an unbuilt external effect as implemented or authorized',()=>{
   for(const id of ['E11','E15','E16','E17','E28','E29','E30','E31','E32','E33']){
@@ -56,7 +56,7 @@ describe('Master Blueprint v2.0 complete declarative coverage',()=>{
  });
  it('publishes a non-executable snapshot and does not grant external authority',()=>{
   const snapshot=getBlueprintV2Inventory();
-  expect(snapshot.version).toBe('2.0');
+  expect(snapshot.version).toBe('2.1');
   expect(snapshot.targetStateOnly).toBe(true);
   expect(Object.keys(snapshot).sort()).toEqual(['asOfCommit','brains','counts','engines','personas',
    'releaseGates','studios','targetStateOnly','version','workflows'].sort());
