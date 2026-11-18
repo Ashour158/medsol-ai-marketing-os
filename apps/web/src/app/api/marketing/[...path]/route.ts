@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const routes = new Set(["agents", "requests", "workflows"]);
+const routes = new Set(["agents", "requests", "workflows", "approvals"]);
 const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001";
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
@@ -8,6 +8,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const [resource, id, action] = path;
   if (!resource || !routes.has(resource) || path.length > 3 ||
       (resource === "agents" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "approvals" && !(path.length === 2 && id === "pending" && request.method === "GET")) ||
       (resource === "requests" && (path.length !== 1 || request.method !== "POST")) ||
       (resource === "workflows" && !(
         (path.length === 1 && request.method === "POST") ||
