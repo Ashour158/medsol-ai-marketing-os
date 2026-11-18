@@ -119,6 +119,10 @@ describe('R2C OAuth/PKCE security contract',()=>{
     return tx.providerCredential.findFirstOrThrow({where:{id:credential.id}});
    });
    expect(after.status).toBe('REVOKED');
+   const audit=await db.auditEvent.findMany({where:{organizationId:org}});
+   expect(JSON.stringify(audit)).not.toContain('sensitive-access-token');
+   expect(JSON.stringify(audit)).not.toContain('sensitive-refresh-token');
+   expect(JSON.stringify(audit)).not.toContain('oauth-authorization-code-123');
    expect(await db.auditEvent.count({where:{
     organizationId:org,
     action:{in:['OAUTH_PKCE_HANDSHAKE_STARTED',
@@ -161,5 +165,62 @@ describe('R2C OAuth/PKCE security contract',()=>{
    expect(health.tokenReceived).toBe(false);
    expect(health.accountOwnershipVerified).toBe(false);
   }finally{await db.$disconnect();}
+ },60000);
+ it.skipIf(!enabled)('FORCE RLS hides PKCE verifier and encrypted provider credentials with missing/foreign tenant context',async()=>{
+  const db=new PrismaClient(),org='r2c-rls-'+randomUUID();
+  const actor='admin-'+randomUUID(),brandId=randomUUID();
+  const role='r2c_reader_'+randomUUID().replaceAll('-','').slice(0,18);
+  const hub=new PlatformIntegrationHubService(db as any);
+  const oauth=new IntegrationOAuthLifecycleService(db as any,
+   new ProviderSecretEnvelope(randomBytes(32)));
+  let roleCreated=false;
+  try{
+   await db.$connect();
+   await db.organization.create({data:{id:org,name:'R2C RLS tenant'}});
+   await db.brand.create({data:{id:brandId,organizationId:org,
+    slug:'oauth-rls',name:'OAuth RLS',createdBy:actor}});
+   const conn=await hub.register(org,actor,{brandId,providerKey:'LINKEDIN',
+    destinationLabel:'RLS authorization test'});
+   const handshake=await oauth.begin(org,actor,conn.id,cfg);
+   const state=new URL(handshake.authorizationUrl).searchParams.get('state')!;
+   await oauth.exchange(org,state,'r2c-rls-authorization-code',{
+    providerKey:'LINKEDIN',exchangeCode:async()=>({
+     accessToken:'encrypted-in-rls-test',expiresAt:new Date(Date.now()+3600_000),
+     grantedScopes:['w_member_social']
+    })
+   });
+   await db.$executeRawUnsafe('CREATE ROLE "'+role+'" NOLOGIN');roleCreated=true;
+   await db.$executeRawUnsafe(
+    'GRANT SELECT ON "OAuthAuthorizationAttempt","ProviderCredential" TO "'+role+'"');
+   const results=await db.$transaction(async tx=>{
+    await tx.$executeRawUnsafe('SET LOCAL ROLE "'+role+'"');
+    const count=async(table:'OAuthAuthorizationAttempt'|'ProviderCredential')=>{
+     const rows=await tx.$queryRawUnsafe<Array<{n:bigint}>>(
+      'SELECT count(*)::bigint AS n FROM "'+table+'"');
+     return Number(rows[0]?.n);
+    };
+    const noTenant=[await count('OAuthAuthorizationAttempt'),await count('ProviderCredential')];
+    await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
+    const own=[await count('OAuthAuthorizationAttempt'),await count('ProviderCredential')];
+    await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",'another-tenant');
+    const foreign=[await count('OAuthAuthorizationAttempt'),await count('ProviderCredential')];
+    return{noTenant,own,foreign};
+   });
+   expect(results).toEqual({noTenant:[0,0],own:[1,1],foreign:[0,0]});
+   const fresh=await db.$transaction(async tx=>{
+    await tx.$executeRawUnsafe('SET LOCAL ROLE "'+role+'"');
+    const rows=await tx.$queryRawUnsafe<Array<{n:bigint}>>(
+     'SELECT count(*)::bigint AS n FROM "ProviderCredential"');
+    return Number(rows[0]?.n);
+   });
+   expect(fresh).toBe(0);
+  }finally{
+   if(roleCreated){
+    await db.$executeRawUnsafe(
+     'REVOKE SELECT ON "OAuthAuthorizationAttempt","ProviderCredential" FROM "'+role+'"');
+    await db.$executeRawUnsafe('DROP ROLE IF EXISTS "'+role+'"');
+   }
+   await db.$disconnect();
+  }
  },60000);
 });
