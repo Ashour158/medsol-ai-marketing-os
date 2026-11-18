@@ -1,6 +1,8 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from './prisma.service.js';
 import { BrainRunExecutorService } from './brain-run-executor.service.js';
+import { OutboxPublisherService } from './outbox-publisher.service.js';
+import { BrainHandoffConsumer, BRAIN_INTERNAL_EVENTS } from './brain-handoff-consumer.service.js';
 
 /**
  * Optional polling scheduler. Run only on explicitly opted-in workers.
@@ -12,7 +14,13 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
  private readonly log = new Logger(BrainDispatchWorker.name);
  private poller: ReturnType<typeof setInterval>|undefined;
  private busy = false;
- constructor(private readonly db:PrismaService, private readonly executor:BrainRunExecutorService){}
+ constructor(private readonly db:PrismaService, private readonly executor:BrainRunExecutorService,
+  @Optional() private readonly outbox?:OutboxPublisherService,
+  @Optional() private readonly handoffs?:BrainHandoffConsumer){}
+ private async deliverBrainEvents():Promise<void>{
+   if(this.outbox&&this.handoffs&&process.env.MARKETING_BRAIN_EVENT_DELIVERY_ENABLED!=='false')
+     await this.outbox.publishBatch(this.handoffs,25,BRAIN_INTERNAL_EVENTS);
+ }
  onModuleInit():void {
   if(process.env.MARKETING_BRAIN_WORKER_ENABLED!=='true') return;
   const configured=Number(process.env.MARKETING_BRAIN_POLL_MS??'10000');
@@ -27,13 +35,15 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
   this.busy=true;
   try{
    const run=await this.db.brainRun.findFirst({where:{status:'PENDING'},orderBy:{createdAt:'asc'},select:{id:true,organizationId:true}});
-   if(!run)return {claimed:false,status:'EMPTY'};
+   if(!run){await this.deliverBrainEvents();return {claimed:false,status:'EMPTY'};}
    try{
     const completed=await this.executor.execute(run.organizationId,run.id);
+    await this.deliverBrainEvents();
     return {claimed:true,runId:run.id,status:completed.status};
    }catch(error){
     // A losing CAS race is normal. The executor owns durable failure states.
     this.log.warn('Brain run not completed: '+run.id+' '+(error instanceof Error?error.message:'unknown error'));
+    await this.deliverBrainEvents();
     return {claimed:false,runId:run.id,status:'CLAIMED_ELSEWHERE_OR_NEEDS_INTERVENTION'};
    }
   }finally{this.busy=false;}
