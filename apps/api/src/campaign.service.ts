@@ -32,8 +32,10 @@ import {randomUUID} from 'node:crypto';
     if(!existing)await tx.approval.create({data:{organizationId:c.organizationId,objectType:'Campaign',objectId:c.id,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:c.riskLevel,workflowExecutionId:cmd.workflowExecutionId}});
     else if(cmd.workflowExecutionId && !existing.workflowExecutionId)await tx.approval.update({where:{id:existing.id},data:{workflowExecutionId:cmd.workflowExecutionId}});
    }
-   if(cmd.to==='APPROVED'&&c.riskLevel==='R4')throw new BadRequestException('R4 cannot be approved by an AI transition');
-   const next=await tx.campaign.update({where:{id:c.id},data:{status:cmd.to as any,version:{increment:1}}});
+   if(cmd.to==='APPROVED')throw new BadRequestException('Campaign approval must be executed through the authoritative ApprovalService with a recorded human decision');
+   const changed=await tx.campaign.updateMany({where:{id:c.id,organizationId:cmd.organizationId,version:c.version,status:c.status},data:{status:cmd.to as any,version:{increment:1}}});
+   if(changed.count!==1)throw new ConflictException('Campaign changed concurrently; reload and retry');
+   const next=await tx.campaign.findUniqueOrThrow({where:{id:c.id}});
    const response={campaignId:c.id,status:next.status,version:next.version};
    await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'TransitionCampaign',correlationId:cmd.correlationId,status:'COMPLETED',response}});
    await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType,actorId:actorType==='AGENT'?'MKT-OPS-001':(cmd.causationId??'human'),action:'CAMPAIGN_STATUS_CHANGED',objectType:'Campaign',objectId:c.id,before:{status:c.status,version:c.version},after:{status:next.status,version:next.version},correlationId:cmd.correlationId,causationId:cmd.causationId}});
