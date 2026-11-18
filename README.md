@@ -61,3 +61,7 @@ The [R1C creative DAM and exact approval implementation](docs/blueprint-v2/R1C_C
 ### R2C-A secure OAuth and provider-token lifecycle
 
 R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blueprint-v2/R2C_OAUTH_VAULT_FOUNDATION.md) to the existing Integration Hub. The new tenant-RLS OAuthAuthorizationAttempt and ProviderCredential records enforce single-use state claims, AES-256-GCM encryption, independent account attestation requirements and irreversible token revocation. The Command Center displays read-only token lifecycle health, but it cannot authenticate a provider or publish externally. There is **no live provider OAuth callback, production credential integration or real publishing adapter** yet; release remains blocked pending R2C provider-specific verified staging.
+
+### R2E-C signed post claims and read-only delivery reconciliation
+
+[Read the R2E-C reuse map, source evidence controls and release gates](docs/blueprint-v2/R2E_C_SOURCE_RECONCILIATION.md). Narrow, signed Meta Page post-add events yield only tenant/connection-scoped hashed candidate references in existing immutable quarantined webhook evidence. The publication Studio exposes read-only reconciliation with the canonical approval, rights, brand and scope controls and zero fabricated remote receipts. SANDBOX-only attempts, lack of customer destination binding and unfinished provider staging keep all live publishing disabled.
