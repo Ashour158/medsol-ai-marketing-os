@@ -29,6 +29,7 @@ export default function Home() {
   const [brainAssessment, setBrainAssessment] = useState<unknown>(null);
   const [brainRuns, setBrainRuns] = useState<Array<{id:string;status:string;commandKey:string;updatedAt:string;currentAgentId?:string|null}>>([]);
   const [brainRunId, setBrainRunId] = useState("");
+  const [brainCampaignId, setBrainCampaignId] = useState("");
   const [brainRunDetail, setBrainRunDetail] = useState<unknown>(null);
   const [quarantineReason, setQuarantineReason] = useState("");
   const [learningSignals, setLearningSignals] = useState<unknown>(null);
@@ -194,10 +195,16 @@ export default function Home() {
       <div style={{ marginTop: 20, padding: 16, border: "1px solid #dbe4ed", borderRadius: 10 }}>
         <h3>Durable brain execution operations</h3>
         <p style={{ color: "#64748b", fontSize: 13 }}>Only authorized operators may quarantine runs inactive for more than 15 minutes. Quarantine never retries a possibly completed agent action.</p>
+        <label style={{display:"block",marginBottom:12}}>Campaign metrics context (optional; only reviewed observations count)
+          <select style={fieldStyle} value={brainCampaignId} onChange={e=>setBrainCampaignId(e.target.value)}>
+            <option value="">No campaign selected</option>
+            {campaigns.map(c=><option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+          </select>
+        </label>
         <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginBottom:14 }}>
           <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={()=>perform(async()=>{
             const created=await call("brain/runs",{commandKey:crypto.randomUUID(),requestedOutcome:goal.trim(),
-              ...(objectiveId?{objectiveId}:{}),market:"MENA"}) as {id:string};
+              ...(objectiveId?{objectiveId}:{}),...(brainCampaignId?{campaignId:brainCampaignId}:{}),market:"MENA"}) as {id:string};
             setBrainRunId(created.id);
             setBrainRunDetail(created);
             setBrainRuns(await call("brain/runs") as typeof brainRuns);
