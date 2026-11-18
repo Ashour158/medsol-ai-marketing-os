@@ -7,6 +7,7 @@ import {MarketingWorkflowService} from './marketing-workflow.service.js';
 
 @Injectable() export class ApprovalService{
  constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService){}
+ async listPending(organizationId:string){return this.db.approval.findMany({where:{organizationId,decision:'PENDING'},orderBy:{createdAt:'asc'},select:{id:true,objectType:true,objectId:true,requiredAuthority:true,riskLevel:true,workflowExecutionId:true,createdAt:true}})}
  private async reconcile(organizationId:string,result:{approvalId:string;decision:string;workflowExecutionId:string|null}){
   if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(result.workflowExecutionId,organizationId,result);
   if(result.decision==='REJECTED') await this.workflows.blockAfterApprovalRejection(result.approvalId,organizationId,'Rejected by authorized reviewer');
