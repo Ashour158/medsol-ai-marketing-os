@@ -12,6 +12,27 @@ export const PLATFORM_CATALOG=[
  {key:'X_API',label:'X',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]}
 ] as const;
 const PROVIDERS=new Set<string>(PLATFORM_CATALOG.map(x=>x.key));
+/**
+ * Diagnostic-only token lifetime classification. Receiving an encrypted token is
+ * not proof of account ownership, provider scopes, or permission to publish.
+ * An invalid/missing expiration is treated as expired (fail closed).
+ */
+export function assessProviderTokenLifetime(
+ status:string|undefined,expiresAt:Date|null|undefined,now=new Date()
+){
+ const received=status==='PENDING_ATTESTATION';
+ const validClock=now instanceof Date&&Number.isFinite(now.getTime());
+ const validExpiry=expiresAt instanceof Date&&Number.isFinite(expiresAt.getTime());
+ const expired=received&&(!validClock||!validExpiry||expiresAt!.getTime()<=now.getTime());
+ const expiringSoon=received&&!expired&&
+  expiresAt!.getTime()-now.getTime()<=15*60_000;
+ return{
+  tokenExpired:expired,
+  tokenExpiresWithin15Minutes:expiringSoon,
+  tokenReadyForAttestation:received&&!expired&&!expiringSoon,
+  externalEffectsAuthorized:false
+ };
+}
 function id(value:unknown,label:string):string{
  if(typeof value!=='string'||!value||value.length>128||!/^[A-Za-z0-9_-]+$/.test(value))
   throw new BadRequestException('Invalid '+label);
@@ -107,11 +128,13 @@ export class PlatformIntegrationHubService{
      orderBy:{createdAt:'desc'},
      select:{status:true,expiresAt:true,createdAt:true}})
    ]);
+   const lifetime=assessProviderTokenLifetime(cred?.status,cred?.tokenExpiresAt);
    return{connectionId,brandId:conn.brandId,providerKey:conn.providerKey,
     connectionStatus:conn.status,
     tokenReceived:cred?.status==='PENDING_ATTESTATION',
     tokenStatus:cred?.status??'NOT_RECEIVED',
     tokenExpiresAt:cred?.tokenExpiresAt??null,
+    ...lifetime,
     handshakeHistory:handshakes,
     accountOwnershipVerified:false,providerCapabilityVerified:false,
     externalEffectsAuthorized:false};
