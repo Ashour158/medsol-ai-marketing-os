@@ -32,8 +32,12 @@ describe.skipIf(!enabled)('PostgreSQL campaign authority and approval integratio
       const cmd = { commandId: randomUUID(), correlationId: randomUUID(), organizationId: orgId, approvalId: pending.id, approverUserId: author.id, decision: 'APPROVED' as const, rationale: 'Review' };
       await expect(approvals.approve(cmd)).rejects.toThrow('cannot approve');
       expect((await db.approval.findUniqueOrThrow({ where: { id: pending.id } })).decision).toBe('PENDING');
-      const decision = await approvals.approve({ ...cmd, commandId: randomUUID(), approverUserId: reviewer.id });
+      await expect(approvals.approve({ ...cmd, commandId: randomUUID(), organizationId: otherId, approverUserId: reviewer.id })).rejects.toThrow('Approval not found in tenant');
+      const acceptedCommand = { ...cmd, commandId: randomUUID(), approverUserId: reviewer.id };
+      const decision = await approvals.approve(acceptedCommand);
       expect(decision.decision).toBe('APPROVED');
+      expect(await approvals.approve(acceptedCommand)).toEqual(decision);
+      await expect(approvals.approve({ ...acceptedCommand, commandId: randomUUID(), decision: 'REJECTED' })).rejects.toThrow('already decided');
       expect((await db.campaign.findUniqueOrThrow({ where: { id: created.campaignId } })).status).toBe('APPROVED');
       expect(await db.auditEvent.count({ where: { organizationId: orgId, objectId: created.campaignId, action: 'CAMPAIGN_APPROVED' } })).toBe(1);
     } finally {
