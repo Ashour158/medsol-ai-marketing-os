@@ -30,7 +30,7 @@ CREATE UNIQUE INDEX "OAuthAuthorizationAttempt_organizationId_stateDigest_key"
  ON "OAuthAuthorizationAttempt"("organizationId","stateDigest");
 CREATE UNIQUE INDEX "OAuthAuthorizationAttempt_organizationId_id_key"
  ON "OAuthAuthorizationAttempt"("organizationId","id");
-CREATE INDEX "OAuthAuthorizationAttempt_organizationId_integrationConnectionId_status_expiresAt_idx"
+CREATE INDEX "OAuthAttempt_org_conn_status_expiry_idx"
  ON "OAuthAuthorizationAttempt"("organizationId","integrationConnectionId","status","expiresAt");
 ALTER TABLE "OAuthAuthorizationAttempt" ADD CONSTRAINT "OAuthAuthorizationAttempt_organizationId_fkey"
  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
