@@ -23,6 +23,10 @@ const formatId=(s:unknown,label:string)=>{
  return s;
 };
 const sha=(s:string)=>'sha256:'+createHash('sha256').update(s).digest('hex');
+export function requireActiveOAuthWindow(expiresAt:Date,now=new Date()):void{
+ if(!(expiresAt instanceof Date)||!Number.isFinite(expiresAt.getTime())||
+    expiresAt<=now)throw new ConflictException('OAuth authorization window expired during exchange');
+}
 const safeHost=(input:string)=>{
  if(!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(input)||
     input.includes('..')||input.endsWith('.local')||input.endsWith('.internal'))
@@ -153,8 +157,7 @@ export class IntegrationOAuthLifecycleService{
        token.refreshToken.length<8||token.refreshToken.length>8192)))
     throw new ConflictException('Untrusted provider token response; cannot attest account');
    const credentials=await this.scoped(org,async tx=>{
-    if(attempt.expiresAt<=new Date())
-     throw new ConflictException('OAuth authorization window expired during exchange');
+    requireActiveOAuthWindow(attempt.expiresAt);
     const active=await tx.integrationConnection.findFirst({where:{
      organizationId:org,id:attempt.integrationConnectionId,status:'PENDING_VERIFICATION'}});
     if(!active||active.providerKey!==attempt.providerKey)
