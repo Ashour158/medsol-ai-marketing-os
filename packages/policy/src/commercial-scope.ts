@@ -38,6 +38,8 @@ export type CommercialAuthorizationDecision={
  allowed:boolean;reasons:readonly string[];
  externalEffectAuthorized:boolean;
 };
+const SUPPORTED_ACTIONS:ReadonlySet<string>=new Set(['RESEARCH_READ','CREATIVE_DRAFT','CAMPAIGN_WRITE',
+ 'APPROVED_PUBLISH','APPROVED_EMAIL_SEND','PRICE_PROPOSAL','PAID_MEDIA_SPEND','MANAGE_PRIVILEGES']);
 const EXTERNAL=new Set<CommercialAction>([
  'APPROVED_PUBLISH','APPROVED_EMAIL_SEND','PAID_MEDIA_SPEND'
 ]);
