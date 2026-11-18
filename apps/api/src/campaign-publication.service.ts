@@ -41,14 +41,17 @@ export class CampaignPublicationService{
   id:string;campaignId:string;creativeAssetRevisionId:string;approvalId:string;scopeDigest:string
  }):Promise<PublicationPreflight>{
   const reasons:string[]=[];
-  const [campaign,revision,approval,master]=await Promise.all([
+  const [campaign,revision,approval,master,campaignApproval]=await Promise.all([
    tx.campaign.findFirst({where:{organizationId,id:pub.campaignId}}),
    tx.creativeAssetRevision.findFirst({where:{organizationId,id:pub.creativeAssetRevisionId}}),
    tx.approval.findFirst({where:{organizationId,id:pub.approvalId}}),
    tx.brandMasterRevision.findFirst({where:{organizationId,status:'APPROVED'},
-    orderBy:{version:'desc'},select:{version:true}})
+    orderBy:{version:'desc'},select:{version:true}}),
+   tx.approval.findFirst({where:{organizationId,objectType:'Campaign',objectId:pub.campaignId,
+    decision:'APPROVED'},select:{id:true,decidedBy:true}})
   ]);
   if(!campaign||campaign.status!=='APPROVED')reasons.push('human_approved_campaign_required');
+  if(!campaignApproval?.decidedBy)reasons.push('recorded_campaign_human_approval_required');
   if(!campaign?.brandId)reasons.push('campaign_must_bind_tenant_brand');
   if(!revision)reasons.push('creative_revision_missing');
   if(!approval||approval.decision!=='APPROVED'||approval.objectType!=='CreativeAssetRevision'||
