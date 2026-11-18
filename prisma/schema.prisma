@@ -76,6 +76,8 @@ model Organization {
   tenantRoles TenantRoleDefinition[]
   creativeAssets CreativeAsset[]
   creativeAssetRevisions CreativeAssetRevision[]
+  campaignPublications CampaignPublication[]
+  publicationAttempts PublicationAttempt[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -158,6 +160,7 @@ model Campaign {
   organizationId String
   code String
   name String
+  brandId String?
   objectiveId String
   productId String?
   status CampaignStatus @default(IDEA)
@@ -169,6 +172,8 @@ model Campaign {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   objective MarketingObjective @relation(fields:[objectiveId],references:[id],onDelete:Restrict)
   product MarketingProduct? @relation(fields:[productId],references:[id],onDelete:Restrict)
+  brand Brand? @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  publications CampaignPublication[]
   @@unique([organizationId,code])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -195,6 +200,8 @@ model Approval {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   workflow WorkflowExecution? @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
   creativeAssetRevision CreativeAssetRevision? @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
+  publications CampaignPublication[]
+  @@unique([organizationId,id])
   @@index([organizationId,objectType,objectId])
   @@index([organizationId,decision])
   @@index([organizationId,workflowExecutionId])
@@ -522,6 +529,7 @@ model Brand {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   agencyGrants AgencyGrant[]
   creativeAssets CreativeAsset[]
+  campaigns Campaign[]
   @@unique([organizationId,slug])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -615,7 +623,53 @@ model CreativeAssetRevision {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   asset CreativeAsset @relation(fields:[organizationId,assetId],references:[organizationId,id],onDelete:Restrict)
   approvals Approval[]
+  publications CampaignPublication[]
   @@unique([organizationId,id])
   @@unique([assetId,version])
   @@index([organizationId,assetId,version])
+}
+
+/**
+ * R2 one authoritative publication-intent aggregate. Internal staging only:
+ * no external provider account, access token or publishing authority.
+ * Campaign/approval/DAM/Outbox remain their existing independent owners.
+ */
+model CampaignPublication {
+  id String @id @default(cuid())
+  organizationId String
+  campaignId String
+  creativeAssetRevisionId String
+  approvalId String
+  scopeDigest String
+  requestKey String
+  status String @default("PREPARED")
+  version Int @default(1)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
+  creativeAssetRevision CreativeAssetRevision @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
+  approval Approval @relation(fields:[organizationId,approvalId],references:[organizationId,id],onDelete:Restrict)
+  attempts PublicationAttempt[]
+  @@unique([organizationId,id])
+  @@unique([organizationId,requestKey])
+  @@unique([organizationId,approvalId])
+  @@index([organizationId,campaignId,status])
+}
+model PublicationAttempt {
+  id String @id @default(cuid())
+  organizationId String
+  publicationId String
+  sequence Int
+  mode String @default("SANDBOX")
+  outcome String
+  evidenceRef String
+  inputDigest String
+  recordedBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  publication CampaignPublication @relation(fields:[organizationId,publicationId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([organizationId,publicationId,sequence])
+  @@index([organizationId,publicationId,createdAt])
 }
