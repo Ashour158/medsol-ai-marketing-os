@@ -100,6 +100,40 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    await expect(publications.prepare(foreign,creator,{
     campaignId:campaign.campaignId,approvalId:preparedCreative.approvalId,requestKey:randomUUID()
    })).rejects.toThrow('not found in tenant');
+   // Independent verified OIDC user is required for release readiness; the
+   // bootstrap path and anonymous identity never authorize provider egress.
+   const subject='oidc-r2f-'+randomUUID();
+   await db.user.update({where:{id:reviewer},data:{oidcSubject:subject}});
+   const identity={userId:reviewer,organizationId:org,email:reviewer+'@example.invalid',
+    role:'ADMIN',subject};
+   const releaseGate=await publications.releaseReadiness(org,identity,intent.publicationId);
+   expect(releaseGate).toMatchObject({
+    releaseBlocked:true,externalReady:false,externalEffectsAuthorized:false,
+    outgoingProviderCallsMade:0,commercialPolicyEligible:false,
+    releasePrerequisitesMet:false,candidateEncryptedTokenPresent:false,
+    trustedAccountObservationFresh:false,
+    mediaReadbackClean:false,existingAuthorizedRemoteAttempts:0
+   });
+   for(const missing of [
+    'active_social_publishing_entitlement_required',
+    'provider_app_review_and_eligibility_required',
+    'customer_authorized_destination_binding_required',
+    'operator_egress_unlock_required',
+    'audience_consent_or_no_targeting_authorization_required',
+    'approved_release_window_required'
+   ])expect(releaseGate.blockers).toContain(missing);
+   await expect(publications.releaseReadiness(foreign,identity,intent.publicationId))
+    .rejects.toThrow('Verified tenant-scoped human required');
+   await expect(publications.releaseReadiness(org,{
+    ...identity,subject:'forged-subject'},intent.publicationId))
+    .resolves.toMatchObject({
+     checks:{authenticatedHuman:false,activeMemberAndRole:false},
+     releaseBlocked:true,externalEffectsAuthorized:false
+    });
+   await expect(publications.assertExternalDispatchBlocked(
+    org,identity,intent.publicationId)).rejects.toThrow('External publication disabled');
+   expect(await db.publicationAttempt.count({where:{
+    organizationId:org,publicationId:intent.publicationId}})).toBe(0);
    const gate=await publications.preflight(org,intent.publicationId);
    expect(gate).toMatchObject({internalReady:true,externalReady:false,
     externalEffectsAuthorized:false,independentlyVerified:false});
@@ -184,6 +218,10 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    expect(staleReconciliation.approvalPreflightReady).toBe(false);
    expect(staleReconciliation.reasons).toContain('current_same_brand_asset_required');
    expect(staleReconciliation.verifiedRemoteReceipts).toBe(0);
+   const staleRelease=await publications.releaseReadiness(org,identity,intent.publicationId);
+   expect(staleRelease.releaseBlocked).toBe(true);
+   expect(staleRelease.checks.currentCampaignAndCreative).toBe(false);
+   expect(staleRelease.externalEffectsAuthorized).toBe(false);
    // Once written, even direct SQL cannot rewrite the first synthetic receipt.
    await expect(db.$transaction(async tx=>{
     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
@@ -203,6 +241,12 @@ describe('R2 governed sandbox publication from real approved campaign and creati
   expect(permissionForMarketingRoute('GET','/marketing/publications/abc/performance')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('GET','/marketing/publications/abc/reconciliation'))
    .toBe('READ_AUDIT');
+  expect(permissionForMarketingRoute('GET','/marketing/publications/abc/release-readiness'))
+   .toBe('READ_AUDIT');
+  expect(()=>permissionForMarketingRoute('POST','/marketing/publications/abc/release-readiness'))
+   .toThrow('not in the permission registry');
+  expect(()=>permissionForMarketingRoute('POST','/marketing/publications/abc/publish'))
+   .toThrow('not in the permission registry');
   expect(()=>permissionForMarketingRoute('POST','/marketing/publications/abc/reconciliation'))
    .toThrow('not in the permission registry');
   expect(hasMarketingPermission({role:'VIEWER'} as any,'MANAGE_CAMPAIGN')).toBe(false);
