@@ -25,6 +25,10 @@ describe('immutable identity binding', () => {
     vi.mocked(jwtVerify).mockResolvedValue({ payload: { sub: 'subject-1', email: 'member@example.com', tid: '33333333-3333-4333-8333-333333333333', oid: '22222222-2222-4222-8222-222222222222' } } as any);
     await expect(verifyOidcIdentity('Bearer valid', 'tenant', config, lookup)).rejects.toThrow('tenant or object identity mismatch');
   });
+  it('denies Graph-only and missing delegated Marketing API scope', async () => {
+    vi.mocked(jwtVerify).mockResolvedValue({ payload: { tid: '11111111-1111-4111-8111-111111111111', oid: '22222222-2222-4222-8222-222222222222', scp: 'User.Read' } } as any);
+    await expect(verifyOidcIdentity('Bearer valid', 'tenant', config, lookup)).rejects.toThrow('Delegated Marketing API scope required');
+  });
   it('requires issuer and audience verification with a signed algorithm allowlist', async () => {
     await verifyOidcIdentity('Bearer valid', 'tenant', config, lookup);
     expect(jwtVerify).toHaveBeenCalledWith('valid', expect.anything(), { issuer: config.issuer, audience: config.audience, algorithms: ['RS256', 'ES256'] });
