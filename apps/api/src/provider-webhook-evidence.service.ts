@@ -1,6 +1,6 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
 import {verifySignedMetaWebhook} from './meta-signed-webhook-verifier.js';
 
@@ -64,9 +64,14 @@ export class ProviderWebhookEvidenceService {
     signatureDigest:verified.signatureDigest,rawSizeBytes:verified.rawSizeBytes,
     eventClass:verified.eventClass,status:'QUARANTINED',verifiedBy:adapterActor
    }});
+   // InboxEvent is tenant+consumer+event scoped. Include connection ID in
+   // dedupe key so the same signed body on two valid subscriptions is not
+   // incorrectly treated as one event.
+   const inboxEventId='sha256:'+createHash('sha256').update(
+    connectionId+'|'+verified.payloadDigest).digest('hex');
    await tx.inboxEvent.create({data:{organizationId,
     consumerName:'META_SIGNED_WEBHOOK',
-    eventId:verified.payloadDigest,status:'PROCESSED',processedAt:new Date()}});
+    eventId:inboxEventId,status:'PROCESSED',processedAt:new Date()}});
    await tx.auditEvent.create({data:{
     organizationId,actorType:'SYSTEM',actorId:adapterActor,
     action:'PROVIDER_SIGNED_WEBHOOK_QUARANTINED',
