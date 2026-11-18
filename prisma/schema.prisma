@@ -451,6 +451,6 @@ model MarketingMetricObservation {
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
-  @@unique([organizationId,sourceSystem,sourceRecordId,metricKey])
-  @@index([organizationId,campaignId,status,observedAt])
+  @@unique([organizationId,sourceSystem,sourceRecordId,metricKey], map:"MarketingMetricObservation_organizationId_sourceSystem_sourceRe")
+  @@index([organizationId,campaignId,status,observedAt], map:"MarketingMetricObservation_organizationId_campaignId_status_obs")
 }
