@@ -8,3 +8,4 @@ export function evaluateRisk(i:PolicyInput):PolicyDecision{
  return{allowed:true,approvalRequired:false,humanAuthorityRequired:false,reason:'Autonomous execution permitted'};
 }
 export * from './commercial-scope.js';
+export * from './social-publishing-release.js';
