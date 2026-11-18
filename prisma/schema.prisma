@@ -702,7 +702,7 @@ model IntegrationConnection {
   brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
   @@unique([organizationId,id])
   @@unique([organizationId,destinationRef])
-  @@unique([organizationId,brandId,providerKey,destinationLabel])
+  @@unique([organizationId,brandId,providerKey,destinationLabel],map:"IntegrationConnection_brand_provider_dest_key")
   @@index([organizationId,brandId,status])
 }
 
