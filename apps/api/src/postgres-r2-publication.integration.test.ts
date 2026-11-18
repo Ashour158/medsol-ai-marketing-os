@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,createHash,createHmac} from 'node:crypto';
+import {ProviderWebhookEvidenceService} from './provider-webhook-evidence.service.js';
 import {PlatformIntegrationHubService} from './platform-integration-hub.service.js';
 import {VerifiedMediaEvidenceService} from './verified-media-evidence.service.js';
 import {CampaignService} from './campaign.service.js';
@@ -70,7 +71,7 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     rightsExpiresAt:later(70),renditionDigest:digest
    });
    const destination=await hub.register(org,reviewer,{
-    brandId,providerKey:'LINKEDIN',destinationLabel:'Controlled integration fixture'});
+    brandId,providerKey:'META_GRAPH',destinationLabel:'Controlled integration fixture'});
    const verified=await mediaVerifier.verifyReadback(org,'trusted-storage-worker',version.revisionId,{
     readVersion:async(input)=>({sourceRef:input.sourceRef,
      objectVersion:'r2-immutable-object-v1',bytes:mediaBytes})
@@ -109,6 +110,39 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     providerCredentialsVerified:false,providerPublishingCapabilityVerified:false,
     verifiedExternalDestination:false
    });
+   // Signed provider-claimed post activity cannot manufacture a remote
+   // delivery attempt. The only authoritative attempt is still SANDBOX.
+   const webhookSecret=Buffer.from('0123456789abcdef0123456789abcdef');
+   const postRaw=Buffer.from(JSON.stringify({object:'page',entry:[{
+    id:'123456789012',time:Math.floor(Date.now()/1000),
+    changes:[{field:'feed',value:{
+     item:'post',verb:'add',post_id:'123456789012_998877665544'
+    }}]
+   }]}));
+   const signature='sha256='+createHmac('sha256',webhookSecret).update(postRaw).digest('hex');
+   const incoming=new ProviderWebhookEvidenceService(db as any,{
+    secretFor:async()=>webhookSecret
+   });
+   const signed=await incoming.ingestMeta(org,'meta_ingress',
+    destination.id,postRaw,signature);
+   expect(signed).toMatchObject({status:'QUARANTINED',
+    receiptReconciled:false,externalEffectsAuthorized:false});
+   const reconciliation=await publications.reconcileProviderDelivery(
+    org,intent.publicationId);
+   expect(reconciliation).toMatchObject({
+    approvalPreflightReady:true,
+    providerKey:'META_GRAPH',connectionStatus:'PENDING_VERIFICATION',
+    correlationState:'NO_AUTHORIZED_REMOTE_ATTEMPT',
+    signedWebhookObservations:1,signedPostAddCandidates:1,
+    postClaimsMatchingObservedAccount:0,authorizedRemoteAttempts:0,
+    verifiedRemoteReceipts:0,providerReceiptVerified:false,
+    externallyPublished:false,customerDestinationBound:false,
+    externalEffectsAuthorized:false
+   });
+   expect(reconciliation.reasons).toContain(
+    'provider_post_claim_not_linked_to_outbound_dispatch');
+   await expect(publications.reconcileProviderDelivery(
+    foreign,intent.publicationId)).rejects.toThrow('not found');
    await expect(publications.simulate(foreign,creator,intent.publicationId,1)).rejects.toThrow('not found');
    await expect(publications.simulate(org,creator,intent.publicationId,2)).rejects.toThrow('no longer ready');
    const executed=await publications.simulate(org,creator,intent.publicationId,1);
@@ -120,6 +154,10 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    expect(details.attempts).toHaveLength(1);
    expect(details.attempts[0]).toMatchObject({mode:'SANDBOX',outcome:'SIMULATED'});
    expect(details.preflight.externalReady).toBe(false);
+   expect(await publications.reconcileProviderDelivery(org,intent.publicationId))
+    .toMatchObject({correlationState:'NO_AUTHORIZED_REMOTE_ATTEMPT',
+     signedPostAddCandidates:1,authorizedRemoteAttempts:0,
+     verifiedRemoteReceipts:0,externallyPublished:false});
    expect((await publications.list(foreign)).length).toBe(0);
    const summary=await new MarketingPerformanceService(db as any).summary(org,campaign.campaignId);
    expect(summary).toMatchObject({status:'INSUFFICIENT_REVIEWED_DATA',
@@ -141,6 +179,11 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    expect(stale.preflight.internalReady).toBe(false);
    expect(stale.preflight.reasons).toContain('current_same_brand_asset_required');
    expect(stale.status).toBe('SIMULATED');
+   const staleReconciliation=await publications.reconcileProviderDelivery(
+    org,intent.publicationId);
+   expect(staleReconciliation.approvalPreflightReady).toBe(false);
+   expect(staleReconciliation.reasons).toContain('current_same_brand_asset_required');
+   expect(staleReconciliation.verifiedRemoteReceipts).toBe(0);
    // Once written, even direct SQL cannot rewrite the first synthetic receipt.
    await expect(db.$transaction(async tx=>{
     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
@@ -158,6 +201,10 @@ describe('R2 governed sandbox publication from real approved campaign and creati
   expect(permissionForMarketingRoute('POST','/marketing/publications/abc/simulate'))
    .toBe('EXECUTE_WORKFLOW');
   expect(permissionForMarketingRoute('GET','/marketing/publications/abc/performance')).toBe('READ_AUDIT');
+  expect(permissionForMarketingRoute('GET','/marketing/publications/abc/reconciliation'))
+   .toBe('READ_AUDIT');
+  expect(()=>permissionForMarketingRoute('POST','/marketing/publications/abc/reconciliation'))
+   .toThrow('not in the permission registry');
   expect(hasMarketingPermission({role:'VIEWER'} as any,'MANAGE_CAMPAIGN')).toBe(false);
   expect(hasMarketingPermission({role:'MARKETING_SPECIALIST'} as any,'EXECUTE_WORKFLOW')).toBe(true);
   expect(()=>permissionForMarketingRoute('DELETE','/marketing/publications/abc'))

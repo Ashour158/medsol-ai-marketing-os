@@ -3,6 +3,7 @@ import {Prisma} from '@prisma/client';
 import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
 import {verifySignedMetaWebhook} from './meta-signed-webhook-verifier.js';
+import {providerClaimDigest} from './provider-claim-digest.js';
 
 /** Secret resolution is deployment/connection managed. No caller-provided key,
  * shared global test secret, or public webhook API is created by this tranche.
@@ -47,6 +48,13 @@ export class ProviderWebhookEvidenceService {
   try{secret=await this.secrets.secretFor(organizationId,connectionId);}
   catch{throw new ForbiddenException('Meta webhook signature verification unavailable');}
   const verified=verifySignedMetaWebhook(raw,signatureHeader,secret);
+  const claim=verified.postClaim;
+  // Only signed, narrowly validated post-add metadata is persisted. The
+  // source account/post identifiers are discarded after digest computation.
+  const candidateAccountDigest=claim?providerClaimDigest(
+   organizationId,connectionId,'ACCOUNT',claim.accountRef):null;
+  const candidatePostDigest=claim?providerClaimDigest(
+   organizationId,connectionId,'POST',claim.postRef):null;
   const work=async(tx:Prisma.TransactionClient)=>{
    const still=await tx.integrationConnection.findFirst({where:{
     organizationId,id:connectionId,providerKey:'META_GRAPH',status:'PENDING_VERIFICATION'
@@ -62,7 +70,9 @@ export class ProviderWebhookEvidenceService {
     id:randomUUID(),organizationId,integrationConnectionId:connectionId,
     providerKey:'META_GRAPH',payloadDigest:verified.payloadDigest,
     signatureDigest:verified.signatureDigest,rawSizeBytes:verified.rawSizeBytes,
-    eventClass:verified.eventClass,status:'QUARANTINED',verifiedBy:adapterActor
+    eventClass:verified.eventClass,
+    candidateAccountDigest,candidatePostDigest,candidateEventAt:claim?.eventAt??null,
+    status:'QUARANTINED',verifiedBy:adapterActor
    }});
    // InboxEvent is tenant+consumer+event scoped. Include connection ID in
    // dedupe key so the same signed body on two valid subscriptions is not
@@ -79,6 +89,7 @@ export class ProviderWebhookEvidenceService {
     correlationId:observation.id,after:{
      providerKey:'META_GRAPH',eventClass:verified.eventClass,
      payloadDigest:verified.payloadDigest,entryCount:verified.entryCount,
+     signedPostClaimRecorded:!!claim,
      signatureVerified:true,customerDestinationBound:false,
      receiptReconciled:false,externalEffectsAuthorized:false
     }
@@ -118,6 +129,7 @@ export class ProviderWebhookEvidenceService {
    return rows.map(row=>({
     id:row.id,providerKey:row.providerKey,payloadDigest:row.payloadDigest,
     eventClass:row.eventClass,verifiedAt:row.verifiedAt,status:row.status,
+    signedPostClaimRecorded:!!row.candidatePostDigest,
     receiptReconciled:false,customerDestinationBound:false,
     externalEffectsAuthorized:false
    }));

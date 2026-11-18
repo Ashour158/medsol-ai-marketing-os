@@ -152,3 +152,11 @@ R2B adds IntegrationConnection for tenant/brand platform destination registratio
 [See implementation, single-owner Reuse Map, SQL and crypto invariants, test evidence and unsatisfied provider gates](R2C_OAUTH_VAULT_FOUNDATION.md).
 
 Added OAuthAuthorizationAttempt and ProviderCredential as bounded child records of existing IntegrationConnection. One-time PKCE states and a trusted exchange broker can encrypt actual returned tokens with tenant/connection/purpose-bound AES-256-GCM, but may **never** confer provider approval or publication authority. An Integration Hub revocation atomically revokes the encrypted credential; token expiry and pending attestation status are visible through read-only tenant-admin health. Existing CampaignPublicationService continues to return externalReady:false while showing whether a received encrypted token awaits verification. OAuth provider adapters, signed callbacks, verified account ownership/scopes, production storage, consent, release preflight and real provider receipts are subsequent milestones.
+
+## R2E-C signed source-event correlation — no remote delivery claim
+
+[Authoritative R2E-C Reuse Map, immutable post-claim digests, canonical reconciliation and negative acceptance](R2E_C_SOURCE_RECONCILIATION.md).
+
+R2E-C extends the existing append-only, QUARANTINED ProviderWebhookObservation to capture tenant/connection-scoped hashed post-add references only after signed Meta raw-body verification. CampaignPublicationService now returns read-only reconciliation through the existing authenticated API/BFF/Studio, reusing exact-version approval, rights and brand gates. No new publisher, parallel receipt ledger or agent authority is introduced.
+
+The database continues to enforce SANDBOX-only PublicationAttempt records and prohibit PUBLISHED. No signed inbound event can prove successful outbound publishing. R2E-C returns zero verified remote receipts and NO_AUTHORIZED_REMOTE_ATTEMPT without real authorized dispatch. Future real ambiguous provider calls must remain OUTCOME_UNKNOWN rather than being blindly retried. Actual remote receipts require R2F verified publishing, destination ownership, provider readback, consent and staging validation.

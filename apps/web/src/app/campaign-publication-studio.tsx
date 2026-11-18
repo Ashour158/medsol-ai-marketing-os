@@ -12,6 +12,12 @@ type Gate={internalReady:boolean;externalReady:false;reasons:string[];
  limitations:string[];externalEffectsAuthorized:false};
 type Detail=Publication&{scopeDigest:string;preflight:Gate;attempts:Array<{
  id:string;mode:string;outcome:string;evidenceRef:string;recordedAt:string}>};
+type Reconciliation={correlationState:string;publicationStatus:string;
+ signedWebhookObservations:number;signedPostAddCandidates:number;
+ postClaimsMatchingObservedAccount:number;authorizedRemoteAttempts:number;
+ verifiedRemoteReceipts:number;providerReceiptVerified:false;
+ externallyPublished:false;externalEffectsAuthorized:false;
+ reasons:string[];lastSignedWebhookAt:string|null};
 const btn={padding:"10px 14px",background:"#124d83",color:"white",fontWeight:650 as const,
  border:0,borderRadius:8,cursor:"pointer"};
 const field={width:"100%",padding:10,boxSizing:"border-box" as const,
@@ -25,6 +31,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
  const [selectedId,setSelectedId]=useState("");
  const [detail,setDetail]=useState<Detail|null>(null);
  const [report,setReport]=useState<unknown>(null);
+ const [reconciliation,setReconciliation]=useState<Reconciliation|null>(null);
  const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  async function call(path:string,body?:unknown):Promise<any>{
   const response=await fetch("/api/marketing/"+path,{method:body===undefined?"GET":"POST",
@@ -40,8 +47,11 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   setCampaigns(c as Campaign[]);setPublications(p as Publication[]);
  }
  async function detailFor(id:string){
-  const d=await call("publications/"+encodeURIComponent(id)) as Detail;
-  setSelectedId(id);setDetail(d);setReport(null);
+  const [d,recon]=await Promise.all([
+   call("publications/"+encodeURIComponent(id)) as Promise<Detail>,
+   call("publications/"+encodeURIComponent(id)+"/reconciliation") as Promise<Reconciliation>
+  ]);
+  setSelectedId(id);setDetail(d);setReconciliation(recon);setReport(null);
  }
  async function run(fn:()=>Promise<void>){
   setBusy(true);setError("");setNotice("");
@@ -49,7 +59,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   finally{setBusy(false);}
  }
  useEffect(()=>{
-  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);
+  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);
   if(!identity)return;
   void inventory().catch(e=>setError(e instanceof Error?e.message:"Unable to load publications"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,7 +113,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
     <h3 style={{marginTop:0}}>2. Inspect controls and dry-run</h3>
     <label>Publication plan
      <select style={field} value={selectedId} onChange={e=>void run(async()=>{
-      if(!e.target.value){setSelectedId("");setDetail(null);return;}
+      if(!e.target.value){setSelectedId("");setDetail(null);setReconciliation(null);return;}
       await detailFor(e.target.value);
      })}>
       <option value="">Select existing publication intent</option>
@@ -144,6 +154,29 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
         await detailFor(detail.id);await inventory();setNotice("Publication plan cancelled.");
        })}>Cancel pending intent</button>
      </div>
+     <section aria-label="Source-reconciled provider delivery evidence" style={{marginTop:16,padding:14,
+      border:"1px solid #cbd5e1",borderRadius:8,background:"#f8fafc"}}>
+      <h4 style={{marginTop:0}}>R2E-C · Remote delivery correlation</h4>
+      <p style={{fontSize:13}}>Delivery state: <strong>{reconciliation?.correlationState??"Unavailable"}</strong>.
+       Verified remote receipts: <strong>{reconciliation?.verifiedRemoteReceipts??0}</strong>.
+       External publishing: <strong>Disabled</strong>.</p>
+      <p style={{fontSize:12,color:"#475569"}}>
+       Signed provider notifications: {reconciliation?.signedWebhookObservations??0} ·
+       Unlinked post-add claims: {reconciliation?.signedPostAddCandidates??0} ·
+       Claims consistent with a recently observed provider account:
+       {" "}{reconciliation?.postClaimsMatchingObservedAccount??0}
+      </p>
+      <p style={{fontSize:12,color:"#475569"}}>
+       These are provider-claimed event references, not proof of an authorized outbound post.
+       A sandbox receipt never confirms delivery.
+      </p>
+      {reconciliation?.reasons.length?
+       <p style={{color:"#92400e",fontSize:12}}>
+        {reconciliation.reasons.join(" · ").replaceAll("_"," ")}</p>:null}
+      <button style={{...btn,background:"#475569"}} disabled={busy}
+       onClick={()=>void run(()=>detailFor(detail.id))}>
+       Recheck source correlation</button>
+     </section>
      <h4>Sandbox attempt evidence</h4>
      {detail.attempts.length===0?<p>No simulation attempt recorded.</p>:
       <ul>{detail.attempts.map(a=><li key={a.id}>
