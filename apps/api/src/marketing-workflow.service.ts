@@ -34,8 +34,9 @@ export class MarketingWorkflowService {
     }
   }
 
-  async completeAfterApproval(correlationId: string, organizationId: string, approval: unknown): Promise<void> {
-    const workflow = await this.db.workflowExecution.findFirst({ where: { correlationId, organizationId, status: 'WAITING_APPROVAL' } });
+  async completeAfterApproval(workflowExecutionId: string | null, organizationId: string, approval: unknown): Promise<void> {
+    if (!workflowExecutionId) return;
+    const workflow = await this.db.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
     if (!workflow) return;
     await this.completeWorkflow(workflow.id, 'APPROVAL_COMPLETED', approval, 'COMPLETED');
   }
@@ -52,7 +53,7 @@ export class MarketingWorkflowService {
     await this.db.$transaction(async tx => {
       const workflow = await tx.workflowExecution.findFirst({ where: { id, status: 'WAITING_APPROVAL' } });
       if (!workflow) return;
-      await tx.workflowExecution.update({ where: { id: workflow.id }, data: { status, currentStep: stepKey, output: output as any, completedAt: new Date(), version: { increment: 1 } } });
+      await tx.workflowExecution.updateMany({ where: { id: workflow.id, status: 'WAITING_APPROVAL' }, data: { status, currentStep: stepKey, output: output as any, completedAt: new Date(), version: { increment: 1 } } });
       await tx.workflowStepExecution.updateMany({ where: { workflowExecutionId: workflow.id, stepKey: 'APPROVAL_GATE', status: 'RUNNING' }, data: { status: 'COMPLETED', output: output as any, completedAt: new Date() } });
     });
   }
