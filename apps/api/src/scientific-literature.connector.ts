@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { MarketingLearningService } from './marketing-learning.service.js';
 
-type LiteratureRecord={id?:string;title?:string;authorString?:string;firstPublicationDate?:string;abstractText?:string;journalTitle?:string};
+type LiteratureRecord={id?:string;source?:string;title?:string;authorString?:string;firstPublicationDate?:string;abstractText?:string;journalTitle?:string};
 const ENDPOINT='https://www.ebi.ac.uk/europepmc/webservices/rest/search';
 const ACCEPTED_SECTORS=new Set(['genomics','sequencing','molecular diagnostics','proteomics','cell therapy','precision medicine','biotechnology','digital pathology','pathology','clinical research','biobanking']);
 /**
@@ -38,11 +38,12 @@ export class ScientificLiteratureConnector {
   for(const article of results.slice(0,limit)){
    const id=typeof article.id==='string'&&/^[A-Za-z0-9_-]{1,40}$/.test(article.id)?article.id:null;
    const title=typeof article.title==='string'?article.title.trim().slice(0,300):'';
-   if(!id||!title)continue;
+   const source=article.source==='PMC'?'PMC':article.source==='MED'?'MED':null;
+   if(!id||!title||!source)continue;
    const published=article.firstPublicationDate&&/^\d{4}-\d{2}-\d{2}$/.test(article.firstPublicationDate)?article.firstPublicationDate:undefined;
    const summary=[article.journalTitle,article.authorString,article.abstractText].filter(x=>typeof x==='string'&&x.trim()).join(' | ').slice(0,3000)||'Publication metadata only; abstract unavailable';
    const data=await this.learning.ingest(organizationId,{
-    topic:query,sector,sourceUrl:'https://europepmc.org/article/MED/'+encodeURIComponent(id),
+    topic:query,sector,sourceUrl:'https://europepmc.org/article/'+source+'/'+encodeURIComponent(id),
     sourceTitle:title,observedAt:new Date().toISOString(),...(published?{sourcePublishedAt:published}:{}),
     evidence:{summary}
    });
