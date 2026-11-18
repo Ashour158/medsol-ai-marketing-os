@@ -1,3 +1,4 @@
+CREATE UNIQUE INDEX "Campaign_organizationId_id_key" ON "Campaign"("organizationId","id");
 CREATE TABLE "MarketingMetricObservation" (
  "id" TEXT NOT NULL,
  "organizationId" TEXT NOT NULL,
@@ -15,7 +16,7 @@ CREATE TABLE "MarketingMetricObservation" (
  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
  CONSTRAINT "MarketingMetricObservation_pkey" PRIMARY KEY ("id"),
  CONSTRAINT "MarketingMetricObservation_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
- CONSTRAINT "MarketingMetricObservation_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT "MarketingMetricObservation_organizationId_campaignId_fkey" FOREIGN KEY ("organizationId","campaignId") REFERENCES "Campaign"("organizationId","id") ON DELETE RESTRICT ON UPDATE CASCADE,
  CONSTRAINT "MarketingMetricObservation_nonnegative" CHECK ("value" >= 0),
  CONSTRAINT "MarketingMetricObservation_review_state" CHECK (
    ("status"='QUARANTINED' AND "reviewedBy" IS NULL AND "reviewedAt" IS NULL)
