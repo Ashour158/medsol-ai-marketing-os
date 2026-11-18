@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {PlatformIntegrationHubService} from './platform-integration-hub.service.js';
-import {IntegrationOAuthLifecycleService,type ApprovedOAuthProvider} from './integration-oauth-lifecycle.service.js';
+import {IntegrationOAuthLifecycleService,requireActiveOAuthWindow,type ApprovedOAuthProvider} from './integration-oauth-lifecycle.service.js';
 import {ProviderSecretEnvelope} from './provider-secret-envelope.js';
 import {permissionForMarketingRoute} from './marketing-permissions.js';
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
@@ -13,6 +13,13 @@ const cfg:ApprovedOAuthProvider={
  scopes:['w_member_social']
 };
 describe('R2C OAuth/PKCE security contract',()=>{
+ it('expires authorization even if an exchange began before the callback deadline',()=>{
+  const now=new Date('2026-11-18T19:00:00.000Z');
+  expect(()=>requireActiveOAuthWindow(new Date(now.getTime()+1000),now)).not.toThrow();
+  expect(()=>requireActiveOAuthWindow(now,now)).toThrow('window expired');
+  expect(()=>requireActiveOAuthWindow(new Date(now.getTime()-1),now)).toThrow('window expired');
+  expect(()=>requireActiveOAuthWindow(new Date('invalid'),now)).toThrow();
+ });
  it('does not expose raw-token or provider-verification endpoints',()=>{
   expect(permissionForMarketingRoute('GET','/marketing/integrations/abc/health')).toBe('READ_TENANCY');
   expect(()=>permissionForMarketingRoute('POST','/marketing/integrations/abc/token')).toThrow();
