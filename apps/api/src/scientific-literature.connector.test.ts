@@ -31,6 +31,6 @@ describe('read-only scientific source integration',()=>{
   expect(output.status).toBe('QUARANTINED');
  });
  it('restricts discovery to authorized marketing operators',()=>{
-  expect(permissionForMarketingRoute('POST','/marketing/learning/discover')).toBe('ASSESS');
+  expect(permissionForMarketingRoute('POST','/marketing/learning/discover')).toBe('SUBMIT_EVIDENCE');
  });
 });
