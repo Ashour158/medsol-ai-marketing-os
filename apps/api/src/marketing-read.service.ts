@@ -38,7 +38,7 @@ export class MarketingReadService {
   }
   campaigns(organizationId: string) {
     return this.db.campaign.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
-      select: { id: true, code: true, name: true, status: true, riskLevel: true, version: true, objectiveId: true, productId: true, updatedAt: true } });
+      select: { id: true, code: true, name: true, status: true, riskLevel: true, version: true, objectiveId: true, productId: true, brandId: true, updatedAt: true } });
   }
   async campaign(organizationId: string, id: string) {
     const item = await this.db.campaign.findFirst({ where: { organizationId, id },
