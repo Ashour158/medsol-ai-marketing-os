@@ -120,6 +120,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
      </p>
      {detail.preflight.reasons.length>0&&<p style={{color:"#a11919",fontSize:13}}>
       {detail.preflight.reasons.join(" · ")}</p>}
+     <p style={{color:"#475569",fontSize:13}}>Registered destination: <strong>{detail.preflight.integrationEvidence?.destinationRegistered?"Yes (unverified)":"No"}</strong> · Verified stored media bytes: <strong>{detail.preflight.integrationEvidence?.mediaBytesReadbackVerified?"Readback digest matched":"Not yet"}</strong> · Provider credentials: <strong>Not connected</strong></p>
      <details><summary>Unmet conditions for live platforms</summary>
       <ul>{detail.preflight.limitations.map(r=><li key={r}>{r.replaceAll("_"," ")}</li>)}</ul>
      </details>
