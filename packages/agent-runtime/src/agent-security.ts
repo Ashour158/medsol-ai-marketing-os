@@ -15,7 +15,7 @@ export function validateAgentInput(input: unknown, maxBytes = 65536): void {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new AgentPolicyViolation('Invalid input budget');
   let encoded: string | undefined;
   try { encoded = JSON.stringify(input); } catch { throw new AgentPolicyViolation('Agent input must be JSON serializable'); }
-  if (encoded === undefined || Buffer.byteLength(encoded, 'utf8') > maxBytes) throw new AgentPolicyViolation('Agent input exceeds allowed size');
+  if (encoded === undefined || new TextEncoder().encode(encoded).length > maxBytes) throw new AgentPolicyViolation('Agent input exceeds allowed size');
 }
 export function assertAgentExecutionBoundary(organizationId: string, correlationId: string, capabilities: readonly string[]) {
   if (!organizationId.trim() || !correlationId.trim()) throw new AgentPolicyViolation('Tenant and correlation ID are mandatory');
