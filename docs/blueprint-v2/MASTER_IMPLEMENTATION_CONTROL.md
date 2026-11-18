@@ -123,3 +123,11 @@ The first v2.1 code implements bounded, review-only decisions in `packages/agent
 ## R1 first executable persistence milestone
 
 [Brand and AgencyGrant source-of-truth, APIs, revocation tests and remaining release gates](R1_TENANT_BRAND_AGENCY_IMPLEMENTATION.md). New records are subordinate to Organization; existing BrandMasterRevision, ApprovalService and User remain their respective owners. Agency relationships are only recorded metadata until server-trusted IAM/ABAC and RLS are enforced. The platform does not accept cross-tenant access from this grant alone.
+
+## R1C implementation — existing approval owner and creative authority
+
+[Read the full R1C single-owner Reuse Map, SQL invariants, authenticated Creative Governance Studio and negative acceptance tests](R1C_CREATIVE_DAM_EXACT_APPROVAL.md).
+
+The existing `Approval` and `ApprovalService` own decisions for CreativeAssetRevision as well as Campaign. New optional exact-scope fields bind media digest/source, asset revision, brand, policy, destination, audience and schedule. A different human creator/reviewer and independently reviewed, unexpired rights are mandatory. Adding a revised asset or changing the approved Brand Master invalidates an older approval; no new external delivery permission is ever implied.
+
+Both new asset tables use transaction-local tenant context and FORCE RLS. **Existing organization/session is still single-tenant pilot configured and global RLS has not been deployed to all existing tables**. Provider-backed uploads, consent snapshots, platform destinations, customer-ready agency access and staged multi-tenant IAM remain blockers.
