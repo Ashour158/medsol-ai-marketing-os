@@ -28,7 +28,7 @@ export class BootstrapAuthGuard implements CanActivate {
         issuer: process.env.MARKETING_OIDC_ISSUER ?? '',
         audience: process.env.MARKETING_OIDC_AUDIENCE ?? '',
         jwksUrl: process.env.MARKETING_OIDC_JWKS_URL ?? ''
-      }, async (email, tenant) => this.db.user.findFirst({ where: { email, organizationId: tenant }, select: { id: true, email: true, role: true, oidcSubject: true, disabledAt: true } }));
+      }, async (subject, tenant) => this.db.user.findFirst({ where: { oidcSubject: subject, organizationId: tenant }, select: { id: true, email: true, role: true, oidcSubject: true, disabledAt: true } }));
       req.identity = identity;
       const route = req.url?.split('?')[0];
       if (route !== '/marketing/sessions' || req.method !== 'POST') {
