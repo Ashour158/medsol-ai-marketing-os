@@ -3,7 +3,7 @@ import { EncryptJWT, jwtDecrypt } from "jose";
 
 export const SESSION_COOKIE = "__Host-medsol_session";
 export const FLOW_COOKIE = "__Host-medsol_oidc_flow";
-export type Session = { accessToken: string; organizationId: string; expiresAt: number };
+export type Session = { accessToken: string; organizationId: string; expiresAt: number; sessionId: string };
 
 function secret() {
   const value = process.env.MARKETING_SESSION_SECRET;
