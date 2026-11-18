@@ -1,6 +1,6 @@
 # Medsol AI Marketing OS — Phase 1 / Phase 2 Engineering Closeout Review
 **Date:** 2026-11-18  
-**Validated GitHub run:** #325 (passed) — https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44306077030
+**Validated GitHub run:** #334 (passed, includes clean PostgreSQL migration deployment and schema drift verification) — https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44308316616
 
 ## Reuse Map: one owner for every business concept
 | Concept | Authoritative owner |
@@ -29,9 +29,10 @@
 - Opt-in OpenAI Responses model adapter. Requests disable model tools, streaming persistence, and external actions; all 13 domain agents can request **draft-only** model text through existing tenant budget reservations. Disabled by default.
 - Skill evaluation uses a fixed, code-reviewed policy corpus and managerial approval. Approved-for-code-release proposals **never** mutate active runtime capabilities on their own.
 - Added regression tests for model adapter, agent reasoning integration, catalogue authority, internal event consumers, handoffs, evidence, and safety gates.
+- Recovered a historical baseline SQL migration; CI now applies the complete migration chain through `prisma migrate deploy` and checks the live database against the Prisma datamodel using `prisma migrate diff --exit-code`. Reconciled performance indexes and made the workflow-step FK restrictive.
 
 ## How to activate in controlled staging (not production authorization)
-1. Deploy a disposable tenant-scoped PostgreSQL staging database; validate production migration path separately (see blocker below).
+1. Deploy a disposable tenant-scoped PostgreSQL staging database with `prisma migrate deploy`. The clean-database CI path is verified; for any existing pre-migration deployment, take a database backup and reconcile the migration history against the existing objects first.
 2. Provision production-grade OIDC tenant identity and only approved roles. Entra provider setup remains deferred by user direction; staging may use permitted test identity only.
 3. Start API + web; verify OIDC, role permissions and two-tenant isolation. For the internal Brain worker explicitly opt in `MARKETING_BRAIN_WORKER_ENABLED=true`.
 4. Keep `MARKETING_AI_REASONING_ENABLED` false until the user has approved model egress, confidential-data handling, and spending.
@@ -41,7 +42,7 @@
 8. Discover a Europe PMC query, inspect quarantined signals; review evidence, inspect a trend brief and propose a skill; verify that neither research metadata nor approved skill proposals bypass scientific/brand approvals.
 
 ## CRITICAL: What CI does **not** certify
-1. **Migration readiness:** CI currently uses `prisma db push` to prepare PostgreSQL instead of `prisma migrate deploy`. The repo has incremental SQL migration files but not a demonstrated clean baseline. A green CI run does **not** prove that production migrations apply on fresh or existing PostgreSQL; build and test a baseline/backfill strategy before deploy.
+1. **Existing-database upgrade readiness:** CI now validates a clean PostgreSQL `prisma migrate deploy` plus schema drift check. It does **not** demonstrate migration of any previously deployed database that was initialized through `db push` or has divergent tables. Existing installations require a reviewed baseline-stamping/backfill procedure and dry-run on a backup before deployment; never run baseline creation against live existing tables blindly.
 2. **True external model billing:** Responses usage exposes token counts; configured token prices yield a **computed estimate**, not independently verified provider invoicing. Current `ModelResult.actualCostMicros` / ledger settlement treat this estimate as the charge. Finance-grade accounting requires explicit estimated-versus-billed separation and reconciliation.
 3. **Scientific verification:** Europe PMC metadata and operator review are not independent verification, product regulatory clearance, clinical suitability or commercial rights.
 4. **True autonomy:** The 13 agent engines produce distinct guided work packages and optional model drafts. They do not autonomously negotiate with vendors, publish, run paid campaigns, validate all scientific claims, or obtain external approvals.
@@ -50,7 +51,7 @@
 7. **Marketing effectiveness:** No real channel analytics, attribution baseline, CRM performance feedback, ad-platform integrations or supervised on-brand content quality benchmarks.
 
 ## Next delivery priority — Phase 3 integration, after closing release blockers
-**P0 Release blockers:** baseline `migrate deploy` test for new and upgraded databases; correct estimated-vs-billed cost accounting; end-to-end multi-tenant CI and crash/failure injection; observability/alerting for FAILED and NEEDS_INTERVENTION.
+**P0 Release blockers:** reconcile/verify migration upgrades on existing databases (clean deployment is CI verified); correct estimated-vs-billed cost accounting; end-to-end multi-tenant CI and crash/failure injection; observability/alerting for FAILED and NEEDS_INTERVENTION.
 
 **P1 Domain intelligence:** authoritatively sourced brand master, portfolio specifications, analytics/attribution, sector-specific scientific evidence checks, scored human-review quality evaluations, continuous governed literature watchlists.
 
@@ -59,6 +60,6 @@
 **P2 Production:** non-repudiable release approvals, model/provider privacy approvals, cost reconciliation, staging live data acceptance, secure provider keys, rollback, performance and operator training.
 
 ## Acceptance status
-- **Phase 1 internal demo workflow:** implemented and CI tested; staging and production acceptance outstanding.
+- **Phase 1 internal demo workflow:** implemented and CI tested, including clean schema migration; long-running distributed failure recovery, staging and production acceptance outstanding.
 - **Phase 2 governed domain drafting / learning foundation:** implemented and CI tested; genuine source-verified autonomous intelligence and business-integrated learning outstanding.
 - **Production launch:** NOT APPROVED.
