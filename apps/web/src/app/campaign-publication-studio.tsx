@@ -6,6 +6,9 @@ type Campaign={id:string;code:string;name:string;status:string;brandId:string|nu
 type Publication={id:string;campaignId:string;approvalId:string;status:string;
  version:number;creativeAssetRevisionId?:string};
 type Gate={internalReady:boolean;externalReady:false;reasons:string[];
+ integrationEvidence?:{destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
+ mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
+ providerCredentialsVerified:false;providerPublishingCapabilityVerified:false;verifiedExternalDestination:false};
  limitations:string[];externalEffectsAuthorized:false};
 type Detail=Publication&{scopeDigest:string;preflight:Gate;attempts:Array<{
  id:string;mode:string;outcome:string;evidenceRef:string;recordedAt:string}>};
