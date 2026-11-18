@@ -1,7 +1,7 @@
 import {BadRequestException,ConflictException} from '@nestjs/common';
 import {createHash,randomUUID} from 'node:crypto';
 import {
- GetObjectCommand,PutObjectCommand,S3Client
+ GetObjectCommand,PutObjectCommand,S3Client,type GetObjectCommandOutput
 } from '@aws-sdk/client-s3';
 import {identify,type VersionedMediaReader} from './verified-media-evidence.service.js';
 import type {VerifiedMediaEvidenceService} from './verified-media-evidence.service.js';
@@ -117,7 +117,7 @@ export class S3VersionedMediaStore implements VersionedMediaReader {
  async readVersion(input:{organizationId:string;sourceRef:string}){
   const Key=tenantKey(input.organizationId,input.sourceRef);
   const ac=new AbortController();
-  let response:Awaited<ReturnType<S3Client['send']>>;
+  let response:GetObjectCommandOutput;
   try{
    response=await this.s3.send(new GetObjectCommand({Bucket:this.config.bucket,Key}),{
     abortSignal:ac.signal
@@ -126,7 +126,7 @@ export class S3VersionedMediaStore implements VersionedMediaReader {
    throw new ConflictException('Immutable S3 media readback unavailable');
   }
   // Explicit properties are checked without trusting an ETag or caller hash.
-  const obj=response as {
+  const obj=response as unknown as {
    VersionId?:string;ContentLength?:number;ServerSideEncryption?:string;
    SSEKMSKeyId?:string;ObjectLockMode?:string;ObjectLockRetainUntilDate?:Date;
    Body?:AsyncIterable<Uint8Array>;
