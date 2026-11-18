@@ -2,6 +2,7 @@ import type { Agent, AgentContext, AgentDecision } from './index.js';
 import { assessDomain } from './domain-intelligence.js';
 import { createMarketingWorkPackage } from './domain-work-packages.js';
 import { AGENT_ROSTER, type AgentManifest } from './roster.js';
+import { triageSocialDiscussion } from './social-discussion.js';
 
 type StructuredInput = Record<string, unknown>;
 function record(value: unknown): StructuredInput {
@@ -50,6 +51,10 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
   if (brand && !input.brandMasterVersion) missing.push('authoritative_brand_master_version');
   if (manifest.id === 'MKT-CRM-001' && !input.consentReference) missing.push('consent_reference');
   if (external) missing.push('approved_external_connector_and_execution_authority');
+  // Classification is owned by the existing Social agent engine; no public response is authorized.
+  const socialTriage=manifest.id==='MKT-SOC-001'&&input.discussion!==undefined?
+   triageSocialDiscussion(context.organizationId,input.discussion):null;
+  if(socialTriage)missing.push('human_social_moderation_review_required');
   const state: EngineState = scientific && refs.length === 0 ? 'INSUFFICIENT_EVIDENCE' : missing.length ? 'REVIEW_REQUIRED' : 'DRAFT';
   const assessment = assessDomain(manifest.id, { organizationId: context.organizationId, objective: String(input.objective ?? input.requestedOutcome ?? 'Unspecified objective'), market: String(input.market ?? 'Unspecified market'), audience: String(input.targetAudience ?? 'Unspecified audience'), productId: typeof input.productId === 'string' ? input.productId : null, evidence: [], brandMasterVersion: typeof input.brandMasterVersion === 'string' ? input.brandMasterVersion : null, consentReference: typeof input.consentReference === 'string' ? input.consentReference : null });
   const output: EngineOutput = {
@@ -69,7 +74,7 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
     riskLevel: scientific ? 'R3' : highRisk || external ? 'R2' : 'R1',
     rationale: manifest.mission + ' Output is a deterministic proposal, not an authoritative write or verified external fact.',
     approvalRequired: output.controls.humanApproval,
-    payload: {...output, domainAssessment: assessment, workPackage: createMarketingWorkPackage(manifest.id,input)}
+    payload: {...output, domainAssessment: assessment, workPackage: createMarketingWorkPackage(manifest.id,input), ...(socialTriage?{socialTriage}:{})}
   };
 }
 export class MarketingDomainAgent implements Agent {
