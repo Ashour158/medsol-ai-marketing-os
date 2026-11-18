@@ -82,6 +82,7 @@ model Organization {
   verifiedMediaEvidence VerifiedMediaEvidence[]
   oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
   providerCredentials ProviderCredential[]
+  providerAccountObservations ProviderAccountObservation[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -707,6 +708,7 @@ model IntegrationConnection {
   @@unique([organizationId,brandId,providerKey,destinationLabel],map:"IntegrationConnection_brand_provider_dest_key")
   oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
   providerCredential ProviderCredential?
+  providerAccountObservations ProviderAccountObservation[]
   @@index([organizationId,brandId,status])
 }
 
@@ -782,5 +784,34 @@ model ProviderCredential {
   connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"ProviderCredential_org_connection_fk")
   @@unique([organizationId,id])
   @@unique([organizationId,integrationConnectionId])
+  providerAccountObservations ProviderAccountObservation[]
   @@index([organizationId,providerKey,status])
+}
+
+/** R2C-C immutable, token-bound trusted provider observation, NOT a
+ * customer-verified destination binding or permission to publish.
+ */
+model ProviderAccountObservation {
+  id String @id @default(cuid())
+  organizationId String
+  integrationConnectionId String
+  providerCredentialId String
+  providerKey String
+  providerAccountRef String
+  observedScopes Json
+  observedCapabilities Json
+  sourceRequestId String
+  evidenceDigest String
+  observedBy String
+  observedAt DateTime @default(now())
+  expiresAt DateTime
+  status String @default("OBSERVED")
+  revokedAt DateTime?
+  revokedBy String?
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"ProviderAccountObs_org_conn_fk")
+  credential ProviderCredential @relation(fields:[organizationId,providerCredentialId],references:[organizationId,id],onDelete:Restrict,map:"ProviderAccountObs_org_cred_fk")
+  @@unique([organizationId,id])
+  @@unique([organizationId,providerCredentialId],map:"ProviderAccountObs_org_credential_key")
+  @@index([organizationId,integrationConnectionId,status,expiresAt],map:"ProviderAccountObs_org_conn_state_exp_idx")
 }
