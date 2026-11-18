@@ -3,6 +3,7 @@ import { verifyBootstrapRequest } from './bootstrap-auth.js';
 import { verifyOidcIdentity, type VerifiedIdentity } from './oidc-identity.js';
 import { assertMarketingPermission, permissionForMarketingRoute } from './marketing-permissions.js';
 import { PrismaService } from './prisma.service.js';
+import {TenantRolePolicyService} from './tenant-role-policy.service.js';
 
 export type AuthenticatedRequest = {
   headers: Record<string, unknown>;
@@ -14,7 +15,7 @@ export type AuthenticatedRequest = {
 
 @Injectable()
 export class BootstrapAuthGuard implements CanActivate {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly db: PrismaService,private readonly roles:TenantRolePolicyService) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     if (req.url?.split('?')[0] === '/health' && req.method === 'GET') return true;
@@ -48,7 +49,10 @@ export class BootstrapAuthGuard implements CanActivate {
     const permission = permissionForMarketingRoute(req.method ?? '', req.url?.split('?')[0] ?? '');
     if (permission && mode === 'bootstrap') {
       if (permission !== 'READ_PORTFOLIO' && permission !== 'ASSESS') throw new ForbiddenException('Bootstrap pilot access is limited to portfolio reads and assessment');
-    } else if (permission) assertMarketingPermission(req.identity, permission);
+    } else if (permission) {
+      assertMarketingPermission(req.identity, permission);
+      await this.roles.assertActorPermission(req.identity!,permission);
+    }
     if (req.body && 'organizationId' in req.body) req.body.organizationId = organizationId;
     req.headers['x-organization-id'] = organizationId;
     return true;

@@ -6,6 +6,15 @@ const operators = new Set([...managers, 'MARKETING_MANAGER', 'MARKETING_SPECIALI
 const viewers = new Set([...operators, 'USER', 'VIEWER', 'ANALYST']);
 export type MarketingPermission = 'READ_TENANCY' | 'MANAGE_TENANT' | 'READ_PORTFOLIO' | 'READ_APPROVALS' | 'READ_AUDIT' | 'ASSESS' | 'SUBMIT_EVIDENCE' | 'EXECUTE_WORKFLOW' | 'RESUME_WORKFLOW' | 'MANAGE_CAMPAIGN' | 'MANAGE_OBJECTIVE' | 'DECIDE_APPROVAL';
 
+export const MARKETING_PERMISSION_KEYS:readonly MarketingPermission[] = [
+ 'READ_TENANCY','MANAGE_TENANT','READ_PORTFOLIO','READ_APPROVALS','READ_AUDIT',
+ 'ASSESS','SUBMIT_EVIDENCE','EXECUTE_WORKFLOW','RESUME_WORKFLOW',
+ 'MANAGE_CAMPAIGN','MANAGE_OBJECTIVE','DECIDE_APPROVAL'
+] as const;
+export function isMarketingPermission(value:unknown):value is MarketingPermission{
+ return typeof value==='string'&&MARKETING_PERMISSION_KEYS.includes(value as MarketingPermission);
+}
+
 export function hasMarketingPermission(identity: VerifiedIdentity | undefined, permission: MarketingPermission): boolean {
   if (!identity) return false;
   const role = identity.role.toUpperCase();
@@ -25,6 +34,11 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 }
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
+  if(method==='GET'&&path==='/marketing/tenancy/roles')return 'READ_TENANCY';
+  if(method==='POST'&&(path==='/marketing/tenancy/roles'||
+   path==='/marketing/tenancy/roles/assign'||
+   /^\/marketing\/tenancy\/roles\/[^/]+\/disable$/.test(path)))
+   return 'MANAGE_TENANT';
   if(method==='GET'&&(path==='/marketing/tenancy/brands'||path==='/marketing/tenancy/agency-grants'))
    return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/tenancy/brands'||
