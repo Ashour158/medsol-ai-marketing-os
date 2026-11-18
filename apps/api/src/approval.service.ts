@@ -54,7 +54,8 @@ import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scop
        scope.sourceRef!==revision.sourceRef||
        scope.policyVersion!=='v'+master.version)
      throw new ConflictException('Current asset version, rights, brand or policy no longer matches');
-    if(a.requestedBy===cmd.approverUserId||revision.createdBy===cmd.approverUserId)
+    if(a.requestedBy===cmd.approverUserId||revision.createdBy===cmd.approverUserId||
+       asset.createdBy===cmd.approverUserId)
      throw new ForbiddenException('Independent creative approval reviewer required');
    }
    if(cmd.decision==='APPROVED_WITH_CONDITIONS')throw new BadRequestException('Conditional approval requires a conditions enforcement workflow and is not yet supported');
