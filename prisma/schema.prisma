@@ -74,6 +74,8 @@ model Organization {
   marketingMetricObservations MarketingMetricObservation[]
   incidentResponses IncidentResponse[]
   tenantRoles TenantRoleDefinition[]
+  creativeAssets CreativeAsset[]
+  creativeAssetRevisions CreativeAssetRevision[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -183,10 +185,16 @@ model Approval {
   decidedBy String?
   rationale String?
   workflowExecutionId String?
+  creativeAssetRevisionId String?
+  requestedBy String?
+  scopeDigest String?
+  scope Json?
+  scopeExpiresAt DateTime?
   createdAt DateTime @default(now())
   decidedAt DateTime?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   workflow WorkflowExecution? @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
+  creativeAssetRevision CreativeAssetRevision? @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
   @@index([organizationId,objectType,objectId])
   @@index([organizationId,decision])
   @@index([organizationId,workflowExecutionId])
@@ -512,6 +520,7 @@ model Brand {
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   agencyGrants AgencyGrant[]
+  creativeAssets CreativeAsset[]
   @@unique([organizationId,slug])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -565,4 +574,47 @@ model TenantRoleDefinition {
   @@unique([organizationId,key])
   @@unique([organizationId,id])
   @@index([organizationId,status])
+}
+
+/**
+ * R1C authoritative DAM asset identity and immutable source revision chain.
+ * The binary/source is NOT uploaded or verified by these metadata records:
+ * sourceRef must be an internally verified object-store reference before
+ * customer production. No external publishing authority exists here.
+ */
+model CreativeAsset {
+  id String @id @default(cuid())
+  organizationId String
+  brandId String
+  title String
+  status String @default("ACTIVE")
+  version Int @default(0)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  revisions CreativeAssetRevision[]
+  @@unique([organizationId,id])
+  @@index([organizationId,brandId,status])
+}
+model CreativeAssetRevision {
+  id String @id @default(cuid())
+  organizationId String
+  assetId String
+  version Int
+  sourceKind String
+  sourceRef String
+  renditionDigest String
+  rightsExpiresAt DateTime
+  rightsReviewedBy String?
+  rightsReviewedAt DateTime?
+  createdBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  asset CreativeAsset @relation(fields:[organizationId,assetId],references:[organizationId,id],onDelete:Restrict)
+  approvals Approval[]
+  @@unique([organizationId,id])
+  @@unique([assetId,version])
+  @@index([organizationId,assetId,version])
 }
