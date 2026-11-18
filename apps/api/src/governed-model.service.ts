@@ -13,13 +13,15 @@ export class GovernedModelService {
     const request = ModelRequestSchema.parse(raw);
     const reserved = await this.budgets.reserve({ organizationId: request.organizationId, requestId, agentId: request.agentId, costMicros: request.estimatedCostMicros });
     if (reserved.replay) throw new Error('Model request already reserved or completed; replay requires retrieving authoritative ledger state');
+    let result: ModelResult;
     try {
-      const result = await this.gateway.complete(request);
-      await this.budgets.settle(request.organizationId, reserved.id, result);
-      return result;
+      result = await this.gateway.complete(request);
     } catch (error) {
-      await this.budgets.settle(request.organizationId, reserved.id, null);
+      // A timed-out provider may still bill after cancellation; retain reservation
+      // until reconciliation rather than releasing money that might have been spent.
       throw error;
     }
+    await this.budgets.settle(request.organizationId, reserved.id, result);
+    return result;
   }
 }
