@@ -6,7 +6,7 @@ import {permissionForMarketingRoute} from './marketing-permissions.js';
 function setup(){
  const tx:any={
   brandMasterRevision:{
-   findFirst:vi.fn().mockResolvedValueOnce({version:2}).mockResolvedValueOnce({id:'revision',organizationId:'tenant',version:3,status:'DRAFT',proposedBy:'author'}).mockResolvedValueOnce({version:2}),
+   findFirst:vi.fn().mockResolvedValue(null),
    create:vi.fn().mockImplementation(async ({data}:any)=>data),
    updateMany:vi.fn().mockResolvedValue({count:1})
   },
@@ -19,6 +19,7 @@ const rules={voice:'Clear scientific communications, no hype',primaryColor:'#125
 describe('authoritative versioned Brand Master',()=>{
  it('requires independently approved source-backed revision',async()=>{
   const {tx,service}=setup();
+  tx.brandMasterRevision.findFirst.mockResolvedValueOnce({version:2});
   const result=await service.propose('tenant','author',{sourceReference:'internal:approved-brand-guidelines-v1',rules});
   expect(result).toMatchObject({version:3,status:'DRAFT',releaseAuthorized:false});
   expect(tx.brandMasterRevision.create).toHaveBeenCalledWith({data:expect.objectContaining({organizationId:'tenant',version:3,status:'DRAFT',proposedBy:'author'})});
