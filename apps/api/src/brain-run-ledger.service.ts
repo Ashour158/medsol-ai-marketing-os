@@ -33,7 +33,7 @@ export class BrainRunLedgerService {
   }
  }
  private assertSameCommand(existing:{input:unknown},command:unknown){
-  const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
+  const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).filter(([k])=>k!=='correlationId').sort(([a],[b])=>a.localeCompare(b))):item);
   const left=createHash('sha256').update(canonical(existing.input)).digest('hex');
   const right=createHash('sha256').update(canonical(command)).digest('hex');
   if(left!==right)throw new ConflictException('Command key already used for a different brain request');
