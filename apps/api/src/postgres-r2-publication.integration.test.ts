@@ -155,6 +155,7 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     trustedAccountObservationFresh:false,
     mediaReadbackClean:false,existingAuthorizedRemoteAttempts:0
    });
+   expect(releaseGate.checks.scheduleWithinApprovedWindow).toBe(true);
    for(const missing of [
     'active_social_publishing_entitlement_required',
     'provider_app_review_and_eligibility_required',
