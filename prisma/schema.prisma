@@ -72,6 +72,7 @@ model Organization {
   brainRunSteps BrainRunStep[]
   brandMasterRevisions BrandMasterRevision[]
   marketingMetricObservations MarketingMetricObservation[]
+  incidentResponses IncidentResponse[]
 }
 model User {
   id String @id @default(cuid())
@@ -453,4 +454,38 @@ model MarketingMetricObservation {
   campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
   @@unique([organizationId,sourceSystem,sourceRecordId,metricKey], map:"MarketingMetricObservation_organizationId_sourceSystem_sourceRe")
   @@index([organizationId,campaignId,status,observedAt], map:"MarketingMetricObservation_organizationId_campaignId_status_obs")
+}
+
+/**
+ * Operational response to an incident, NOT a second source of BrainRun or Outbox status.
+ * A new occurrence resets acknowledgement/escalation while preserving source identity.
+ */
+model IncidentResponse {
+  id String @id @default(cuid())
+  organizationId String
+  kind String
+  sourceId String
+  occurrenceAt DateTime
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  acknowledgedReason String?
+  lastNotifiedLevel Int @default(-1)
+  nextEscalationAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,kind,sourceId])
+  @@index([organizationId,kind,acknowledgedAt])
+}
+
+/** Infrastructure heartbeat only: no user / tenant data, no task ownership. */
+model MarketingWorkerHeartbeat {
+  id String @id
+  workerType String
+  startedAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  status String @default("ACTIVE")
+  lastTickAt DateTime?
+  lastTickStatus String?
+  @@index([workerType,lastSeenAt])
 }
