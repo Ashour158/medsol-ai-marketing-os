@@ -28,7 +28,7 @@ import {MarketingWorkflowService} from './marketing-workflow.service.js';
    if(next.decision==='REJECTED')await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'APPROVAL_BLOCKED_WORKFLOW',objectType:'WorkflowExecution',objectId:a.workflowExecutionId??a.id,before:{status:'WAITING_APPROVAL'},after:{status:'BLOCKED',approvalId:a.id},correlationId:cmd.correlationId}});
    return{approvalId:a.id,decision:next.decision,workflowExecutionId:a.workflowExecutionId};
   });
-  if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(cmd.correlationId,cmd.organizationId,result);
+  if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(result.workflowExecutionId,cmd.organizationId,result);
   if(result.decision==='REJECTED') await this.workflows.blockAfterApprovalRejection(result.approvalId,cmd.organizationId,cmd.rationale);
   return result;
  }
