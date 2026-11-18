@@ -1,8 +1,20 @@
-import {Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
+import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
  constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
- async execute(agentId:string,i:{organizationId:string;correlationId:string;causationId?:string;input:unknown;capabilities:string[]}){const executionId=randomUUID();const started=await this.db.agentExecution.create({data:{id:executionId,organizationId:i.organizationId,agentId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input as any,status:'RUNNING'}});try{const decision=await this.runtime.execute(agentId,{executionId,organizationId:i.organizationId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input,capabilities:i.capabilities});let approvedDraft=decision;
+ async execute(agentId:string,i:{organizationId:string;correlationId:string;causationId?:string;input:unknown;capabilities:string[]}){
+ const manifest=AGENT_ROSTER.find(a=>a.id===agentId);
+ if(!manifest||!i.organizationId||!i.correlationId)throw new ForbiddenException('Unknown agent or incomplete execution identity');
+ // A manifest is one logical agent. Its installed record is tenant-owned and cannot be
+ // borrowed by another organization. Retain PAUSED / RETIRED administrative states.
+ const installed=await this.db.agent.upsert({
+   where:{organizationId_id:{organizationId:i.organizationId,id:agentId}},
+   create:{id:agentId,organizationId:i.organizationId,name:manifest.name,version:1,
+     capabilities:[...manifest.capabilities]},
+   update:{name:manifest.name,capabilities:[...manifest.capabilities]}
+ });
+ if(installed.status!=='ACTIVE')throw new ForbiddenException('Agent is administratively paused or retired');
+ const executionId=randomUUID();const started=await this.db.agentExecution.create({data:{id:executionId,organizationId:i.organizationId,agentId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input as any,status:'RUNNING'}});try{const decision=await this.runtime.execute(agentId,{executionId,organizationId:i.organizationId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input,capabilities:i.capabilities});let approvedDraft=decision;
  if(process.env.MARKETING_AI_REASONING_ENABLED==='true' && decision.executionAllowed){
    if(!this.model)throw new Error('Governed model service not configured');
    const budget=Number(process.env.MARKETING_MODEL_RESERVATION_MICROS);
