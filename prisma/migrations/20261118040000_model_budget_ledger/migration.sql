@@ -13,6 +13,8 @@ CREATE TABLE "ModelUsage" (
   "agentId" TEXT NOT NULL,
   "reservedMicros" BIGINT NOT NULL,
   "actualMicros" BIGINT,
+  "providerRequestId" TEXT,
+  "evidenceReference" TEXT,
   "status" TEXT NOT NULL,
   "model" TEXT,
   "inputTokens" INTEGER,
