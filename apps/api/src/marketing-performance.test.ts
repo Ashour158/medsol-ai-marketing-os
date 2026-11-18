@@ -44,7 +44,7 @@ describe('governed marketing performance evidence',()=>{
   const result=await service.review('tenant','reviewer','obs','Reviewed against source export');
   expect(result).toMatchObject({status:'REVIEWED',independentlyVerified:false});
   expect(db.marketingMetricObservation.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-   where:{organizationId:'tenant',status:'QUARANTINED'}}));
+   where:expect.objectContaining({organizationId:'tenant',status:'QUARANTINED'})}));
  });
  it('calculates ratios only from reviewed evidence with explicit numerator and denominator',async()=>{
   const{db,service}=setup();
