@@ -78,13 +78,30 @@ export class BrainRunLedgerService {
    if(run.status!=='RUNNING')throw new ConflictException('Brain run not eligible for checkpoint');
    const next=run.steps.find(s=>s.status!=='COMPLETED');
    if(!next||next.agentId!==agentId)throw new ConflictException('Out-of-order agent checkpoint');
-   const execution=await tx.agentExecution.findFirst({where:{id:executionId,organizationId,agentId,correlationId:run.correlationId,status:'COMPLETED'}});
+   const prior=next.ordinal===0?null:run.steps.find(s=>s.ordinal===next.ordinal-1);
+   if(next.ordinal>0&&(!prior||prior.status!=='COMPLETED'||!prior.executionId))
+    throw new ConflictException('Previous brain checkpoint proof is incomplete');
+   // A matching correlation alone is insufficient: a completed agent execution must
+   // explicitly belong to this run and to the preceding step's causation chain.
+   const execution=await tx.agentExecution.findFirst({where:{
+     id:executionId,organizationId,agentId,correlationId:run.correlationId,status:'COMPLETED',
+     causationId:prior?.executionId??null,
+     input:{path:['brainRunId'],equals:runId}
+   }});
    if(!execution)throw new ConflictException('No completed matching agent execution');
-   const changed=await tx.brainRunStep.updateMany({where:{id:next.id,organizationId,status:'PENDING'},data:{status:'COMPLETED',executionId,startedAt:execution.startedAt,completedAt:new Date()}});
-   if(changed.count!==1)throw new ConflictException('Checkpoint already claimed');
    const completed=run.steps.every(s=>s.id===next.id||s.status==='COMPLETED');
    const nextAgentId=completed?null:run.steps[next.ordinal+1]?.agentId??null;
-   await tx.brainRun.update({where:{id:run.id},data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:nextAgentId,...(completed?{completedAt:new Date()}:{})}});
+   // Fence a concurrent quarantine or checkpoint BEFORE emitting any event.
+   // The same database transaction rolls back the run update if the step/proof fails.
+   const runChanged=await tx.brainRun.updateMany({
+     where:{id:runId,organizationId,status:'RUNNING',updatedAt:run.updatedAt},
+     data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:nextAgentId,
+       ...(completed?{completedAt:new Date()}:{})}
+   });
+   if(runChanged.count!==1)throw new ConflictException('Brain checkpoint lost concurrency fence');
+   const changed=await tx.brainRunStep.updateMany({where:{id:next.id,organizationId,runId,status:'PENDING'},
+     data:{status:'COMPLETED',executionId,startedAt:execution.startedAt,completedAt:new Date()}});
+   if(changed.count!==1)throw new ConflictException('Checkpoint already claimed');
    await tx.outboxEvent.create({data:{
     organizationId, eventId:'brain:'+run.id+':step:'+next.ordinal,
     eventType:'BRAIN_AGENT_STEP_COMPLETED',aggregateType:'BrainRun',aggregateId:run.id,version:1,
