@@ -2,6 +2,7 @@
 import { useState } from "react";
 import OperationsConsole from "./operations-console";
 import CreativeGovernanceStudio from "./creative-governance-studio";
+import CampaignPublicationStudio from "./campaign-publication-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -116,6 +117,7 @@ export default function Home() {
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
     <CreativeGovernanceStudio identity={identity} />
+    <CampaignPublicationStudio identity={identity}/>
     <OperationsConsole identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
