@@ -31,7 +31,7 @@ CREATE UNIQUE INDEX "IntegrationConnection_organizationId_id_key"
  ON "IntegrationConnection"("organizationId","id");
 CREATE UNIQUE INDEX "IntegrationConnection_organizationId_destinationRef_key"
  ON "IntegrationConnection"("organizationId","destinationRef");
-CREATE UNIQUE INDEX "IntegrationConnection_organizationId_brandId_providerKey_destinationLabel_key"
+CREATE UNIQUE INDEX "IntegrationConnection_brand_provider_dest_key"
  ON "IntegrationConnection"("organizationId","brandId","providerKey","destinationLabel");
 CREATE INDEX "IntegrationConnection_organizationId_brandId_status_idx"
  ON "IntegrationConnection"("organizationId","brandId","status");
