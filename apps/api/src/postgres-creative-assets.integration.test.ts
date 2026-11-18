@@ -45,7 +45,7 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    await expect(assets.submitForApproval(org,creator,rev.revisionId,request))
     .rejects.toThrow('Reviewed rights');
    await expect(assets.reviewRights(org,creator,rev.revisionId,'This source has authorized usage'))
-    .rejects.toThrow('creator cannot review');
+    .rejects.toThrow('Qualified independent reviewer required');
    expect(await assets.reviewRights(org,reviewer,rev.revisionId,
     'Verified author rights and usage conditions')).toMatchObject({rightsReviewed:true});
    expect(await assets.reviewRights(org,reviewer,rev.revisionId,
@@ -68,11 +68,15 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    await expect(assets.reviewApprovalState(foreign,submitted.approvalId))
     .rejects.toThrow('not found');
    // A new version invalidates an earlier approved immutable scope.
-   const newer=await assets.addRevision(org,creator,asset.id,{
+   const newer=await assets.addRevision(org,reviewer,asset.id,{
     sourceKind:'FLATTENED_EXPORT',sourceRef:'internal:creative-source/ref2',
     renditionDigest:'sha256:'+'c'.repeat(64),rightsExpiresAt:plusDays(60),expectedVersion:1
    });
    expect(newer.version).toBe(2);
+   // A privileged ADMIN who actually authored this revision is still
+   // prohibited from reviewing its own media rights.
+   await expect(assets.reviewRights(org,reviewer,newer.revisionId,
+    'Own revision cannot be independently reviewed')).rejects.toThrow('creator cannot review');
    expect(await assets.reviewApprovalState(org,submitted.approvalId)).toMatchObject({
     scopeCurrent:false,humanDecisionValid:false,externallyExecutable:false});
    // SQL-level trigger rejects accidental mutation of already-created content.
