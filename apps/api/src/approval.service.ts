@@ -3,6 +3,7 @@ import {PrismaService} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
+import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
 import {MarketingWorkflowService} from './marketing-workflow.service.js';
 
 @Injectable() export class ApprovalService{
@@ -20,6 +21,10 @@ import {MarketingWorkflowService} from './marketing-workflow.service.js';
    if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
    const reviewer=await tx.user.findFirst({where:{id:cmd.approverUserId,organizationId:cmd.organizationId}});
    if(!reviewer || !['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','CMO'].includes(reviewer.role.toUpperCase()))throw new ForbiddenException('Approver lacks authorized marketing approval role');
+   if(a.objectType==='Campaign' && cmd.decision==='APPROVED'){
+    const history=await tx.auditEvent.findMany({where:{organizationId:cmd.organizationId,objectType:'Campaign',objectId:a.objectId,action:{in:['CAMPAIGN_CREATED','CAMPAIGN_STATUS_CHANGED']}},select:{actorType:true,actorId:true,action:true}});
+    assertIndependentCampaignReviewer(cmd.approverUserId,history);
+   }
    if(cmd.decision==='APPROVED_WITH_CONDITIONS')throw new BadRequestException('Conditional approval requires a conditions enforcement workflow and is not yet supported');
    const claimed=await tx.approval.updateMany({where:{id:a.id,organizationId:cmd.organizationId,decision:'PENDING'},data:{decision:cmd.decision,decidedBy:cmd.approverUserId,rationale:cmd.rationale,decidedAt:new Date()}});
    if(claimed.count!==1)throw new ConflictException('Approval was decided concurrently');
