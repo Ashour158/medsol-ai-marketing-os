@@ -74,6 +74,18 @@ describe('R2E-A signed webhook ingress is server-only and fail closed',()=>{
     consumerName:'META_SIGNED_WEBHOOK'}});
    expect(inbox).toHaveLength(1);
    expect(inbox[0]?.status).toBe('PROCESSED');
+   // Identical payloads on different configured subscriptions must not
+   // collide in the shared InboxEvent deduplication authority.
+   const separateConnection=await hub.register(org,actor,{
+    brandId,providerKey:'META_GRAPH',
+    destinationLabel:'Independent signed Meta subscription'});
+   const separate=await svc.ingestMeta(org,'meta_adapter',
+    separateConnection.id,event,signature());
+   expect(separate).toMatchObject({status:'QUARANTINED',replayed:false,
+    externalEffectsAuthorized:false});
+   expect(separate.observationId).not.toBe(saved.observationId);
+   expect(await db.inboxEvent.count({where:{organizationId:org,
+    consumerName:'META_SIGNED_WEBHOOK'}})).toBe(2);
    await expect(db.$transaction(async tx=>{
     await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
     return tx.providerWebhookObservation.update({
