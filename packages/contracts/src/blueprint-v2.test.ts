@@ -28,7 +28,7 @@ describe('Master Blueprint v2.0 complete declarative coverage',()=>{
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('NOT_IMPLEMENTED');
   }
   expect([...TARGET_ENGINES,...TARGET_WORKFLOWS,...TARGET_STUDIOS]
-   .filter(x=>x.state==='VERIFIED_IMPLEMENTED')).toHaveLength(0);
+   .filter(x=>String(x.state)==='VERIFIED_IMPLEMENTED')).toHaveLength(0);
  });
  it('does not create new executing agents: aliases map to the 13 existing canonical authorities',()=>{
   const authorized=new Set([
