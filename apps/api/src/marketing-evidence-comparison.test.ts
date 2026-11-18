@@ -1,8 +1,9 @@
 import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {describe,expect,it} from 'vitest';
 import {createMarketingWorkPackage,AGENT_ROSTER} from '@medsol/agent-runtime';
 type Case={id:string;status:string;totals:Record<string,unknown>;expected:Record<string,string>;expectedStatus:string};
-const corpus=JSON.parse(readFileSync(new URL('./fixtures/marketing-evidence-comparison.json',import.meta.url),'utf8')) as
+const corpus=JSON.parse(readFileSync(resolve(process.cwd(),'src/fixtures/marketing-evidence-comparison.json'),'utf8')) as
  {schemaVersion:number;cases:Case[]};
 describe('reviewed evidence acceptance comparison corpus (not RAG relevance ranking)',()=>{
  it('contains distinct evaluated reference conditions',()=>{
