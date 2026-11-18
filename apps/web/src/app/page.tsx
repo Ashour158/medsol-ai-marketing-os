@@ -3,6 +3,7 @@ import { useState } from "react";
 import OperationsConsole from "./operations-console";
 import CreativeGovernanceStudio from "./creative-governance-studio";
 import CampaignPublicationStudio from "./campaign-publication-studio";
+import IntegrationGovernanceStudio from "./integration-governance-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
