@@ -11,7 +11,7 @@ CREATE TABLE "IncidentResponse" (
   "lastNotifiedLevel" INTEGER NOT NULL DEFAULT -1,
   "nextEscalationAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "IncidentResponse_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "IncidentResponse_organizationId_kind_sourceId_key"
