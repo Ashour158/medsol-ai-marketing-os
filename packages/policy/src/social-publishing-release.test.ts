@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {
- evaluateSocialPublishingRelease,type SocialReleaseEvidence
+ evaluateSocialPublishingRelease,classifyUnreconciledProviderDispatch,
+ type SocialReleaseEvidence,type UnreconciledProviderTransport
 } from './social-publishing-release.js';
 
 const allVerified:SocialReleaseEvidence={
@@ -52,5 +53,26 @@ describe('R2F-A social release prerequisite policy',()=>{
    expect(result.eligible).toBe(false);
    expect(result.externalEffectAuthorized).toBe(false);
   }
+ });
+});
+
+describe('R2F-A future-provider remote write ambiguity policy',()=>{
+ it('denies false delivery confirmation from HTTP success, signed callback or timeout',()=>{
+  const cases:UnreconciledProviderTransport[]=[
+   'HTTP_ACCEPTED_UNVERIFIED','HTTP_REJECTED_UNVERIFIED',
+   'TIMEOUT','CONNECTION_RESET','SERVER_ERROR','CALLBACK_ONLY','UNKNOWN'
+  ];
+  for(const event of cases){
+   expect(classifyUnreconciledProviderDispatch(event)).toEqual({
+    outcome:'OUTCOME_UNKNOWN',automaticRetryAllowed:false,
+    remoteDeliveryVerified:false,requiresIndependentReadback:true
+   });
+  }
+ });
+ it('denied before network is blocked, not a sent attempt',()=>{
+  expect(classifyUnreconciledProviderDispatch('NOT_SENT')).toEqual({
+   outcome:'BLOCKED',automaticRetryAllowed:false,
+   remoteDeliveryVerified:false,requiresIndependentReadback:false
+  });
  });
 });
