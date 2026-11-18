@@ -13,6 +13,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "integrations" && !(
         (path.length===1&&(request.method==="GET"||request.method==="POST")) ||
         (path.length===2&&request.method==="GET"&&!!id) ||
+        (path.length===3&&request.method==="GET"&&!!id&&action==="health") ||
         (path.length===3&&request.method==="POST"&&!!id&&
           (action==="suspend"||action==="revoke"))
       )) ||
