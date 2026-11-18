@@ -7,3 +7,4 @@ export function evaluateRisk(i:PolicyInput):PolicyDecision{
  if(i.riskLevel==='R2'||i.riskLevel==='R3')return{allowed:true,approvalRequired:true,humanAuthorityRequired:true,reason:`${i.riskLevel} requires human approval by policy`};
  return{allowed:true,approvalRequired:false,humanAuthorityRequired:false,reason:'Autonomous execution permitted'};
 }
+export * from './commercial-scope.js';
