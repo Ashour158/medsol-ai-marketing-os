@@ -10,19 +10,19 @@ describe('API-wide permission enforcement', () => {
   beforeEach(() => { process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID = 'tenant'; process.env.MARKETING_BOOTSTRAP_TOKEN = 'secret'; process.env.MARKETING_AUTH_MODE = 'bootstrap'; vi.clearAllMocks(); });
   afterEach(() => { process.env = { ...initial }; });
   it('bootstrap token may read portfolio but cannot execute workflows', async () => {
-    const guard = new BootstrapAuthGuard(db);
+    const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/overview')))).resolves.toBe(true);
     await expect(guard.canActivate(ctx(req('/marketing/workflows', 'POST')))).rejects.toThrow('limited to portfolio');
   });
   it('bootstrap cannot inspect approval inbox or campaign audit history', async () => {
-    const guard = new BootstrapAuthGuard(db);
+    const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/approvals/pending')))).rejects.toThrow('limited to portfolio');
     await expect(guard.canActivate(ctx(req('/marketing/campaigns/secret')))).rejects.toThrow('limited to portfolio');
   });
   it('OIDC user role cannot create or transition campaigns', async () => {
     process.env.MARKETING_AUTH_MODE = 'oidc';
     vi.mocked(verifyOidcIdentity).mockResolvedValue({ userId: 'u', organizationId: 'tenant', email: 'u@example.com', role: 'USER', subject: 'sub' });
-    const guard = new BootstrapAuthGuard(db);
+    const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/campaigns', 'POST')))).rejects.toThrow('MANAGE_CAMPAIGN');
     await expect(guard.canActivate(ctx(req('/marketing/campaigns/transition', 'POST')))).rejects.toThrow('MANAGE_CAMPAIGN');
   });
@@ -30,7 +30,7 @@ describe('API-wide permission enforcement', () => {
     process.env.MARKETING_AUTH_MODE = 'oidc';
     vi.mocked(verifyOidcIdentity).mockResolvedValue({ userId: 'cmo', organizationId: 'tenant', email: 'cmo@example.com', role: 'CMO', subject: 'sub' });
     db.authSession.findFirst.mockResolvedValueOnce(null);
-    const guard = new BootstrapAuthGuard(db);
+    const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/campaigns', 'POST')))).rejects.toThrow('Session expired or revoked');
     const noSession = req('/marketing/overview');
     delete noSession.headers['x-marketing-session-id'];
@@ -39,7 +39,7 @@ describe('API-wide permission enforcement', () => {
   it('OIDC manager may manage campaigns and approval decisions', async () => {
     process.env.MARKETING_AUTH_MODE = 'oidc';
     vi.mocked(verifyOidcIdentity).mockResolvedValue({ userId: 'cmo', organizationId: 'tenant', email: 'cmo@example.com', role: 'CMO', subject: 'sub' });
-    const guard = new BootstrapAuthGuard(db);
+    const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/campaigns', 'POST')))).resolves.toBe(true);
     await expect(guard.canActivate(ctx(req('/marketing/approvals/decide', 'POST')))).resolves.toBe(true);
   });
