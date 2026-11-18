@@ -21,7 +21,8 @@ See docs/architecture/16-executable-vertical-slice.md.
 The current executable release is a **governed internal vertical slice**; it is not the full customer-facing commercial Agentic Marketing & Communications OS. The approved v2.0 scope and v2.1 amendment is tracked in:
 
 - [Master implementation and architectural Reuse Map](docs/blueprint-v2/MASTER_IMPLEMENTATION_CONTROL.md)
-- [Blueprint v2.1 commercial intelligence amendment](docs/blueprint-v2/MASTER_BLUEPRINT_V2_1_AMENDMENT.md)
+- [Complete consolidated Master Blueprint v2.1](docs/blueprint-v2/MASTER_BLUEPRINT_V2_1_CONSOLIDATED.md)
+- [v2.1 change register and engineering contracts](docs/blueprint-v2/MASTER_BLUEPRINT_V2_1_AMENDMENT.md)
 - [Deep cognitive Brain and specialist persona charter](docs/blueprint-v2/AGENT_BRAINS_AND_STUDIO_CHARTERS.md)
 - [Planned 500-case acceptance matrix](docs/blueprint-v2/QUALITY_500_CASE_PROGRAM.md)
 - `packages/contracts/src/blueprint-v2.ts`: all **36 logical engines**, **41 workflow families**, **13 studios**, **10 cognitive roles**, and **12 specialist UX personas** mapped to the existing 13 canonical agents.
