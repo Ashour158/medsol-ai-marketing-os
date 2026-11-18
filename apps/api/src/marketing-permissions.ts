@@ -56,6 +56,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'EXECUTE_WORKFLOW';
   if(method==='POST'&&/^\/marketing\/publications\/[^/]+\/cancel$/.test(path))
    return 'MANAGE_CAMPAIGN';
+  if(method==='POST'&&/^\/marketing\/publications\/[^/]+\/dispatch-hold$/.test(path))
+   return 'MANAGE_TENANT';
   if(method==='GET'&&(
     path==='/marketing/assets'||/^\/marketing\/assets\/[^/]+$/.test(path)))
    return 'READ_PORTFOLIO';
