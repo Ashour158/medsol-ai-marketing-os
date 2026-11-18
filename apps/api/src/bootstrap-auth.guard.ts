@@ -46,7 +46,7 @@ export class BootstrapAuthGuard implements CanActivate {
       if (req.url?.split('?')[0]?.startsWith('/marketing/assets')) throw new ForbiddenException('Creative assets require verified OIDC identity');
       if (req.url?.split('?')[0]?.startsWith('/marketing/publications')) throw new ForbiddenException('Publication intents require verified OIDC identity');
       if (req.url?.split('?')[0]?.startsWith('/marketing/integrations')) throw new ForbiddenException('Platform integrations require verified OIDC identity');
-      if (req.url?.split('?')[0]?.startsWith('/marketing/media/evidence')) throw new ForbiddenException('Verified media evidence requires OIDC identity');
+      if (req.url?.split('?')[0]?.startsWith('/marketing/media/evidence')) throw new ForbiddenException('Media evidence APIs require verified OIDC identity');
     } else {
       throw new UnauthorizedException('Unsupported authentication mode');
     }
