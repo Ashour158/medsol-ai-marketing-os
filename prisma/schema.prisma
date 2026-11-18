@@ -70,9 +70,12 @@ model User {
   email String
   name String
   role String
+  oidcSubject String?
+  disabledAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([organizationId,email])
+  @@unique([organizationId,oidcSubject])
   @@index([organizationId])
 }
 model Agent {
