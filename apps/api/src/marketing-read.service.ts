@@ -41,6 +41,25 @@ export class MarketingReadService {
     return this.db.workflowExecution.findMany({ where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 100,
       select: { id: true, status: true, currentStep: true, correlationId: true, startedAt: true, updatedAt: true } });
   }
+  async agentExecution(organizationId: string, id: string) {
+    const item = await this.db.agentExecution.findFirst({
+      where: { organizationId, id },
+      select: { id: true, organizationId: true, agentId: true, correlationId: true, causationId: true, status: true, decision: true, startedAt: true, completedAt: true }
+    });
+    if (!item) throw new NotFoundException('Agent execution not found in tenant');
+    return item;
+  }
+  async agentOperations(organizationId: string) {
+    const [total, grouped, recent] = await Promise.all([
+      this.db.agentExecution.count({ where: { organizationId } }),
+      this.db.agentExecution.groupBy({ by: ['status'], where: { organizationId }, _count: { _all: true } }),
+      this.db.agentExecution.findMany({
+        where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 30,
+        select: { id: true, agentId: true, status: true, correlationId: true, startedAt: true, completedAt: true }
+      })
+    ]);
+    return { total, byStatus: Object.fromEntries(grouped.map(g => [g.status, g._count._all])), recent };
+  }
   agentExecutions(organizationId: string) {
     return this.db.agentExecution.findMany({ where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 100,
       select: { id: true, agentId: true, status: true, correlationId: true, startedAt: true, completedAt: true } });
