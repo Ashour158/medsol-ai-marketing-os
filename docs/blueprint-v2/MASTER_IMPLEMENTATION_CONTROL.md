@@ -118,3 +118,8 @@ WF37 Search/AEO monitoring, WF38 feedback synthesis, WF39 PR releases, WF40 part
 The first v2.1 code implements bounded, review-only decisions in `packages/agent-runtime/src/marketing-expansion.ts` and a **not-yet-integrated** R1 tenant/brand/agency/exact-approval preflight in `packages/policy/src/commercial-scope.ts`. The canonical agent dispatcher returns `expansionReview` only on explicitly provided scoped input. No new external provider connection, creative file authority, IAM migration, customer authentication, media release or revenue attribution is claimed.
 
 **Next R1 implementation** must bind those policy primitives to server-verified tenancy, roles, entitlements, and signed ApprovalService evidence, with PostgreSQL row-level security and two-tenant/agency-revocation tests. External effects remain blocked until all ownership and staging gates pass.
+
+
+## R1 first executable persistence milestone
+
+[Brand and AgencyGrant source-of-truth, APIs, revocation tests and remaining release gates](R1_TENANT_BRAND_AGENCY_IMPLEMENTATION.md). New records are subordinate to Organization; existing BrandMasterRevision, ApprovalService and User remain their respective owners. Agency relationships are only recorded metadata until server-trusted IAM/ABAC and RLS are enforced. The platform does not accept cross-tenant access from this grant alone.
