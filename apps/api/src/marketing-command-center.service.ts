@@ -1,4 +1,4 @@
-import {Injectable} from '@nestjs/common';
+import {BadRequestException,Injectable} from '@nestjs/common';
 import {PrismaService} from './prisma.service.js';
 import {MarketingReadService} from './marketing-read.service.js';
 import {DeliveryOperationsService} from './delivery-operations.service.js';
@@ -20,14 +20,16 @@ export class MarketingCommandCenterService {
  async snapshot(organizationId:string){
   const staleBefore=new Date(Date.now()-15*60_000);
   const [overview,agentOperations,delivery,budget,trends,brand,
-    runningStale,intervention,approvals,skills,brainRuns,brainRunCount] = await Promise.all([
+    runningStale,intervention,staleCount,interventionCount,approvals,skills,brainRuns,brainRunCount] = await Promise.all([
     this.reads.overview(organizationId),this.reads.agentOperations(organizationId),
     this.delivery.summary(organizationId),this.budgets.summary(organizationId),
     this.learning.trendBrief(organizationId),this.brand.active(organizationId),
     this.db.brainRun.findMany({where:{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}},
       take:20,orderBy:{updatedAt:'asc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true}}),
     this.db.brainRun.findMany({where:{organizationId,status:'NEEDS_INTERVENTION'},
-      take:30,orderBy:{updatedAt:'desc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true,lastError:true}}),
+      take:30,orderBy:{updatedAt:'asc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true,lastError:true}}),
+    this.db.brainRun.count({where:{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}}}),
+    this.db.brainRun.count({where:{organizationId,status:'NEEDS_INTERVENTION'}}),
     this.db.approval.count({where:{organizationId,decision:'PENDING'}}),
     this.db.agentSkillProposal.count({where:{organizationId,status:{in:['PROPOSED','EVALUATED']}}}),
     this.db.brainRun.findMany({where:{organizationId},take:20,orderBy:{createdAt:'desc'},
@@ -45,15 +47,17 @@ export class MarketingCommandCenterService {
       kind:'OUTBOX_DEAD_LETTER',runId:null,updatedAt:e.deadLetteredAt,
       message:e.lastError??'Delivery failed after bounded attempts'}))
   ].slice(0,80);
-  const critical=incidents.some(i=>i.severity==='CRITICAL');
-  const warning=critical||incidents.length>0||overview.failedAgentExecutions>0||delivery.retrying>0||
+  // Never infer health or totals from a sample: the arrays above are intentionally capped.
+  const critical=interventionCount>0||delivery.deadLetters>0;
+  const warning=critical||staleCount>0||overview.failedAgentExecutions>0||delivery.retrying>0||
     (budget.enabled&&budget.requiresExternalBillingReconciliation===true);
   return {
     asOf:new Date().toISOString(),organizationId,health:critical?'ACTION_REQUIRED':warning?'ATTENTION':'NO_DETECTED_INCIDENTS',
     healthIsSlaGuarantee:false,
     totals:{...overview,brainRuns:brainRunCount,pendingApprovals:approvals,pendingSkillDecisions:skills,
-      staleBrainRuns:runningStale.length,interventionBrainRuns:intervention.length},
-    incidents,brainRuns,delivery,
+      staleBrainRuns:staleCount,interventionBrainRuns:interventionCount,deadLetterEvents:delivery.deadLetters},
+    incidents,incidentCoverage:{shown:incidents.length,total:staleCount+interventionCount+delivery.deadLetters,
+      truncated:incidents.length<staleCount+interventionCount+delivery.deadLetters},brainRuns,delivery,
     agents:{total:agentOperations.total,byStatus:agentOperations.byStatus,recent:agentOperations.recent.slice(0,12)},
     modelBudget:budget,
     learning:{topics:trends.topics.slice(0,15),reviewStatus:'HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED'},
@@ -62,4 +66,59 @@ export class MarketingCommandCenterService {
       consentProofEnforced:true,modelProviderEnabled:process.env.MARKETING_MODEL_PROVIDER==='openai'&&process.env.MARKETING_AI_REASONING_ENABLED==='true'}
   };
  }
+ /**
+  * Tenant-scoped, manager-only incident inventory. No new incident authority is created:
+  * BrainRun and OutboxEvent retain ownership of status and recovery.
+  * Cursor must resolve to an incident still visible in the same tenant and filter.
+  * Concurrent state changes may invalidate cursors; clients restart the listing then.
+  */
+ async incidentInventory(organizationId:string,rawKind:unknown,rawCursor?:unknown,rawLimit?:unknown){
+  const kinds=['BRAIN_NEEDS_INTERVENTION','BRAIN_STALE','OUTBOX_DEAD_LETTER'] as const;
+  if(typeof rawKind!=='string'||!kinds.includes(rawKind as typeof kinds[number]))
+   throw new BadRequestException('Supported incident kind required');
+  if(rawCursor!==undefined&&(typeof rawCursor!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(rawCursor)))
+   throw new BadRequestException('Invalid incident cursor');
+  const cursor=rawCursor as string|undefined;
+  const limit=rawLimit===undefined?25:Number(rawLimit);
+  if(!Number.isInteger(limit)||limit<1||limit>100)
+   throw new BadRequestException('Incident limit must be 1 to 100');
+  if(rawKind==='OUTBOX_DEAD_LETTER'){
+   const where={organizationId,deadLetteredAt:{not:null}};
+   if(cursor&&!(await this.db.outboxEvent.findFirst({where:{...where,id:cursor},select:{id:true}})))
+    throw new BadRequestException('Incident cursor no longer belongs to this tenant and filter');
+   const [total,rows]=await Promise.all([
+    this.db.outboxEvent.count({where}),
+    this.db.outboxEvent.findMany({where,orderBy:[{deadLetteredAt:'asc'},{id:'asc'}],
+     take:limit+1,...(cursor?{cursor:{id:cursor},skip:1}:{}),
+     select:{id:true,deadLetteredAt:true,lastError:true,eventType:true,attempts:true}})
+   ]);
+   const visible=rows.slice(0,limit);
+   return {kind:rawKind,total,incidents:visible.map(r=>({
+    id:'delivery-dead:'+r.id,severity:'CRITICAL',kind:rawKind,runId:null,
+    updatedAt:r.deadLetteredAt,message:r.lastError??'Delivery failed after bounded attempts',
+    eventType:r.eventType,attempts:r.attempts
+   })),nextCursor:rows.length>limit?visible[visible.length-1]?.id:null};
+  }
+  const staleBefore=new Date(Date.now()-15*60_000);
+  const where=rawKind==='BRAIN_STALE'
+   ?{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}}
+   :{organizationId,status:'NEEDS_INTERVENTION'};
+  if(cursor&&!(await this.db.brainRun.findFirst({where:{...where,id:cursor},select:{id:true}})))
+   throw new BadRequestException('Incident cursor no longer belongs to this tenant and filter');
+  const [total,rows]=await Promise.all([
+   this.db.brainRun.count({where}),
+   this.db.brainRun.findMany({where,orderBy:[{updatedAt:'asc'},{id:'asc'}],
+    take:limit+1,...(cursor?{cursor:{id:cursor},skip:1}:{}),
+    select:{id:true,updatedAt:true,currentAgentId:true,lastError:true}})
+  ]);
+  const visible=rows.slice(0,limit);
+  return {kind:rawKind,total,incidents:visible.map(r=>({
+   id:(rawKind==='BRAIN_STALE'?'brain-stale:':'brain-intervention:')+r.id,
+   severity:rawKind==='BRAIN_STALE'?'WARNING':'CRITICAL',kind:rawKind,runId:r.id,
+   updatedAt:r.updatedAt,currentAgentId:r.currentAgentId,
+   message:rawKind==='BRAIN_STALE'?'RUNNING for more than 15 minutes; inspect before operator quarantine':
+    r.lastError??'Execution outcome requires operator investigation'
+  })),nextCursor:rows.length>limit?visible[visible.length-1]?.id:null};
+ }
+
 }

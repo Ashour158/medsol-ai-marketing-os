@@ -4,7 +4,7 @@ import PerformanceConsole from "./performance-console";
 
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Snapshot={
- asOf:string;health:string;totals:Record<string,number>;
+ asOf:string;health:string;totals:Record<string,number>;incidentCoverage?:{shown:number;total:number;truncated:boolean};
  incidents:Array<{id:string;severity:string;kind:string;message:string;runId:string|null}>;
  brainRuns:Array<{id:string;status:string;currentAgentId:string|null;updatedAt:string}>;
  modelBudget:{enabled:boolean;estimatedSpentMicros?:string;verifiedBilledMicros?:string;awaitingInvoiceCount?:number};
@@ -19,6 +19,10 @@ type Agent={id:string;name:string;capabilities:string[]};
 
 export default function OperationsConsole({identity,onRunSelected}:{identity:Identity|null;onRunSelected:(id:string)=>void}){
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
+ const [incidentKind,setIncidentKind]=useState("BRAIN_NEEDS_INTERVENTION");
+ const [incidentRows,setIncidentRows]=useState<Snapshot["incidents"]>([]);
+ const [incidentCursor,setIncidentCursor]=useState<string|null>(null);
+ const [incidentTotal,setIncidentTotal]=useState<number|null>(null);
  const [brand,setBrand]=useState<{version:number;rules:unknown;sourceReference:string}|null>(null);
  const [revisions,setRevisions]=useState<BrandRevision[]>([]);
  const [signals,setSignals]=useState<Signal[]>([]);
@@ -59,6 +63,7 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
    call("command-center"),call("brand/active"),call("brand/revisions"),
    call("learning/signals"),call("learning/proposals"),call("agents")]);
   setSnapshot(snap as Snapshot);
+  setIncidentRows([]);setIncidentCursor(null);setIncidentTotal(null);
   setBrand(active as typeof brand);
   setRevisions(list as BrandRevision[]);setSignals(evidence as Signal[]);
   setProposals(skills as Proposal[]);setAgents(roster as Agent[]);
@@ -67,6 +72,16 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
   setBusy(true);setError("");setNotice("");
   try{await action();}catch(e){setError(e instanceof Error?e.message:"Unexpected error");}
   finally{setBusy(false);}
+ }
+ async function loadIncidentPage(kind:string,cursor?:string|null){
+  const params=new URLSearchParams({limit:"25"});
+  if(cursor)params.set("cursor",cursor);
+  const response=await fetch("/api/marketing/command-center/incidents/"+kind+"?"+params.toString(),{cache:"no-store"});
+  const result=await response.json();
+  if(!response.ok)throw new Error(typeof result.message==="string"?result.message:"Unable to load incident inventory");
+  setIncidentKind(kind);
+  setIncidentRows(previous=>cursor?[...previous,...result.incidents]:result.incidents);
+  setIncidentTotal(result.total);setIncidentCursor(result.nextCursor);
  }
  const availableSkills=agents.find(x=>x.id===skillAgent)?.capabilities??[];
  const claims=(value:string)=>value.split("\n").map(x=>x.trim()).filter(Boolean);
@@ -87,13 +102,32 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
     {Object.entries(snapshot.totals).filter(([k])=>["brainRuns","pendingApprovals","pendingSkillDecisions","failedAgentExecutions","interventionBrainRuns","staleBrainRuns"].includes(k))
      .map(([k,v])=><div key={k} style={surface}><strong style={{fontSize:24,color:"#124d83"}}>{v}</strong><div style={{fontSize:12,color:"#475569"}}>{k.replace(/([A-Z])/g," $1")}</div></div>)}
    </div>
-   <h3>Incidents requiring investigation ({snapshot.incidents.length})</h3>
+   <h3>Incidents requiring investigation ({snapshot.incidentCoverage?.total??snapshot.incidents.length} total)</h3>
+   {snapshot.incidentCoverage?.truncated&&<p style={{fontSize:13,color:"#92400e"}}>Showing {snapshot.incidentCoverage.shown} sampled incidents. Use the full inventory below to investigate all records.</p>}
    {snapshot.incidents.length===0?<p style={{color:"#64748b"}}>No incidents detected by the current checks.</p>:
     <div style={{display:"grid",gap:8}}>{snapshot.incidents.map(issue=><div key={issue.id} style={{...surface,background:issue.severity==="CRITICAL"?"#fff8f8":"#fffcf4"}}>
       <strong>{issue.severity} · {issue.kind.replaceAll("_"," ")}</strong>
       <div style={{fontSize:13,margin:"6px 0"}}>{issue.message}</div>
       {issue.runId&&<button disabled={busy} onClick={()=>onRunSelected(issue.runId!)}>Inspect Brain run {issue.runId.slice(0,10)}</button>}
      </div>)}</div>}
+   <div style={{...surface,marginTop:12}}>
+    <h3 style={{marginTop:0}}>Complete incident inventory</h3>
+    <label>Incident type <select style={{...field,width:"auto",marginLeft:8}} value={incidentKind}
+     onChange={e=>{setIncidentKind(e.target.value);setIncidentRows([]);setIncidentCursor(null);setIncidentTotal(null);}}>
+     <option value="BRAIN_NEEDS_INTERVENTION">Runs requiring intervention</option>
+     <option value="BRAIN_STALE">Stale running Brain jobs</option>
+     <option value="OUTBOX_DEAD_LETTER">Outbox dead letters</option>
+    </select></label>
+    <button style={{...button,marginLeft:8}} disabled={busy}
+     onClick={()=>act(()=>loadIncidentPage(incidentKind))}>Load inventory</button>
+    {incidentTotal!==null&&<p style={{fontSize:13}}>Loaded {incidentRows.length} of {incidentTotal} incident records. Read-only; no automatic replay.</p>}
+    {incidentRows.map(issue=><div key={issue.id} style={{borderTop:"1px solid #cbd5e1",padding:"10px 0",fontSize:13}}>
+     <strong>{issue.severity} · {issue.kind}</strong> — {issue.message}
+     {issue.runId&&<button style={{marginLeft:8}} onClick={()=>onRunSelected(issue.runId!)}>Investigate run</button>}
+    </div>)}
+    {incidentCursor&&<button style={button} disabled={busy}
+     onClick={()=>act(()=>loadIncidentPage(incidentKind,incidentCursor))}>Load next 25</button>}
+   </div>
    <h3>Recent Brain runs</h3>
    {snapshot.brainRuns.length===0?<p style={{color:"#64748b"}}>No recorded Brain runs.</p>:<div style={{overflowX:"auto"}}>
     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,textAlign:"left"}}><thead><tr><th>Run</th><th>State</th><th>Current agent</th><th>Inspect</th></tr></thead>
