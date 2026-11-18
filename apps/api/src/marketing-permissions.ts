@@ -4,7 +4,7 @@ import type { VerifiedIdentity } from './oidc-identity.js';
 const managers = new Set(['SUPER_ADMIN', 'ADMIN', 'MARKETING_DIRECTOR', 'CMO']);
 const operators = new Set([...managers, 'MARKETING_MANAGER', 'MARKETING_SPECIALIST']);
 const viewers = new Set([...operators, 'USER', 'VIEWER', 'ANALYST']);
-export type MarketingPermission = 'READ_PORTFOLIO' | 'READ_APPROVALS' | 'READ_AUDIT' | 'ASSESS' | 'EXECUTE_WORKFLOW' | 'RESUME_WORKFLOW' | 'MANAGE_CAMPAIGN' | 'MANAGE_OBJECTIVE' | 'DECIDE_APPROVAL';
+export type MarketingPermission = 'READ_PORTFOLIO' | 'READ_APPROVALS' | 'READ_AUDIT' | 'ASSESS' | 'SUBMIT_EVIDENCE' | 'EXECUTE_WORKFLOW' | 'RESUME_WORKFLOW' | 'MANAGE_CAMPAIGN' | 'MANAGE_OBJECTIVE' | 'DECIDE_APPROVAL';
 
 export function hasMarketingPermission(identity: VerifiedIdentity | undefined, permission: MarketingPermission): boolean {
   if (!identity) return false;
@@ -12,7 +12,7 @@ export function hasMarketingPermission(identity: VerifiedIdentity | undefined, p
   switch (permission) {
     case 'READ_PORTFOLIO': return viewers.has(role);
     case 'READ_APPROVALS': case 'READ_AUDIT': return managers.has(role);
-    case 'ASSESS': return operators.has(role);
+    case 'ASSESS': case 'SUBMIT_EVIDENCE': return operators.has(role);
     case 'EXECUTE_WORKFLOW': case 'RESUME_WORKFLOW': return operators.has(role);
     case 'MANAGE_CAMPAIGN': case 'MANAGE_OBJECTIVE': case 'DECIDE_APPROVAL': return managers.has(role);
     default: return false;
@@ -25,7 +25,7 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
   if(method==='GET'&&(path==='/marketing/performance/observations'||/^\/marketing\/performance\/campaigns\/[^/]+$/.test(path)))return 'READ_AUDIT';
-  if(method==='POST'&&path==='/marketing/performance/ingest')return 'ASSESS';
+  if(method==='POST'&&path==='/marketing/performance/ingest')return 'SUBMIT_EVIDENCE';
   if(method==='POST'&&path==='/marketing/performance/review')return 'DECIDE_APPROVAL';
   if(method==='GET'&&path==='/marketing/command-center')return 'READ_AUDIT';
   if(method==='GET'&&(path==='/marketing/brand/active'||path==='/marketing/brand/revisions'))return 'READ_AUDIT';
@@ -34,8 +34,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'POST' && (path === '/marketing/sessions' || path === '/marketing/sessions/revoke')) return null;
   if (method === 'GET' && (path === '/marketing/learning/signals' || path === '/marketing/learning/proposals' || path === '/marketing/learning/trends')) return 'READ_AUDIT';
   if (method === 'POST' && (path === '/marketing/learning/skills/evaluate' || path === '/marketing/learning/skills/decide')) return 'DECIDE_APPROVAL';
-  if (method === 'POST' && path === '/marketing/learning/discover') return 'ASSESS';
-  if (method === 'POST' && path === '/marketing/learning/signals') return 'ASSESS';
+  if (method === 'POST' && path === '/marketing/learning/discover') return 'SUBMIT_EVIDENCE';
+  if (method === 'POST' && path === '/marketing/learning/signals') return 'SUBMIT_EVIDENCE';
   if (method === 'POST' && (path === '/marketing/learning/verify' || path === '/marketing/learning/proposals')) return 'DECIDE_APPROVAL';
   if (method === 'GET' && (path === '/marketing/brain/runs' || /^\/marketing\/brain\/runs\/[^/]+$/.test(path))) return 'READ_AUDIT';
   if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/quarantine$/.test(path)) return 'DECIDE_APPROVAL';
