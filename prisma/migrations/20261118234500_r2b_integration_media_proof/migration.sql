@@ -79,7 +79,7 @@ CREATE INDEX "VerifiedMediaEvidence_organizationId_status_verifiedAt_idx"
  ON "VerifiedMediaEvidence"("organizationId","status","verifiedAt");
 ALTER TABLE "VerifiedMediaEvidence" ADD CONSTRAINT "VerifiedMediaEvidence_organizationId_fkey"
  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "VerifiedMediaEvidence" ADD CONSTRAINT "VerifiedMediaEvidence_organizationId_creativeAssetRevisionId_fkey"
+ALTER TABLE "VerifiedMediaEvidence" ADD CONSTRAINT "VerifiedMediaEvidence_organizationId_creativeAssetRevision_fkey"
  FOREIGN KEY ("organizationId","creativeAssetRevisionId")
  REFERENCES "CreativeAssetRevision"("organizationId","id")
  ON DELETE RESTRICT ON UPDATE CASCADE;
