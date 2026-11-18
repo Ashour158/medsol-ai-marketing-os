@@ -132,7 +132,9 @@ export function reviewVoiceOfCustomer(organizationId:string,raw:unknown,asOf=new
  if(excluded)reasons.push('unreviewed_or_out_of_purpose_feedback_excluded');
  return{...base(publishableCohort?'REVIEW_REQUIRED':'INSUFFICIENT_EVIDENCE',reasons),
   engineId:'E35',totalSubmitted:rows.length,eligibleCount:eligible,excludedCount:excluded,
-  publishableCohort,themeCounts:publishableCohort?counts:{},rawPersonalDataReturned:false};
+  publishableCohort,themeCounts:publishableCohort?
+   Object.fromEntries(Object.entries(counts).filter(([,n])=>n>=5)) as Partial<Record<FeedbackTheme,number>>:{},
+  rawPersonalDataReturned:false};
 }
 
 export type CorporateCommunicationReview=Core&{
