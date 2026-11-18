@@ -3,6 +3,10 @@ import { randomUUID, createHash } from 'node:crypto';
 import { PrismaService } from './prisma.service.js';
 import { getBrainPlan, validateBrainCommand } from '@medsol/agent-runtime';
 
+function requiredQuarantineReason(value:unknown):string {
+ if(typeof value!=='string'||value.trim().length<12||value.length>2000)throw new BadRequestException('Quarantine requires a specific rationale of 12 to 2000 characters');
+ return value.trim();
+}
 @Injectable()
 export class BrainRunLedgerService {
  constructor(private readonly db:PrismaService){}
@@ -40,6 +44,32 @@ export class BrainRunLedgerService {
   return run;
  }
  async list(organizationId:string){return this.db.brainRun.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:50,select:{id:true,commandKey:true,correlationId:true,status:true,currentAgentId:true,createdAt:true,updatedAt:true,completedAt:true}});}
+ /**
+  * Explicit operator quarantine for an abandoned execution.
+  * This never retries steps: a remote execution may have succeeded before the checkpoint.
+  */
+ async quarantineAbandoned(organizationId:string,runId:string,actorId:string,reason:string){
+  const rationale=requiredQuarantineReason(reason);
+  const staleBefore=new Date(Date.now()-15*60*1000);
+  return this.db.$transaction(async tx=>{
+   const run=await tx.brainRun.findFirst({where:{id:runId,organizationId}});
+   if(!run)throw new NotFoundException('Brain run not found in tenant');
+   if(run.status!=='RUNNING')throw new ConflictException('Only RUNNING brain runs can be quarantined');
+   if(run.updatedAt>staleBefore)throw new ConflictException('Brain run is not stale; quarantine requires 15 minutes of inactivity');
+   const changed=await tx.brainRun.updateMany({
+    where:{id:runId,organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}},
+    data:{status:'NEEDS_INTERVENTION',lastError:'Operator quarantine: '+rationale.slice(0,900)}
+   });
+   if(changed.count!==1)throw new ConflictException('Brain execution state changed concurrently');
+   await tx.auditEvent.create({data:{
+    organizationId,actorType:'HUMAN',actorId,action:'BRAIN_RUN_QUARANTINED',
+    objectType:'BrainRun',objectId:runId,correlationId:run.correlationId,
+    before:{status:'RUNNING',currentAgentId:run.currentAgentId},
+    after:{status:'NEEDS_INTERVENTION',reason:rationale,automaticRetryAllowed:false}
+   }});
+   return {runId,status:'NEEDS_INTERVENTION',recovery:'MANUAL_REVIEW_ONLY',automaticRetryAllowed:false};
+  });
+ }
  async checkpoint(organizationId:string,runId:string,agentId:string,executionId:string){
   if(!executionId)throw new BadRequestException('Execution id required');
   return this.db.$transaction(async tx=>{
