@@ -14,7 +14,14 @@ describe('API-wide permission enforcement', () => {
     await expect(guard.canActivate(ctx(req('/marketing/overview')))).resolves.toBe(true);
     await expect(guard.canActivate(ctx(req('/marketing/workflows', 'POST')))).rejects.toThrow('limited to portfolio');
   });
-  it('bootstrap cannot inspect approval inbox or campaign audit history', async () => {
+  it('bootstrap pilot cannot read or write creative asset metadata without OIDC',async()=>{
+    const guard=new BootstrapAuthGuard(db,{assertActorPermission:vi.fn()} as any);
+    await expect(guard.canActivate(ctx(req('/marketing/assets'))))
+      .rejects.toThrow('require verified OIDC identity');
+    await expect(guard.canActivate(ctx(req('/marketing/assets','POST'))))
+      .rejects.toThrow('require verified OIDC identity');
+  });
+    it('bootstrap cannot inspect approval inbox or campaign audit history', async () => {
     const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/approvals/pending')))).rejects.toThrow('limited to portfolio');
     await expect(guard.canActivate(ctx(req('/marketing/campaigns/secret')))).rejects.toThrow('limited to portfolio');

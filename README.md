@@ -44,3 +44,7 @@ Every engine and workflow has an explicit current status. Names in a target regi
 ### ECC repository-level reference evidence vs. per-PR changed-file score
 
 The ECC GitHub App may report `0/7` on a PR that does not change reference files. This is **not** the repository's analyzer/RAG/security score. The authoritative evidence index is [ECC reference readiness](docs/quality/ECC_REPOSITORY_READINESS.md), generated and verified by `node scripts/quality/ecc-repository-readiness.mjs` in GitHub Actions. Seven evidence categories are explicitly scoped and linked, including a maintainer-only, read-only PR review corpus. They do not certify provider interoperability, production security, customer-ready AI or live GitHub Check publication. The ECC app installation owner action is tracked in [issue #3](https://github.com/Ashour158/medsol-ai-marketing-os/issues/3).
+
+### R1C Creative Asset & Exact-Approval Governance
+
+The [R1C creative DAM and exact approval implementation](docs/blueprint-v2/R1C_CREATIVE_DAM_EXACT_APPROVAL.md) extends the existing `ApprovalService` with immutable asset/revision-specific approval scopes and a tenant-RLS asset metadata domain. An authenticated, metadata-only **Creative Governance Studio** appears in the Command Center; it supports creation, version history, independent rights review, exact scope submission and current approval inspection. It does **not** upload verified media bytes, prove editability, verify C2PA signatures or authorize any social/email publishing.
