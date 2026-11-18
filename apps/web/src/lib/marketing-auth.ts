@@ -17,12 +17,23 @@ function secrets() {
 }
 export function randomToken() { return randomBytes(32).toString("base64url"); }
 export function challenge(verifier: string) { return createHash("sha256").update(verifier).digest("base64url"); }
+export function entraTenant() {
+  const tenant = process.env.MARKETING_ENTRA_TENANT_ID;
+  if (!tenant || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenant)) throw new Error("Microsoft Entra tenant GUID required");
+  return tenant.toLowerCase();
+}
+export function entraScope() {
+  const scope = process.env.MARKETING_ENTRA_API_SCOPE;
+  if (!scope || !/^api:\/\/[a-zA-Z0-9._/-]+\/[a-zA-Z0-9._-]+$/.test(scope)) throw new Error("Microsoft Entra delegated API scope required");
+  return scope;
+}
 export function authConfig() {
   const issuer = process.env.MARKETING_OIDC_ISSUER;
   const clientId = process.env.MARKETING_OIDC_CLIENT_ID;
   const origin = process.env.MARKETING_PUBLIC_ORIGIN;
   const organizationId = process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
   if (!issuer || !clientId || !origin || !organizationId) throw new Error("OIDC client configuration incomplete");
+  if (issuer !== 'https://login.microsoftonline.com/' + entraTenant() + '/v2.0') throw new Error('Tenant-specific Microsoft Entra issuer required');
   const url = new URL(origin);
   if (url.protocol !== "https:" && url.hostname !== "localhost") throw new Error("HTTPS origin required");
   return { issuer, clientId, origin: url.origin, organizationId };
