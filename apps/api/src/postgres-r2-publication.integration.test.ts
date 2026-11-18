@@ -118,7 +118,7 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     'active_social_publishing_entitlement_required',
     'provider_app_review_and_eligibility_required',
     'customer_authorized_destination_binding_required',
-    'operator_egress_unlock_required',
+    'deployment_operator_egress_unlock_required',
     'audience_consent_or_no_targeting_authorization_required',
     'approved_release_window_required'
    ])expect(releaseGate.blockers).toContain(missing);
