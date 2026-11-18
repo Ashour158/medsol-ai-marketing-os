@@ -119,6 +119,7 @@ export default function Home() {
     </section>
     <CreativeGovernanceStudio identity={identity} />
     <CampaignPublicationStudio identity={identity}/>
+    <IntegrationGovernanceStudio identity={identity}/>
     <OperationsConsole identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
