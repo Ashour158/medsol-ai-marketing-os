@@ -52,6 +52,7 @@ model Organization {
   updatedAt DateTime @updatedAt
   users User[]
   agents Agent[]
+  agentExecutions AgentExecution[]
   objectives MarketingObjective[]
   products MarketingProduct[]
   campaigns Campaign[]
