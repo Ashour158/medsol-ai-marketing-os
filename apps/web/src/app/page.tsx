@@ -163,6 +163,8 @@ export default function Home() {
       <h2 style={{ marginTop: 0 }}>3. Assess and initiate a campaign</h2>
       <label>Marketing objective<textarea style={{ ...fieldStyle, minHeight: 100 }} value={goal} onChange={e => setGoal(e.target.value)} placeholder="Launch an oncology genomics awareness campaign in Egypt" /></label>
       <label style={{ display: "block", marginTop: 14 }}>Existing marketing objective ID (required to create a campaign)<input style={fieldStyle} value={objectiveId} onChange={e => setObjectiveId(e.target.value)} placeholder="UUID from marketing objectives" /></label>
+      <label style={{display:"block",marginTop:14}}>Tenant brand ID (required for R2 sandbox publication)<input style={fieldStyle} value={campaignBrandId} onChange={e=>setCampaignBrandId(e.target.value)} placeholder="Existing active tenant Brand ID"/></label>
+      <p style={{fontSize:12,color:"#64748b"}}>The existing 13-agent governed workflow creates a brand-bound campaign. It still requires independent human campaign approval, plus a separate creative approval, before any R2 sandbox simulation.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
         <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => { setAssessment(await call("requests", request)); })}>Assess objective</button>
         <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => { const result = await call("workflows", request) as Workflow; setWorkflow(result); if (result.workflowExecutionId) setWorkflowId(result.workflowExecutionId); })}>Start governed workflow</button>
