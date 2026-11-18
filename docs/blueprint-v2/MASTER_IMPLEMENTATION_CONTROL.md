@@ -1,13 +1,13 @@
-# Agentic Marketing & Communications OS — v2.0 implementation control
+# Agentic Marketing & Communications OS — v2.1 implementation control
 
-**Baseline:** user-approved Master Blueprint v2.0, 18 November 2026.  
+**Baseline:** Master Blueprint v2.0 plus approved v2.1 amendment. New [v2.1 engine/workflow and depth contracts](MASTER_BLUEPRINT_V2_1_AMENDMENT.md) supersede v2.0 only for amended capabilities; all prior security/owner invariants remain.  
 **Code inspected:** `main` at `b1900a7d0aba7e6d12b5a61752dfc7bf98548da5`.  
 **Classification:** approved product **target**, not implementation or production certification.  
 **Authoritative control:** one concept, one domain write owner; no shadow agents, approval engines, workflow engines, tables, or integrators.
 
 ## What has actually been added in this tranche
 
-- `packages/contracts/src/blueprint-v2.ts` — stable, typed **target-state inventory** for E01–E33, WF01–WF36, 13 studios, B01–B10 cognitive roles, and 12 product personas; phased ownership and honest states.
+- `packages/contracts/src/blueprint-v2.ts` — stable, typed **target-state inventory** for E01–E36, WF01–WF41, 13 studios, B01–B10 cognitive roles, and 12 product personas; phased ownership and honest states.
 - `packages/contracts/src/blueprint-v2-compiler.ts` — **static, draft-only** graph validation for future Workflow/Blueprint Studio. It does not authorize deployment, run tools, invoke a model, or write business data.
 - `GET /marketing/architecture/blueprint` — authenticated `READ_AUDIT` read-only endpoint via existing API and Next.js BFF, available in existing Command Center.
 - Regressions covering exact catalog counts, unique IDs, canonical agent aliases, release gates, forbidden external effects, unknown agent IDs, cycles and unbounded tasks.
@@ -39,7 +39,7 @@
 
 ## Target-state studios and engines
 
-The typed registry is the machine-readable inventory. All 13 workspaces, 33 logical engines, 36 workflows, 10 cognitive roles and 12 personas are represented **without** creating 33 microservices. The 13 existing registered agents remain unchanged until versioned manifest migration and evaluation.
+The typed registry is the machine-readable inventory. All 13 workspaces, 36 logical engines, 41 workflows, 10 cognitive roles and 12 personas are represented **without** creating 33 microservices. The 13 existing registered agents remain unchanged until versioned manifest migration and evaluation.
 
 ## Implementation dependency order, no scope cutting
 
