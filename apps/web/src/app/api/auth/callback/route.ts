@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import { authConfig, FLOW_COOKIE, SESSION_COOKIE, seal, secureCookie, unseal } from "../../../../lib/marketing-auth";
+import { authConfig, entraTenant, FLOW_COOKIE, SESSION_COOKIE, seal, secureCookie, unseal } from "../../../../lib/marketing-auth";
 
 type Flow = { state: string; nonce: string; verifier: string; tokenEndpoint: string; jwksUri: string; issuer: string };
 export async function GET(request: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (typeof tokens.id_token !== "string" || typeof tokens.access_token !== "string" || typeof tokens.expires_in !== "number") return response;
     const keys = createRemoteJWKSet(new URL(flow.jwksUri));
     const { payload } = await jwtVerify(tokens.id_token, keys, { issuer: flow.issuer, audience: cfg.clientId, algorithms: ["RS256", "ES256"] });
-    if (payload.nonce !== flow.nonce || typeof payload.sub !== "string" || !payload.sub || payload.email_verified !== true || typeof payload.email !== "string") return response;
+    if (payload.nonce !== flow.nonce || typeof payload.sub !== "string" || !payload.sub || typeof payload.oid !== "string" || typeof payload.tid !== "string" || payload.tid.toLowerCase() !== entraTenant()) return response;
     // API validates access-token issuer, audience, signature, and authoritative user membership on every request.
     const ttl = Math.min(3600, Math.max(0, Math.floor(tokens.expires_in) - 30));
     if (ttl < 30) return response;
