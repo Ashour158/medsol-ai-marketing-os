@@ -33,8 +33,8 @@ describe('durable brain run authority',()=>{
   const ledger=new BrainRunLedgerService(db);
   const command={organizationId:'tenant',correlationId:'corr',requestedOutcome:'Launch'};
   const created=await ledger.create('tenant',command,'command-123');
-  expect(created.steps.create).toHaveLength(13);
-  expect(created.steps.create.map((x:any)=>x.ordinal)).toEqual(Array.from({length:13},(_,i)=>i));
+  expect((created.steps as any).create).toHaveLength(13);
+  expect((created.steps as any).create.map((x:any)=>x.ordinal)).toEqual(Array.from({length:13},(_,i)=>i));
   await expect(ledger.create('tenant',command,'command-123')).resolves.toMatchObject({id:'existing'});
   expect(db.brainRun.create).toHaveBeenCalledTimes(1);
  });
