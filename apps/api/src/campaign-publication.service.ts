@@ -272,7 +272,11 @@ export class CampaignPublicationService{
    // Reuse the canonical human/brand/rights/creative policy preflight;
    // correlation must never become an alternate approval decision engine.
    const existingGate=await this.check(tx,organizationId,pub);
+   const heldFence=await tx.publicationAttempt.findFirst({where:{
+    organizationId,publicationId,mode:'RELEASE_FENCE'
+   },select:{id:true,createdAt:true}});
    const reasons:string[]=[...existingGate.reasons];
+   if(heldFence)reasons.push('operator_dispatch_hold_permanently_active');
    if(!exactScope)reasons.push('exact_publication_approval_scope_invalid');
    if(!connection)reasons.push('registered_provider_destination_not_found');
    if(connection?.status!=='PENDING_VERIFICATION')
@@ -294,6 +298,8 @@ export class CampaignPublicationService{
     postClaimsMatchingObservedAccount:accountClaimMatchCount,
     lastSignedWebhookAt:latest?.verifiedAt??null,
     authorizedRemoteAttempts:remoteAttempts,
+    releaseFenceActive:!!heldFence,
+    releaseFenceRecordedAt:heldFence?.createdAt??null,
     verifiedRemoteReceipts:0,
     providerReceiptVerified:false as const,
     customerDestinationBound:false as const,
