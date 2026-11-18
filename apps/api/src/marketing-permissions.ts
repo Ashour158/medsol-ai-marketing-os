@@ -38,6 +38,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
     path==='/marketing/integrations/catalog'||
     path==='/marketing/integrations'||/^\/marketing\/integrations\/[^/]+$/.test(path)))
    return 'READ_TENANCY';
+  if(method==='GET'&&/^\/marketing\/integrations\/[^/]+\/health$/.test(path))return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/integrations'||
     /^\/marketing\/integrations\/[^/]+\/(suspend|revoke)$/.test(path)))
    return 'MANAGE_TENANT';
