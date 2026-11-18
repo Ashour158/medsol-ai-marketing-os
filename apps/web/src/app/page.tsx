@@ -4,7 +4,6 @@ import { useState } from "react";
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
   const [organizationId, setOrganizationId] = useState("");
-  const [token, setToken] = useState("");
   const [goal, setGoal] = useState("");
   const [objectiveId, setObjectiveId] = useState("");
   const [newObjectiveName, setNewObjectiveName] = useState("");
@@ -28,10 +27,10 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
 
   async function call(path: string, body?: unknown): Promise<unknown> {
-    if (!organizationId.trim() || !token.trim()) throw new Error("Enter your organization ID and access token.");
+
     const response = await fetch("/api/marketing/" + path, {
       method: body === undefined ? "GET" : "POST",
-      headers: { authorization: "Bearer " + token.trim(), "x-organization-id": organizationId.trim(), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      headers: { ...(body === undefined ? {} : { "content-type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       cache: "no-store"
     });
@@ -73,16 +72,22 @@ export default function Home() {
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: "42px 24px", fontFamily: "Arial,sans-serif" }}>
     <div style={{ color: "#124d83", fontSize: 13, fontWeight: 800, letterSpacing: 2 }}>MEDSOL · AI MARKETING OS</div>
     <h1 style={{ fontSize: 38, marginBottom: 8 }}>Marketing Command Center</h1>
-    <p style={{ color: "#64748b" }}>Internal pilot console · human approval remains mandatory for governed campaigns.</p>
+    <p style={{ color: "#64748b" }}>Authenticated marketing workspace · human approval remains mandatory for governed campaigns.</p>
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
       <h2 style={{ marginTop: 0 }}>1. Connect to your organization</h2>
-      <p style={{ color: "#64748b", fontSize: 13 }}>The bearer token is held only in page memory, not browser storage. For production, use a proper OIDC sign-in flow; pasting tokens here is for restricted internal testing.</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 16 }}>
-        <label>Organization ID<input style={fieldStyle} value={organizationId} onChange={e => setOrganizationId(e.target.value)} autoComplete="off" placeholder="Configured organization ID" /></label>
-        <label>Access token (pilot/OIDC)<input style={fieldStyle} type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" placeholder="Bearer token" /></label>
+      <p style={{ color: "#64748b", fontSize: 13 }}>Sign in through your organization's identity provider. Sessions use encrypted HTTP-only cookies and authenticated requests are proxied server-side.</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        <a href="/api/auth/login" style={{ ...buttonStyle, textDecoration: "none" }}>Sign in with organization SSO</a>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => {
+          const me = await call("me") as {userId:string;organizationId:string;email:string;role:string};
+          setIdentity(me); setOrganizationId(me.organizationId); setAgents(await call("agents")); await loadDashboard();
+        })}>Load authenticated workspace</button>
+        <button style={{ ...buttonStyle, background: "#475569" }} disabled={busy} onClick={() => perform(async () => {
+          const response = await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" } });
+          if (!response.ok) throw new Error("Logout failed");
+          window.location.reload();
+        })}>Sign out</button>
       </div>
-      <button style={{ ...buttonStyle, marginTop: 16 }} disabled={busy} onClick={() => perform(async () => { setAgents(await call("agents")); })}>Verify access and load agents</button>
-      <button style={{ ...buttonStyle, marginTop: 16, marginLeft: 12 }} disabled={busy} onClick={() => perform(async () => { setIdentity(await call("me") as typeof identity); })}>Verify individual identity (OIDC)</button>
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
@@ -147,6 +152,6 @@ export default function Home() {
       {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
     </section>
     {error && <p role="alert" style={{ color: "#a11919", padding: 16, background: "#fff1f1", borderRadius: 8 }}>{error}</p>}
-    <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions require a verified OIDC identity and an authorized database role. Manual token entry is for restricted pilot testing only.</p>
+    <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions require a verified OIDC identity and an authorized database role.</p>
   </main>;
 }
