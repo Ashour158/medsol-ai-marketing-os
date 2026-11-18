@@ -52,6 +52,8 @@ model Organization {
   updatedAt DateTime @updatedAt
   users User[]
   authSessions AuthSession[]
+  modelBudgets ModelBudget[]
+  modelUsage ModelUsage[]
   agents Agent[]
   agentExecutions AgentExecution[]
   objectives MarketingObjective[]
@@ -293,4 +295,31 @@ model AuthSession {
   createdAt DateTime @default(now())
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   @@index([organizationId,userId,revokedAt,expiresAt])
+}
+
+model ModelBudget {
+  organizationId String @id
+  limitMicros BigInt
+  reservedMicros BigInt @default(0)
+  spentMicros BigInt @default(0)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+model ModelUsage {
+  id String @id @default(cuid())
+  organizationId String
+  requestId String
+  agentId String
+  reservedMicros BigInt
+  actualMicros BigInt?
+  status String
+  model String?
+  inputTokens Int?
+  outputTokens Int?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  @@unique([organizationId,requestId])
+  @@index([organizationId,status,createdAt])
 }
