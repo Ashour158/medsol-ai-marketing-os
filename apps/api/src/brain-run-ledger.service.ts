@@ -39,7 +39,7 @@ export class BrainRunLedgerService {
   return this.db.$transaction(async tx=>{
    const run=await tx.brainRun.findFirst({where:{id:runId,organizationId},include:{steps:{orderBy:{ordinal:'asc'}}}});
    if(!run)throw new NotFoundException('Brain run not found');
-   if(run.status!=='PENDING'&&run.status!=='REVIEW_REQUIRED')throw new ConflictException('Brain run not eligible for checkpoint');
+   if(run.status!=='PENDING'&&run.status!=='RUNNING'&&run.status!=='REVIEW_REQUIRED')throw new ConflictException('Brain run not eligible for checkpoint');
    const next=run.steps.find(s=>s.status!=='COMPLETED');
    if(!next||next.agentId!==agentId)throw new ConflictException('Out-of-order agent checkpoint');
    const execution=await tx.agentExecution.findFirst({where:{id:executionId,organizationId,agentId,correlationId:run.correlationId,status:'COMPLETED'}});
@@ -47,7 +47,7 @@ export class BrainRunLedgerService {
    const changed=await tx.brainRunStep.updateMany({where:{id:next.id,organizationId,status:'PENDING'},data:{status:'COMPLETED',executionId,startedAt:execution.startedAt,completedAt:new Date()}});
    if(changed.count!==1)throw new ConflictException('Checkpoint already claimed');
    const completed=run.steps.every(s=>s.id===next.id||s.status==='COMPLETED');
-   await tx.brainRun.update({where:{id:run.id},data:{status:completed?'REVIEW_REQUIRED':'PENDING',currentAgentId:completed?null:run.steps[next.ordinal+1]?.agentId??null,...(completed?{completedAt:new Date()}:{})}});
+   await tx.brainRun.update({where:{id:run.id},data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:completed?null:run.steps[next.ordinal+1]?.agentId??null,...(completed?{completedAt:new Date()}:{})}});
    return{runId,agentId,executionId,completed,requiresHumanReview:true};
   });
  }
