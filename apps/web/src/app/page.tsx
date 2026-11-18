@@ -16,7 +16,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
 
   async function call(path: string, body?: unknown): Promise<unknown> {
-    if (!organizationId.trim() || !token.trim()) throw new Error("Enter your organization ID and bootstrap access token.");
+    if (!organizationId.trim() || !token.trim()) throw new Error("Enter your organization ID and access token.");
     const response = await fetch("/api/marketing/" + path, {
       method: body === undefined ? "GET" : "POST",
       headers: { authorization: "Bearer " + token.trim(), "x-organization-id": organizationId.trim(), ...(body === undefined ? {} : { "content-type": "application/json" }) },
@@ -41,10 +41,10 @@ export default function Home() {
     <p style={{ color: "#64748b" }}>Internal pilot console · human approval remains mandatory for governed campaigns.</p>
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
       <h2 style={{ marginTop: 0 }}>1. Connect to your organization</h2>
-      <p style={{ color: "#64748b", fontSize: 13 }}>The bootstrap token is held in this page's memory only; it is not saved in browser storage. This is a temporary pilot credential, not individual-user authentication.</p>
+      <p style={{ color: "#64748b", fontSize: 13 }}>The bearer token is held only in page memory, not browser storage. For production, use a proper OIDC sign-in flow; pasting tokens here is for restricted internal testing.</p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 16 }}>
         <label>Organization ID<input style={fieldStyle} value={organizationId} onChange={e => setOrganizationId(e.target.value)} autoComplete="off" placeholder="Configured organization ID" /></label>
-        <label>Bootstrap access token<input style={fieldStyle} type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" placeholder="Bearer token" /></label>
+        <label>Access token (pilot/OIDC)<input style={fieldStyle} type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" placeholder="Bearer token" /></label>
       </div>
       <button style={{ ...buttonStyle, marginTop: 16 }} disabled={busy} onClick={() => perform(async () => { setAgents(await call("agents")); })}>Verify access and load agents</button>
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
