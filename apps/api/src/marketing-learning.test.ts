@@ -32,7 +32,7 @@ describe('learning engine controls',()=>{
  });
  it('cannot promote a quarantined trend to agent skills',async()=>{
   const {service}=setup();
-  await expect(service.propose('tenant','reviewer',{signalId:'sig',agentId:'MKT-STR-001',skillKey:'ASSESS_MARKET',rationale:'Evidence-led improvement'})).rejects.toThrow('verified');
+  await expect(service.propose('tenant','reviewer',{signalId:'sig',agentId:'MKT-STR-001',skillKey:'ASSESS_MARKET',rationale:'Evidence-led improvement'})).rejects.toThrow('reviewed');
  });
  it('rejects capability escalation outside the registered agent manifest',async()=>{
   const {service}=setup();
