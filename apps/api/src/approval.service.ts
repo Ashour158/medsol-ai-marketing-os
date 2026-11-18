@@ -23,7 +23,7 @@ import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scop
    const a=await tx.approval.findFirst({where:{id:cmd.approvalId,organizationId:cmd.organizationId}});if(!a)throw new NotFoundException('Approval not found in tenant');
    if(a.decision!=='PENDING')throw new BadRequestException('Approval is already decided');
    if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
-   const reviewer=await tx.user.findFirst({where:{id:cmd.approverUserId,organizationId:cmd.organizationId}});
+   const reviewer=await tx.user.findFirst({where:{id:cmd.approverUserId,organizationId:cmd.organizationId,disabledAt:null}});
    if(!reviewer || !['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','CMO'].includes(reviewer.role.toUpperCase()))throw new ForbiddenException('Approver lacks authorized marketing approval role');
    if(a.objectType==='Campaign' && cmd.decision==='APPROVED'){
     const history=await tx.auditEvent.findMany({where:{organizationId:cmd.organizationId,objectType:'Campaign',objectId:a.objectId,action:{in:['CAMPAIGN_CREATED','CAMPAIGN_STATUS_CHANGED']}},select:{actorType:true,actorId:true,action:true}});
