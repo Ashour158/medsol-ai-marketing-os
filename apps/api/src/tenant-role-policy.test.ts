@@ -52,7 +52,8 @@ describe('R1B restrictive tenant roles and request-time policy',()=>{
   expect(tx.auditEvent.create).toHaveBeenCalledWith({data:expect.objectContaining({
    action:'TENANT_ROLE_ASSIGNED'})});
   await expect(svc.assign(actor,'admin-a','role-1')).rejects.toThrow('Self-assignment');
-  tx.user.findFirst.mockImplementationOnce(async()=>({role:'ADMIN',oidcSubject:'some',tenantRoleDefinitionId:null}));
+  tx.user.findFirst.mockImplementationOnce(async()=>({role:'ADMIN',oidcSubject:'oidc-admin'}))
+    .mockImplementationOnce(async()=>({role:'ADMIN',oidcSubject:'some',tenantRoleDefinitionId:null}));
   await expect(svc.assign(actor,'user-1','role-1')).rejects.toThrow('Tenant administrators');
   tx.tenantRoleDefinition.findFirst.mockResolvedValueOnce({id:'role-1',
    permissions:['MANAGE_TENANT'],key:'dangerous'});
