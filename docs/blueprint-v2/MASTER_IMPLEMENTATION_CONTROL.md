@@ -139,3 +139,10 @@ Both new asset tables use transaction-local tenant context and FORCE RLS. **Exis
 R2 now has an internal, executable sandbox from approved brand-bound campaign to independently reviewed creative and exact-version approval, publication-intent creation, preflight revalidation, one synthetic receipt and separately reviewed performance evidence. The sole Campaign owner, DAM owner, ApprovalService, OutboxEvent transport, MarketingWorkflowService and MarketingPerformanceService remain unchanged; the only new aggregate is CampaignPublication, the authoritative desired publication action. No live external platform or consent integration exists, and the database schema **prohibits** `PUBLISHED` as a status for this tranche.
 
 Do not reclassify E13/WF social platform delivery as commercially complete: media byte verification, verified provider accounts/scopes, signed webhook receipts, region/consent policy, tenant identity/RLS coverage, real staging and independent product acceptance remain mandatory.
+
+
+## R2B provider-neutral registration and media readback foundation
+
+[R2B Reuse Map, two new authoritative metadata owners, SQL tenant security, actual-byte checksum verification and R2C release gates](R2B_INTEGRATION_HUB_MEDIA_EVIDENCE.md).
+
+R2B adds IntegrationConnection for tenant/brand platform destination registration (pending only, no tokens, audited suspension/revocation) and VerifiedMediaEvidence for SHA-256 readback attestation through a trusted backend object reader (not exposed via HTTP and no production object store attached). The existing CampaignPublication preflight observes destination and media evidence separately, but its externalReady/externalEffectsAuthorized results remain false. The R2 Command Center shows registrations and proof; real OAuth, content storage, provider transport, webhook signature reconciliation, consent and commercial preflight are still mandatory before customer publication.
