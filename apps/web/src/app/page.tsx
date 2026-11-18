@@ -26,6 +26,14 @@ export default function Home() {
   const [agentOperations, setAgentOperations] = useState<{total:number;byStatus:Record<string,number>;recent:Array<{id:string;agentId:string;status:string}>}|null>(null);
   const [agentDetail, setAgentDetail] = useState<unknown>(null);
   const [brainPlan, setBrainPlan] = useState<unknown>(null);
+  const [blueprintInventory,setBlueprintInventory]=useState<{
+   version:string;targetStateOnly:boolean;counts:Record<string,number>;
+   engines:Array<{id:string;name:string;release:string;state:string;owner:string}>;
+   workflows:Array<{id:string;name:string;release:string;state:string;owner:string}>;
+   studios:Array<{id:string;name:string;release:string;state:string;owner:string}>;
+   brains:Array<{id:string;name:string;canonicalAgentId:string}>;
+   personas:Array<{id:string;name:string;canonicalAgentId:string}>;
+  }|null>(null);
   const [brainAssessment, setBrainAssessment] = useState<unknown>(null);
   const [brainRuns, setBrainRuns] = useState<Array<{id:string;status:string;commandKey:string;updatedAt:string;currentAgentId?:string|null}>>([]);
   const [brainRunId, setBrainRunId] = useState("");
@@ -242,6 +250,29 @@ export default function Home() {
             })}>Quarantine stale execution</button>
           </>}
         </div>}
+      </div>
+      <div style={{marginTop:20,padding:18,border:"1px solid #cbd5e1",borderRadius:12}}>
+        <h3 style={{marginTop:0}}>Blueprint v2.0 — development target register</h3>
+        <p style={{color:"#64748b",fontSize:13}}>Target-state concepts are NOT activated agents or functional external integrations. This register tracks planned scope separately from what has passed production acceptance.</p>
+        <button style={buttonStyle} disabled={busy} onClick={()=>perform(async()=>{
+          setBlueprintInventory(await call("architecture/blueprint") as NonNullable<typeof blueprintInventory>);
+        })}>Inspect full engine, brain and workflow inventory</button>
+        {blueprintInventory && <>
+          <p style={{fontWeight:700}}>v{blueprintInventory.version}: {blueprintInventory.counts.engines} engines · {blueprintInventory.counts.workflows} workflows · {blueprintInventory.counts.studios} studios · {blueprintInventory.counts.brains} brain roles · {blueprintInventory.counts.personas} personas</p>
+          {([
+            ["Engines",blueprintInventory.engines],["Workflows",blueprintInventory.workflows],
+            ["Studios",blueprintInventory.studios]
+           ] as const).map(([label,items])=><details key={label}>
+             <summary>{label} — owner, release and implementation evidence</summary>
+             <div style={{overflowX:"auto",marginTop:10}}><table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+               <thead><tr><th align="left">ID</th><th align="left">Capability</th><th align="left">Owner</th><th align="left">Release</th><th align="left">Observed status</th></tr></thead>
+               <tbody>{items.map(item=><tr key={item.id}><td>{item.id}</td><td>{item.name}</td><td>{item.owner}</td><td>{item.release}</td><td>{item.state}</td></tr>)}</tbody>
+             </table></div>
+           </details>)}
+          <details><summary>Ten cognitive brain responsibilities and twelve UX personas</summary>
+            <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify({brains:blueprintInventory.brains,personas:blueprintInventory.personas},null,2)}</pre>
+          </details>
+        </>}
       </div>
       {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}
       {brainAssessment !== null && <details open><summary>13-agent review trace</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainAssessment,null,2)}</pre></details>}
