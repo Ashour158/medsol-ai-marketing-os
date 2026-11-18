@@ -70,6 +70,7 @@ model Organization {
   skillProposals AgentSkillProposal[]
   brainRuns BrainRun[]
   brainRunSteps BrainRunStep[]
+  brandMasterRevisions BrandMasterRevision[]
 }
 model User {
   id String @id @default(cuid())
@@ -411,4 +412,20 @@ model BrainRunStep {
   @@unique([runId,agentId])
   @@unique([runId,ordinal])
   @@index([organizationId,runId,status])
+}
+
+model BrandMasterRevision {
+  id String @id @default(cuid())
+  organizationId String
+  version Int
+  status String @default("DRAFT")
+  sourceReference String
+  rules Json
+  proposedBy String
+  approvedBy String?
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,version])
+  @@index([organizationId,status,version])
 }
