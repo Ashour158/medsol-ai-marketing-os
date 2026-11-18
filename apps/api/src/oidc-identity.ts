@@ -8,7 +8,7 @@ export async function verifyOidcIdentity(
   authorization: unknown,
   organizationId: string,
   config: { issuer: string; audience: string; jwksUrl: string },
-  lookup: (email: string, organizationId: string) => Promise<{ id: string; email: string; role: string } | null>
+  lookup: (email: string, organizationId: string) => Promise<{ id: string; email: string; role: string; oidcSubject: string | null; disabledAt: Date | null } | null>
 ): Promise<VerifiedIdentity> {
   if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) throw new UnauthorizedException('Bearer authentication required');
   if (!config.issuer || !config.audience || !config.jwksUrl) throw new Error('Incomplete OIDC configuration');
@@ -25,6 +25,7 @@ export async function verifyOidcIdentity(
     throw new UnauthorizedException('Verified email and subject required');
   }
   const user = await lookup(payload.email.toLowerCase(), organizationId);
-  if (!user) throw new ForbiddenException('User is not provisioned in this organization');
+  if (!user || user.disabledAt) throw new ForbiddenException('User is not active in this organization');
+  if (!user.oidcSubject || user.oidcSubject !== payload.sub) throw new ForbiddenException('OIDC subject is not bound to the provisioned user');
   return { userId: user.id, organizationId, email: user.email, role: user.role, subject: payload.sub };
 }
