@@ -93,6 +93,7 @@ model User {
   @@unique([organizationId,email])
   @@unique([organizationId,oidcSubject])
   @@index([organizationId])
+  @@index([organizationId,tenantRoleDefinitionId])
 }
 model Agent {
   id String
