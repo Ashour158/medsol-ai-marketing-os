@@ -27,6 +27,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'GET' && path === '/marketing/me') return null;
   if (method === 'POST' && (path === '/marketing/sessions' || path === '/marketing/sessions/revoke')) return null;
   if (method === 'GET' && (path === '/marketing/learning/signals' || path === '/marketing/learning/proposals')) return 'READ_AUDIT';
+  if (method === 'POST' && path === '/marketing/learning/discover') return 'ASSESS';
   if (method === 'POST' && path === '/marketing/learning/signals') return 'ASSESS';
   if (method === 'POST' && (path === '/marketing/learning/verify' || path === '/marketing/learning/proposals')) return 'DECIDE_APPROVAL';
   if (method === 'GET' && (path === '/marketing/brain/runs' || /^\/marketing\/brain\/runs\/[^/]+$/.test(path))) return 'READ_AUDIT';
