@@ -724,6 +724,8 @@ model VerifiedMediaEvidence {
   sha256Digest String
   sizeBytes Int
   detectedMime String
+  malwareScanStatus String @default("NOT_SCANNED")
+  scannerId String?
   status String @default("VERIFIED_READBACK")
   verifiedAt DateTime @default(now())
   verifiedBy String

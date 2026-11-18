@@ -10,11 +10,12 @@ import {PrismaService} from './prisma.service.js';
 export interface VersionedMediaReader {
  readVersion(input:{organizationId:string;sourceRef:string}):Promise<{
   sourceRef:string;objectVersion:string;bytes:Uint8Array;
+  malwareScan?:{status:'CLEAN';scannerId:string};
  }>;
 }
 const MAX_BYTES=24*1024*1024;
 const digest=(bytes:Uint8Array)=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
-function identify(bytes:Uint8Array):'image/png'|'image/jpeg'|'image/webp'|null {
+export function identify(bytes:Uint8Array):'image/png'|'image/jpeg'|'image/webp'|null {
  if(bytes.length>=8&&[137,80,78,71,13,10,26,10].every((b,i)=>bytes[i]===b))
   return 'image/png';
  if(bytes.length>=4&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255)
@@ -46,6 +47,7 @@ export class VerifiedMediaEvidenceService{
    return found.map(r=>({
     id:r.id,creativeAssetRevisionId:r.creativeAssetRevisionId,sha256Digest:r.sha256Digest,
     sizeBytes:r.sizeBytes,detectedMime:r.detectedMime,status:r.status,
+    malwareScanStatus:r.malwareScanStatus,scannerId:r.scannerId,
     objectVersion:r.objectVersion,verifiedAt:r.verifiedAt,
     externalEffectsAuthorized:false
    }));
@@ -61,6 +63,7 @@ export class VerifiedMediaEvidenceService{
    return{id:row.id,creativeAssetRevisionId:revisionId,sha256Digest:row.sha256Digest,
     sizeBytes:row.sizeBytes,detectedMime:row.detectedMime,objectVersion:row.objectVersion,
     verifiedAt:row.verifiedAt,status:row.status,
+    malwareScanStatus:row.malwareScanStatus,scannerId:row.scannerId,
     independentlyDecoded:false,remotePlatformMediaEligible:false,
     externalEffectsAuthorized:false};
   });
@@ -78,13 +81,20 @@ export class VerifiedMediaEvidenceService{
   if(!revision)throw new NotFoundException('Creative revision not found in tenant');
   const object=await reader.readVersion({organizationId,sourceRef:revision.sourceRef});
   if(!object||object.sourceRef!==revision.sourceRef||
-    typeof object.objectVersion!=='string'||!/^[-A-Za-z0-9_.:]{3,160}$/.test(object.objectVersion)||
+    typeof object.objectVersion!=='string'||object.objectVersion==='null'||
+    !/^[A-Za-z0-9._:+/=-]{3,1024}$/.test(object.objectVersion)||
     !(object.bytes instanceof Uint8Array))
    throw new BadRequestException('Versioned object-store readback provenance required');
   if(object.bytes.length<16||object.bytes.length>MAX_BYTES)
    throw new BadRequestException('Media byte size outside acceptance range');
   const detectedMime=identify(object.bytes);
   if(!detectedMime)throw new BadRequestException('Unsupported or unrecognized media signature');
+  const scan=object.malwareScan;
+  if(scan!==undefined&&(scan.status!=='CLEAN'||typeof scan.scannerId!=='string'||
+      !/^[A-Za-z0-9_.-]{3,80}$/.test(scan.scannerId)))
+   throw new BadRequestException('Invalid trusted malware scan provenance');
+  const malwareScanStatus=scan?.status??'NOT_SCANNED';
+  const scannerId=scan?.scannerId??null;
   const actualDigest=digest(object.bytes);
   if(actualDigest!==revision.renditionDigest)
    throw new ConflictException('Readback SHA-256 differs from immutable creative revision');
@@ -100,7 +110,8 @@ export class VerifiedMediaEvidenceService{
    if(existing){
     if(existing.status!=='VERIFIED_READBACK'||existing.sha256Digest!==actualDigest||
       existing.objectVersion!==object.objectVersion||existing.sizeBytes!==object.bytes.length||
-      existing.detectedMime!==detectedMime)
+      existing.detectedMime!==detectedMime||
+      existing.malwareScanStatus!==malwareScanStatus||existing.scannerId!==scannerId)
      throw new ConflictException('Media evidence differs from original immutable object version');
     return{evidenceId:existing.id,status:existing.status,replayed:true,
      externalEffectsAuthorized:false};
@@ -109,17 +120,19 @@ export class VerifiedMediaEvidenceService{
     id:randomUUID(),organizationId,creativeAssetRevisionId:revisionId,
     sourceRef:current.sourceRef,objectVersion:object.objectVersion,
     sha256Digest:actualDigest,sizeBytes:object.bytes.length,
-    detectedMime,verifiedBy:verifierId
+    detectedMime,verifiedBy:verifierId,malwareScanStatus,scannerId
    }});
    await tx.auditEvent.create({data:{organizationId,actorType:'SYSTEM',
     actorId:verifierId,action:'MEDIA_BYTES_READBACK_VERIFIED',
     objectType:'CreativeAssetRevision',objectId:revisionId,correlationId:created.id,
     after:{sha256Digest:actualDigest,sizeBytes:created.sizeBytes,
      objectVersion:created.objectVersion,detectedMime,
+     malwareScanStatus,scannerId,
      signatureOnly:true,fullMediaDecodeValidated:false,
      externalEffectsAuthorized:false}}});
    return{evidenceId:created.id,status:created.status,replayed:false,
-    sha256Digest:actualDigest,externalEffectsAuthorized:false};
+    sha256Digest:actualDigest,malwareScanStatus,
+    externalEffectsAuthorized:false};
   });
  }
  async revoke(organizationId:string,actorId:string,revisionIdInput:unknown,
