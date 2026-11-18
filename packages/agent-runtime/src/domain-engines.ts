@@ -1,5 +1,6 @@
 import type { Agent, AgentContext, AgentDecision } from './index.js';
 import { assessDomain } from './domain-intelligence.js';
+import { createMarketingWorkPackage } from './domain-work-packages.js';
 import { AGENT_ROSTER, type AgentManifest } from './roster.js';
 
 type StructuredInput = Record<string, unknown>;
@@ -68,7 +69,7 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
     riskLevel: scientific ? 'R3' : highRisk || external ? 'R2' : 'R1',
     rationale: manifest.mission + ' Output is a deterministic proposal, not an authoritative write or verified external fact.',
     approvalRequired: output.controls.humanApproval,
-    payload: {...output, domainAssessment: assessment}
+    payload: {...output, domainAssessment: assessment, workPackage: createMarketingWorkPackage(manifest.id,input)}
   };
 }
 export class MarketingDomainAgent implements Agent {
