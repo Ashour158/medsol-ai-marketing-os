@@ -12,7 +12,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "performance" && !((path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
         (path.length===2&&request.method==="POST"&&(id==="ingest"||id==="review")))) ||
-      (resource === "command-center" && !(request.method === "GET" && (path.length === 1 || (path.length === 3 && id === "incidents" && ["BRAIN_NEEDS_INTERVENTION","BRAIN_STALE","OUTBOX_DEAD_LETTER"].includes(action))))) ||
+      (resource === "command-center" && !(request.method === "GET" && (path.length === 1 || (path.length === 3 && id === "incidents" && ["BRAIN_NEEDS_INTERVENTION","BRAIN_STALE","OUTBOX_DEAD_LETTER"].includes(action??""))))) ||
       (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "objectives" && (path.length !== 1 || !["GET", "POST"].includes(request.method))) ||
       (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
