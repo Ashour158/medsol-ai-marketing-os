@@ -1,6 +1,8 @@
 import {describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
+import {PlatformIntegrationHubService} from './platform-integration-hub.service.js';
+import {VerifiedMediaEvidenceService} from './verified-media-evidence.service.js';
 import {CampaignService} from './campaign.service.js';
 import {CreativeAssetService} from './creative-asset.service.js';
 import {ApprovalService} from './approval.service.js';
@@ -11,7 +13,8 @@ import {permissionForMarketingRoute,hasMarketingPermission} from './marketing-pe
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 const later=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
-const digest='sha256:'+'c'.repeat(64);
+const mediaBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0pUAAAAASUVORK5CYII=','base64');
+const digest='sha256:'+createHash('sha256').update(mediaBytes).digest('hex');
 describe('R2 governed sandbox publication from real approved campaign and creative',()=>{
  it.skipIf(!enabled)('runs independent human approvals → exact preflight → one sandbox receipt → source-only metrics',async()=>{
   const db=new PrismaClient(),org='r2-org-'+randomUUID(),foreign='r2-other-'+randomUUID();
@@ -40,6 +43,8 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    } as any);
    const creatives=new CreativeAssetService(db as any);
    const publications=new CampaignPublicationService(db as any);
+   const hub=new PlatformIntegrationHubService(db as any);
+   const mediaVerifier=new VerifiedMediaEvidenceService(db as any);
    const campaign=await campaigns.create({organizationId:org,commandId:randomUUID(),
     correlationId:randomUUID(),code:'R2-'+randomUUID().slice(0,8).toUpperCase(),
     name:'Authorized creative launch',objectiveId:objective.id,brandId,riskLevel:'R2'},creator) as {
@@ -64,10 +69,17 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     expectedVersion:0,sourceKind:'EDITABLE_SOURCE',sourceRef:'internal:creative-source/r2-demo',
     rightsExpiresAt:later(70),renditionDigest:digest
    });
+   const destination=await hub.register(org,reviewer,{
+    brandId,providerKey:'LINKEDIN',destinationLabel:'Controlled integration fixture'});
+   const verified=await mediaVerifier.verifyReadback(org,'trusted-storage-worker',version.revisionId,{
+    readVersion:async(input)=>({sourceRef:input.sourceRef,
+     objectVersion:'r2-immutable-object-v1',bytes:mediaBytes})
+   });
+   expect(verified).toMatchObject({status:'VERIFIED_READBACK',externalEffectsAuthorized:false});
    await creatives.reviewRights(org,reviewer,version.revisionId,
     'Reviewed authorized licensing for internal test');
    const preparedCreative=await creatives.submitForApproval(org,creator,version.revisionId,{
-    channel:'SOCIAL',destinationRef:'internal:connected-destination/staging-demo',
+    channel:'SOCIAL',destinationRef:destination.destinationRef,
     audienceRef:'internal:audience-snapshot/staging-demo',policyVersion:'v1',
     scheduledAt:later(10),expiresAt:later(8)
    });
@@ -91,6 +103,12 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    expect(gate).toMatchObject({internalReady:true,externalReady:false,
     externalEffectsAuthorized:false,independentlyVerified:false});
    expect(gate.limitations).toContain('provider_account_credentials_and_scopes_unconnected');
+   expect(gate.integrationEvidence).toMatchObject({
+    destinationRegistered:true,destinationStatus:'PENDING_VERIFICATION',
+    mediaBytesReadbackVerified:true,mediaObjectVersion:'r2-immutable-object-v1',
+    providerCredentialsVerified:false,providerPublishingCapabilityVerified:false,
+    verifiedExternalDestination:false
+   });
    await expect(publications.simulate(foreign,creator,intent.publicationId,1)).rejects.toThrow('not found');
    await expect(publications.simulate(org,creator,intent.publicationId,2)).rejects.toThrow('no longer ready');
    const executed=await publications.simulate(org,creator,intent.publicationId,1);
