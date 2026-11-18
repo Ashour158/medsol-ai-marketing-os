@@ -6,6 +6,7 @@ export type MarketingWorkPackage={
  successIndicators:string[]; reviewOwner:string; blockedOn:string[];
  references:{topic:string;url:string;verification:'UNVERIFIED'}[];
  catalog:{source:string|null;product:{id:string;code:string;name:string;vendor:string|null}|null;objective:{id:string;name:string}|null;scientificClaimsVerified:false;regulatoryApprovalVerified:false};
+ marketingEvidence:{campaignId:string|null;reviewedTotals:Record<string,string>;reviewStatus:string;attributionValidated:false};
  executable:false;
 };
 type Playbook={deliverable:string;inputs:string[];steps:string[];checks:string[];metrics:string[];owner:string};
@@ -45,6 +46,24 @@ export function createMarketingWorkPackage(agentId:string,raw:unknown):Marketing
       {id:objective.id,name:objective.name}:null,
     scientificClaimsVerified:false as const,regulatoryApprovalVerified:false as const
  };
+ const performance=input.performanceContext&&typeof input.performanceContext==='object'?
+  input.performanceContext as Record<string,unknown>:{};
+ const rawTotals=performance.totals&&typeof performance.totals==='object'&&!Array.isArray(performance.totals)?
+  performance.totals as Record<string,unknown>:{};
+ const knownMetrics=new Set(['impressions','clicks','engagements','leads','qualified_leads','spend_micros']);
+ const reviewedTotals:Record<string,string>={};
+ if(performance.status==='REVIEWED_SOURCE_EVIDENCE'){
+  for(const [key,value] of Object.entries(rawTotals)){
+   if(knownMetrics.has(key)&&typeof value==='string'&&/^\\d{1,24}$/.test(value))reviewedTotals[key]=value;
+  }
+ }
+ const marketingEvidence={
+   campaignId:performance.campaign&&typeof performance.campaign==='object'?
+    text((performance.campaign as Record<string,unknown>).id):null,
+   reviewedTotals,reviewStatus:performance.status==='REVIEWED_SOURCE_EVIDENCE'?
+    'HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED':'INSUFFICIENT_REVIEWED_DATA',
+   attributionValidated:false as const
+ };
  const references:{topic:string;url:string;verification:'UNVERIFIED'}[]=[];
  for(const topic of topics){
   if(!topic||typeof topic!=='object')continue;
@@ -61,5 +80,5 @@ export function createMarketingWorkPackage(agentId:string,raw:unknown):Marketing
   market:text(input.market),audience:text(input.targetAudience),
   requiredInputs:[...playbook.inputs],analysisSteps:[...playbook.steps],acceptanceChecks:[...playbook.checks],
   successIndicators:[...playbook.metrics],reviewOwner:playbook.owner,blockedOn:[...playbook.inputs],
-  references,catalog,executable:false};
+  references,catalog,marketingEvidence,executable:false};
 }
