@@ -2,12 +2,14 @@
 import { useState } from "react";
 import OperationsConsole from "./operations-console";
 import CreativeGovernanceStudio from "./creative-governance-studio";
+import CampaignPublicationStudio from "./campaign-publication-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
   const [organizationId, setOrganizationId] = useState("");
   const [goal, setGoal] = useState("");
   const [objectiveId, setObjectiveId] = useState("");
+  const [campaignBrandId, setCampaignBrandId] = useState("");
   const [newObjectiveName, setNewObjectiveName] = useState("");
   const [newObjectiveDescription, setNewObjectiveDescription] = useState("");
   const [workflowId, setWorkflowId] = useState("");
@@ -89,7 +91,7 @@ export default function Home() {
     try { await action(); } catch (e) { setError(e instanceof Error ? e.message : "Unexpected error"); }
     finally { setBusy(false); }
   }
-  const request = { organizationId: organizationId.trim(), requestedOutcome: goal.trim(), ...(objectiveId.trim() ? { objectiveId: objectiveId.trim() } : {}) };
+  const request = { organizationId: organizationId.trim(), requestedOutcome: goal.trim(), ...(objectiveId.trim() ? { objectiveId: objectiveId.trim() } : {}), ...(campaignBrandId.trim()?{brandId:campaignBrandId.trim()}: {}) };
   const buttonStyle = { padding: "11px 16px", background: "#124d83", color: "white", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 700 as const };
   const fieldStyle = { width: "100%", boxSizing: "border-box" as const, padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, marginTop: 6 };
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: "42px 24px", fontFamily: "Arial,sans-serif" }}>
@@ -115,6 +117,7 @@ export default function Home() {
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
     <CreativeGovernanceStudio identity={identity} />
+    <CampaignPublicationStudio identity={identity}/>
     <OperationsConsole identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
@@ -162,6 +165,8 @@ export default function Home() {
       <h2 style={{ marginTop: 0 }}>3. Assess and initiate a campaign</h2>
       <label>Marketing objective<textarea style={{ ...fieldStyle, minHeight: 100 }} value={goal} onChange={e => setGoal(e.target.value)} placeholder="Launch an oncology genomics awareness campaign in Egypt" /></label>
       <label style={{ display: "block", marginTop: 14 }}>Existing marketing objective ID (required to create a campaign)<input style={fieldStyle} value={objectiveId} onChange={e => setObjectiveId(e.target.value)} placeholder="UUID from marketing objectives" /></label>
+      <label style={{display:"block",marginTop:14}}>Tenant brand ID (required for R2 sandbox publication)<input style={fieldStyle} value={campaignBrandId} onChange={e=>setCampaignBrandId(e.target.value)} placeholder="Existing active tenant Brand ID"/></label>
+      <p style={{fontSize:12,color:"#64748b"}}>The existing 13-agent governed workflow creates a brand-bound campaign. It still requires independent human campaign approval, plus a separate creative approval, before any R2 sandbox simulation.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
         <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => { setAssessment(await call("requests", request)); })}>Assess objective</button>
         <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => { const result = await call("workflows", request) as Workflow; setWorkflow(result); if (result.workflowExecutionId) setWorkflowId(result.workflowExecutionId); })}>Start governed workflow</button>

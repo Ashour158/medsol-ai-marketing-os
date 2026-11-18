@@ -131,3 +131,11 @@ The first v2.1 code implements bounded, review-only decisions in `packages/agent
 The existing `Approval` and `ApprovalService` own decisions for CreativeAssetRevision as well as Campaign. New optional exact-scope fields bind media digest/source, asset revision, brand, policy, destination, audience and schedule. A different human creator/reviewer and independently reviewed, unexpired rights are mandatory. Adding a revised asset or changing the approved Brand Master invalidates an older approval; no new external delivery permission is ever implied.
 
 Both new asset tables use transaction-local tenant context and FORCE RLS. **Existing organization/session is still single-tenant pilot configured and global RLS has not been deployed to all existing tables**. Provider-backed uploads, consent snapshots, platform destinations, customer-ready agency access and staged multi-tenant IAM remain blockers.
+
+## R2 first governed publication vertical slice
+
+[Single-authority Reuse Map, workflow wiring, SQL controls, full PostgreSQL acceptance and live-provider safety gates](R2_GOVERNED_SOCIAL_PUBLICATION_SANDBOX.md).
+
+R2 now has an internal, executable sandbox from approved brand-bound campaign to independently reviewed creative and exact-version approval, publication-intent creation, preflight revalidation, one synthetic receipt and separately reviewed performance evidence. The sole Campaign owner, DAM owner, ApprovalService, OutboxEvent transport, MarketingWorkflowService and MarketingPerformanceService remain unchanged; the only new aggregate is CampaignPublication, the authoritative desired publication action. No live external platform or consent integration exists, and the database schema **prohibits** `PUBLISHED` as a status for this tranche.
+
+Do not reclassify E13/WF social platform delivery as commercially complete: media byte verification, verified provider accounts/scopes, signed webhook receipts, region/consent policy, tenant identity/RLS coverage, real staging and independent product acceptance remain mandatory.

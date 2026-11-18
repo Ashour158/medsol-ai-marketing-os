@@ -34,6 +34,15 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 }
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
+  if(method==='GET'&&path==='/marketing/publications')return 'READ_PORTFOLIO';
+  if(method==='GET'&&/^\/marketing\/publications\/[^/]+$/.test(path))return 'READ_AUDIT';
+  if(method==='GET'&&/^\/marketing\/publications\/[^/]+\/(preflight|performance)$/.test(path))
+   return 'READ_AUDIT';
+  if(method==='POST'&&path==='/marketing/publications')return 'MANAGE_CAMPAIGN';
+  if(method==='POST'&&/^\/marketing\/publications\/[^/]+\/simulate$/.test(path))
+   return 'EXECUTE_WORKFLOW';
+  if(method==='POST'&&/^\/marketing\/publications\/[^/]+\/cancel$/.test(path))
+   return 'MANAGE_CAMPAIGN';
   if(method==='GET'&&(
     path==='/marketing/assets'||/^\/marketing\/assets\/[^/]+$/.test(path)))
    return 'READ_PORTFOLIO';
