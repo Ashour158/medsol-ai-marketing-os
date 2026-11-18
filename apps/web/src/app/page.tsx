@@ -10,6 +10,7 @@ export default function Home() {
   const [workflowId, setWorkflowId] = useState("");
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [agents, setAgents] = useState<unknown>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<unknown>(null);
   const [assessment, setAssessment] = useState<unknown>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,6 +67,13 @@ export default function Home() {
         <button style={buttonStyle} disabled={busy || !workflowId.trim() || (workflow?.status !== "FAILED")} onClick={() => perform(async () => { setWorkflow(await call("workflows/" + encodeURIComponent(workflowId.trim()) + "/resume", {}) as Workflow); })}>Resume failed workflow</button>
       </div>
       {workflow && <><p><strong>Status:</strong> {workflow.status ?? "Unknown"} · <strong>Step:</strong> {workflow.currentStep ?? "Unknown"}</p><details><summary>Workflow details and checkpoints</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(workflow, null, 2)}</pre></details></>}
+    </section>
+    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+      <h2 style={{ marginTop: 0 }}>4. Pending human approvals</h2>
+      <p style={{ color: "#64748b" }}>Read-only approval inbox. Decisions are blocked until individual approver authentication is available.</p>
+      <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { setPendingApprovals(await call("approvals/pending")); })}>Refresh approval inbox</button>
+      {Array.isArray(pendingApprovals) && <p>{pendingApprovals.length} pending approval(s)</p>}
+      {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
     </section>
     {error && <p role="alert" style={{ color: "#a11919", padding: 16, background: "#fff1f1", borderRadius: 8 }}>{error}</p>}
     <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions are intentionally unavailable in this console until per-user authentication and approver identity verification are implemented.</p>
