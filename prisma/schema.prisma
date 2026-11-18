@@ -845,4 +845,5 @@ model ProviderWebhookObservation {
   @@unique([organizationId,id])
   @@unique([organizationId,integrationConnectionId,payloadDigest],map:"ProviderWebhookObs_org_conn_payload_key")
   @@index([organizationId,integrationConnectionId,status,verifiedAt],map:"ProviderWebhookObs_org_conn_state_time_idx")
+  @@index([organizationId,integrationConnectionId,candidatePostDigest],map:"ProviderWebhookObs_org_conn_post_idx")
 }
