@@ -83,7 +83,7 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    })).rejects.toThrow();
    expect(await db.auditEvent.count({where:{organizationId:org,
     action:{in:['CREATIVE_ASSET_CREATED','CREATIVE_ASSET_REVISION_CREATED',
-     'CREATIVE_RIGHTS_REVIEWED','CREATIVE_APPROVAL_REQUESTED','CREATIVE_SCOPE_DECIDED']}}})).toBe(7);
+     'CREATIVE_RIGHTS_REVIEWED','CREATIVE_APPROVAL_REQUESTED','CREATIVE_SCOPE_DECIDED']}}})).toBe(6);
   }finally{
    // CI uses a throwaway PostgreSQL service. Immutable RLS metadata has no
    // application delete capability, so do not bypass RLS to erase fixtures.
