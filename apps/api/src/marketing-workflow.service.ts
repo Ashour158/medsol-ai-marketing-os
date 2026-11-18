@@ -43,15 +43,15 @@ export class MarketingWorkflowService {
   private async execute(workflowId: string, request: MarketingRequest, correlationId: string, lease: WorkflowLease): Promise<WorkflowResult> {
     try {
       const cmo = await this.step(workflowId, lease, 'CMO_ASSESSMENT', request, () => this.agents.execute('MKT-CMO-001', { organizationId: request.organizationId, correlationId, input: request, capabilities: ['ASSESS_OBJECTIVE'] }));
-      const strategy = await this.step(workflowId, 'STRATEGY_ASSESSMENT', { request, cmo: cmo.decision.payload }, () => this.agents.execute('MKT-STR-001', { organizationId: request.organizationId, correlationId, causationId: cmo.executionId, input: { request, cmo: cmo.decision.payload }, capabilities: ['ASSESS_MARKET'] }));
+      const strategy = await this.step(workflowId, lease, 'STRATEGY_ASSESSMENT', { request, cmo: cmo.decision.payload }, () => this.agents.execute('MKT-STR-001', { organizationId: request.organizationId, correlationId, causationId: cmo.executionId, input: { request, cmo: cmo.decision.payload }, capabilities: ['ASSESS_MARKET'] }));
       if (!request.objectiveId) return this.finish(workflowId, lease, 'OBJECTIVE_REQUIRED', { cmo: cmo.decision.payload, strategy: strategy.decision.payload, nextAction: 'Provide objectiveId before campaign creation.' });
       const code = 'MKT-' + Date.now().toString(36).toUpperCase() + '-' + randomUUID().slice(0, 6).toUpperCase();
-      const campaign = await this.step(workflowId, 'CAMPAIGN_CREATION', { request, strategy: strategy.decision.payload }, () => this.campaigns.create({ commandId: workflowId + ':CAMPAIGN_CREATION', correlationId, organizationId: request.organizationId, objectiveId: request.objectiveId!, productId: request.productId, code, name: request.requestedOutcome, riskLevel: 'R2' }));
+      const campaign = await this.step(workflowId, lease, 'CAMPAIGN_CREATION', { request, strategy: strategy.decision.payload }, () => this.campaigns.create({ commandId: workflowId + ':CAMPAIGN_CREATION', correlationId, organizationId: request.organizationId, objectiveId: request.objectiveId!, productId: request.productId, code, name: request.requestedOutcome, riskLevel: 'R2' }));
       const transitions = [['ASSESSMENT', 'CAMPAIGN_ASSESSMENT'], ['PROPOSED', 'CAMPAIGN_PROPOSAL'], ['APPROVAL_PENDING', 'APPROVAL_GATE']] as const;
       let last = campaign;
       for (const [to, stepKey] of transitions) {
         const currentVersion = (last as { version: number }).version;
-        last = await this.step(workflowId, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: (campaign as {campaignId:string}).campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
+        last = await this.step(workflowId, lease, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: (campaign as {campaignId:string}).campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
       }
       await this.leases.assertActive(lease);
       const waiting = await this.db.workflowExecution.updateMany({ where: { id: workflowId, organizationId: request.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } });
