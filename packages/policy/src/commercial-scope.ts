@@ -53,7 +53,8 @@ export function authorizeCommercialScope(i:CommercialAuthorizationInput,now=new 
  if(!i||!i.identity||!i.resource||!i.tenant||!i.dataUse)
   return{allowed:false,reasons:['incomplete_trusted_authorization_context'],
    externalEffectAuthorized:false};
- if(!i.identity.verified||!i.identity.humanId||!i.identity.homeTenantId)
+ if(!SUPPORTED_ACTIONS.has(i.action))deny('unknown_commercial_action');
+ if(i.identity.verified!==true||!i.identity.humanId||!i.identity.homeTenantId)
   deny('verified_human_identity_required');
  if(!i.resource.tenantId)deny('resource_tenant_required');
  if(!i.identity.grantedActions?.includes(i.action))deny('actor_action_not_granted');
