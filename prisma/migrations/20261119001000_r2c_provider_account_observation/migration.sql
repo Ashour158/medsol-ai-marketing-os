@@ -59,6 +59,9 @@ ALTER TABLE "ProviderAccountObservation" ADD CONSTRAINT "ProviderAccountObs_org_
 CREATE FUNCTION r2c_protect_account_observation() RETURNS trigger AS $$
 DECLARE matches integer;
 BEGIN
+ IF TG_OP='DELETE' THEN
+  RAISE EXCEPTION 'Provider account observation cannot be deleted' USING ERRCODE='23514';
+ END IF;
  IF TG_OP='INSERT' THEN
   SELECT COUNT(*) INTO matches FROM "ProviderCredential" cred
    JOIN "IntegrationConnection" conn
@@ -100,7 +103,7 @@ BEGIN
  RETURN NEW;
 END; $$ LANGUAGE plpgsql;
 CREATE TRIGGER "ProviderAccountObservation_protect_provenance"
- BEFORE INSERT OR UPDATE ON "ProviderAccountObservation"
+ BEFORE INSERT OR UPDATE OR DELETE ON "ProviderAccountObservation"
  FOR EACH ROW EXECUTE FUNCTION r2c_protect_account_observation();
 
 ALTER TABLE "ProviderAccountObservation" ENABLE ROW LEVEL SECURITY;
