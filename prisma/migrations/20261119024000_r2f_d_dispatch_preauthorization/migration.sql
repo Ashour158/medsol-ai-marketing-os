@@ -105,3 +105,44 @@ CREATE TRIGGER "PublicationAttempt_validate_authorization_escrow"
 
 -- Existing append-only UPDATE/DELETE trigger, immutable publication identity
 -- and FORCE tenant RLS continue to apply. No provider HTTP egress or unlock.
+
+-- Prevent bypassing the escrow lifetime through direct UPDATE of publication.
+-- This trigger does not authorize a provider send; it only protects transitions.
+CREATE FUNCTION r2f_d_guard_escrow_publication_state() RETURNS trigger AS $$
+DECLARE escrow_expiry TIMESTAMP(3);
+BEGIN
+ IF NEW."status"='AWAITING_AUTHORIZATION' AND
+    OLD."status" IS DISTINCT FROM NEW."status" THEN
+  IF OLD."status"<>'PREPARED' OR NEW."version"<>OLD."version"+1
+   OR NOT EXISTS(
+    SELECT 1 FROM "PublicationAttempt" a
+    WHERE a."organizationId"=OLD."organizationId"
+     AND a."publicationId"=OLD."id"
+     AND a."mode"='DISPATCH_RESERVATION'
+     AND a."outcome"='AWAITING_AUTHORIZATION'
+   ) THEN
+   RAISE EXCEPTION 'Dispatch preauthorization requires one committed reservation'
+    USING ERRCODE='23514';
+  END IF;
+ END IF;
+ IF OLD."status"='AWAITING_AUTHORIZATION' THEN
+  SELECT "reservationExpiresAt" INTO escrow_expiry
+   FROM "PublicationAttempt"
+   WHERE "organizationId"=OLD."organizationId"
+    AND "publicationId"=OLD."id" AND "mode"='DISPATCH_RESERVATION';
+  IF NEW."status"<>'BLOCKED' OR NEW."version"<>OLD."version"+1
+    OR escrow_expiry IS NULL OR escrow_expiry>CURRENT_TIMESTAMP THEN
+   RAISE EXCEPTION 'Preauthorization can only close as BLOCKED after expiry'
+    USING ERRCODE='23514';
+  END IF;
+ END IF;
+ IF OLD."status" IN ('BLOCKED','CANCELLED','SIMULATED','OUTCOME_UNKNOWN')
+   AND NEW."status" IS DISTINCT FROM OLD."status" THEN
+  RAISE EXCEPTION 'Terminal publication status cannot be reopened'
+   USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER "CampaignPublication_guard_escrow_state"
+ BEFORE UPDATE ON "CampaignPublication" FOR EACH ROW
+ EXECUTE FUNCTION r2f_d_guard_escrow_publication_state();
