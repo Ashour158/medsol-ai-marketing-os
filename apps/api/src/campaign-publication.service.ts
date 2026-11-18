@@ -264,7 +264,10 @@ export class CampaignPublicationService{
      ...base,candidateAccountDigest,candidatePostDigest:{not:null}
     }});
    }
-   const reasons:string[]=[];
+   // Reuse the canonical human/brand/rights/creative policy preflight;
+   // correlation must never become an alternate approval decision engine.
+   const existingGate=await this.check(tx,organizationId,pub);
+   const reasons:string[]=[...existingGate.reasons];
    if(!exactScope)reasons.push('exact_publication_approval_scope_invalid');
    if(!connection)reasons.push('registered_provider_destination_not_found');
    if(connection?.status!=='PENDING_VERIFICATION')
@@ -277,6 +280,7 @@ export class CampaignPublicationService{
    if(postClaims>0)reasons.push('provider_post_claim_not_linked_to_outbound_dispatch');
    return{
     publicationId,publicationStatus:pub.status,
+    approvalPreflightReady:existingGate.internalReady,
     scopeDigest:pub.scopeDigest,providerKey:connection?.providerKey??null,
     connectionStatus:connection?.status??null,
     correlationState:remoteAttempts>0?'OUTCOME_UNKNOWN':'NO_AUTHORIZED_REMOTE_ATTEMPT',
