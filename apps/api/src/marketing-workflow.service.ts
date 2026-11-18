@@ -43,7 +43,7 @@ export class MarketingWorkflowService {
       let last = campaign;
       for (const [to, stepKey] of transitions) {
         const currentVersion = (last as { version: number }).version;
-        last = await this.step(workflowId, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: campaign.campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
+        last = await this.step(workflowId, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: (campaign as {campaignId:string}).campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
       }
       await this.db.workflowExecution.update({ where: { id: workflowId }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } });
       return { workflowExecutionId: workflowId, status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', correlationId, output: { campaign: last, message: 'Campaign is waiting for human approval.' } };
@@ -86,7 +86,7 @@ export class MarketingWorkflowService {
   private async step<T>(workflowId: string, stepKey: string, input: unknown, run: () => Promise<T>): Promise<T> {
     const existing = await this.db.workflowStepExecution.findUnique({ where: { workflowExecutionId_stepKey: { workflowExecutionId: workflowId, stepKey } } });
     if (existing?.status === 'COMPLETED') return existing.output as T;
-    if (existing?.status === 'FAILED') await this.db.workflowStepExecution.update({ where: { id: existing.id }, data: { status: 'RUNNING', attempt: { increment: 1 }, error: null, completedAt: null } });
+    if (existing?.status === 'FAILED') await this.db.workflowStepExecution.update({ where: { id: existing.id }, data: { status: 'RUNNING', attempt: { increment: 1 }, error: { set: null }, completedAt: null } });
     const workflow = await this.db.workflowExecution.findUniqueOrThrow({ where: { id: workflowId } });
     const step = existing ?? await this.db.workflowStepExecution.create({ data: { workflowExecutionId: workflowId, organizationId: workflow.organizationId, stepKey, status: 'RUNNING', input: input as any } });
     await this.db.workflowExecution.update({ where: { id: workflowId }, data: { currentStep: stepKey } });
