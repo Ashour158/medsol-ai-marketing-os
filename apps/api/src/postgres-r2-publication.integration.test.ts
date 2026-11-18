@@ -488,6 +488,67 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    })).rejects.toThrow();
    await expect(publications.dispatchReservationStatus(
     foreign,escrowPublicationId)).rejects.toThrow('not found');
+   // Crash-recovery rehearsal: a real SQL-timestamped escrow expires without
+   // any outbound send, and only then can a privileged operator close it.
+   const expApprovalId=randomUUID(),expPublicationId=randomUUID();
+   const expiry=new Date(Date.now()+5500);
+   await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    await tx.approval.create({data:{
+     id:expApprovalId,organizationId:org,
+     objectType:'CreativeAssetRevision',objectId:version.revisionId,
+     creativeAssetRevisionId:version.revisionId,requestedBy:creator,
+     requiredAuthority:'HUMAN_CREATIVE_RELEASE',riskLevel:'R2',
+     decision:'APPROVED',decidedBy:reviewer,decidedAt:new Date(),
+     scope:originalApproval.scope!,scopeDigest:originalApproval.scopeDigest!,
+     scopeExpiresAt:originalApproval.scopeExpiresAt
+    }});
+    await tx.campaignPublication.create({data:{
+     id:expPublicationId,organizationId:org,campaignId:campaign.campaignId,
+     creativeAssetRevisionId:version.revisionId,approvalId:expApprovalId,
+     scopeDigest:originalApproval.scopeDigest!,requestKey:randomUUID(),
+     createdBy:creator,status:'PREPARED',version:1
+    }});
+    await tx.publicationAttempt.create({data:{
+     id:randomUUID(),organizationId:org,publicationId:expPublicationId,
+     sequence:1,mode:'DISPATCH_RESERVATION',outcome:'AWAITING_AUTHORIZATION',
+     evidenceRef:'internal:dispatch-reservation/'+'a'.repeat(64),
+     inputDigest:originalApproval.scopeDigest!,recordedBy:reviewer,
+     integrationConnectionId:destination.id,providerKey:'META_GRAPH',
+     reservationExpiresAt:expiry
+    }});
+    await tx.campaignPublication.updateMany({where:{
+     organizationId:org,id:expPublicationId,status:'PREPARED',version:1
+    },data:{status:'AWAITING_AUTHORIZATION',version:{increment:1}}});
+   });
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.campaignPublication.update({where:{id:expPublicationId},
+     data:{status:'PREPARED'}});
+   })).rejects.toThrow();
+   const remaining=expiry.getTime()-Date.now();
+   if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining+100));
+   expect(await publications.dispatchReservationStatus(org,expPublicationId))
+    .toMatchObject({authorizationEscrowState:'EXPIRED_NOT_SENT',
+     authorizedRemoteAttempt:false,providerRequestsMade:0,
+     safeToAutomaticallyRetry:false});
+   const recovered=await publications.expireDispatchPreauthorization(
+    org,identity,expPublicationId,2);
+   expect(recovered).toMatchObject({status:'BLOCKED',replayed:false,
+    authorizedRemoteAttempt:false,externalEffectsAuthorized:false});
+   expect(await publications.expireDispatchPreauthorization(
+    org,identity,expPublicationId,3)).toMatchObject({
+     status:'BLOCKED',replayed:true
+    });
+   expect(await publications.dispatchReservationStatus(org,expPublicationId))
+    .toMatchObject({authorizationEscrowState:'CLOSED_NOT_SENT',
+     authorizedRemoteAttempt:false});
+   expect(await db.auditEvent.count({where:{organizationId:org,
+    objectId:expPublicationId,
+    action:'CAMPAIGN_PUBLICATION_PREAUTHORIZATION_EXPIRED'}})).toBe(1);
+   expect(await db.outboxEvent.count({where:{organizationId:org,
+    aggregateId:expPublicationId,
+    eventType:'CampaignPublicationPreauthorizationExpiredInternal'}})).toBe(1);
    // A new creative version changes the authoritative asset and invalidates
    // the old exact approval; its old simulated result remains evidence only.
    await creatives.addRevision(org,creator,asset.id,{
