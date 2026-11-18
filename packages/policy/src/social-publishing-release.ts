@@ -79,3 +79,31 @@ export function evaluateSocialPublishingRelease(
  return{eligible:missing.length===0,externalEffectAuthorized:false,
   missing,evidenceChecks:Object.freeze(checked)};
 }
+
+/** Explicit crash/timeout model for future official provider adapters.
+ * A transport HTTP 2xx, webhook or signed claim is never remote receipt
+ * confirmation. An external attempt may NOT automatically be replayed.
+ * Only the existing publication owner may eventually reconcile it against
+ * an authenticated provider readback and exact dispatch identity.
+ */
+export type UnreconciledProviderTransport=
+ 'NOT_SENT'|'HTTP_ACCEPTED_UNVERIFIED'|'HTTP_REJECTED_UNVERIFIED'|
+ 'TIMEOUT'|'CONNECTION_RESET'|'SERVER_ERROR'|'CALLBACK_ONLY'|'UNKNOWN';
+export type UnreconciledDispatchDecision={
+ outcome:'BLOCKED'|'OUTCOME_UNKNOWN';
+ automaticRetryAllowed:false;
+ remoteDeliveryVerified:false;
+ requiresIndependentReadback:boolean;
+};
+export function classifyUnreconciledProviderDispatch(
+ event:UnreconciledProviderTransport
+):UnreconciledDispatchDecision{
+ if(event==='NOT_SENT'){
+  return{outcome:'BLOCKED',automaticRetryAllowed:false,
+   remoteDeliveryVerified:false,requiresIndependentReadback:false};
+ }
+ // Unknown or even apparently successful HTTP responses are not sufficient
+ // evidence that the correct remote post exists and belongs to this dispatch.
+ return{outcome:'OUTCOME_UNKNOWN',automaticRetryAllowed:false,
+  remoteDeliveryVerified:false,requiresIndependentReadback:true};
+}
