@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const routes = new Set(["agents", "requests", "workflows", "approvals"]);
+const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products"]);
 const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001";
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const [resource, id, action] = path;
   if (!resource || !routes.has(resource) || path.length > 3 ||
-      (resource === "agents" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "objectives" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "campaigns" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id)))) ||
+      (resource === "agents" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && id === "executions")))) ||
       (resource === "approvals" && !(path.length === 2 && id === "pending" && request.method === "GET")) ||
       (resource === "requests" && (path.length !== 1 || request.method !== "POST")) ||
       (resource === "workflows" && !(
-        (path.length === 1 && request.method === "POST") ||
+        (path.length === 1 && (request.method === "POST" || request.method === "GET")) ||
         (path.length === 2 && request.method === "GET" && !!id) ||
         (path.length === 3 && request.method === "POST" && action === "resume" && !!id)
       ))) return NextResponse.json({ error: "Route not supported" }, { status: 404 });
