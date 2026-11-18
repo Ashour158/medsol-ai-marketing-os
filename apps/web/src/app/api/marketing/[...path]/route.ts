@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products"]);
+const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products", "me"]);
 const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001";
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const [resource, id, action] = path;
   if (!resource || !routes.has(resource) || path.length > 3 ||
+      (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "objectives" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "campaigns" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id)))) ||
       (resource === "agents" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && id === "executions")))) ||
-      (resource === "approvals" && !(path.length === 2 && id === "pending" && request.method === "GET")) ||
+      (resource === "approvals" && !((path.length === 2 && id === "pending" && request.method === "GET") || (path.length === 2 && id === "decide" && request.method === "POST"))) ||
       (resource === "requests" && (path.length !== 1 || request.method !== "POST")) ||
       (resource === "workflows" && !(
         (path.length === 1 && (request.method === "POST" || request.method === "GET")) ||
