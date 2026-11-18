@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: Medsol AI Marketing OS Brain recovery evidence (read-only subset)
+  version: 0.3.2
+  description: Manager-audited read-only evidence endpoint, not a recovery actuator
+paths:
+  /marketing/brain/runs/{id}/recovery:
+    get:
+      summary: Inspect durable Brain crash-window evidence without executing agents
+      operationId: inspectBrainRecoveryEvidence
+      security:
+        - bearerAuth: []
+      description: >
+        Requires an authenticated tenant session and READ_AUDIT role. Read-only:
+        report does not retry an agent, checkpoint a run or release budget.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 128}
+        - name: x-marketing-session-id
+          in: header
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Tenant-scoped bounded recovery investigation summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runId, runStatus, completedSteps, totalSteps,
+                  automaticReplayAllowed, automaticCheckpointAllowed,
+                  externalPublishingAuthorized, evidenceStatus, operatorAction]
+                properties:
+                  runId: {type: string}
+                  runStatus: {type: string}
+                  completedSteps: {type: integer, minimum: 0}
+                  totalSteps: {type: integer, minimum: 0}
+                  evidenceStatus: {type: string}
+                  automaticReplayAllowed: {type: boolean, const: false}
+                  automaticCheckpointAllowed: {type: boolean, const: false}
+                  externalPublishingAuthorized: {type: boolean, const: false}
+                  candidateCountAtLeast: {type: integer, minimum: 0}
+                  candidatesTruncated: {type: boolean}
+                  candidateExecutions:
+                    type: array
+                    maxItems: 100
+                    items:
+                      type: object
+                      properties:
+                        executionId: {type: string}
+                        status: {type: string}
+                        causationMatches: {type: boolean}
+                        modelReservation: {type: [string, 'null']}
+                        modelInvoiceVerified: {type: boolean}
+                  modelReconciliation:
+                    type: object
+                    properties:
+                      reserved: {type: integer, minimum: 0}
+                      unverifiedSettled: {type: integer, minimum: 0}
+                  operatorAction: {type: string}
+        '401': {description: Authentication required}
+        '403': {description: Tenant or manager permission denied}
+        '404': {description: Brain run not found in the requesting tenant}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
