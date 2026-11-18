@@ -26,7 +26,7 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
   if (method === 'GET' && path === '/marketing/me') return null;
   if (method === 'POST' && (path === '/marketing/sessions' || path === '/marketing/sessions/revoke')) return null;
-  if (method === 'GET' && (path === '/marketing/learning/signals' || path === '/marketing/learning/proposals')) return 'READ_AUDIT';
+  if (method === 'GET' && (path === '/marketing/learning/signals' || path === '/marketing/learning/proposals' || path === '/marketing/learning/trends')) return 'READ_AUDIT';
   if (method === 'POST' && (path === '/marketing/learning/skills/evaluate' || path === '/marketing/learning/skills/decide')) return 'DECIDE_APPROVAL';
   if (method === 'POST' && path === '/marketing/learning/discover') return 'ASSESS';
   if (method === 'POST' && path === '/marketing/learning/signals') return 'ASSESS';
