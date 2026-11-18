@@ -23,7 +23,7 @@ export function assessProviderTokenLifetime(
  const received=status==='PENDING_ATTESTATION';
  const validClock=now instanceof Date&&Number.isFinite(now.getTime());
  const validExpiry=expiresAt instanceof Date&&Number.isFinite(expiresAt.getTime());
- const expired=received&&(!validClock||!validExpiry||expiresAt.getTime()<=now.getTime());
+ const expired=received&&(!validClock||!validExpiry||expiresAt!.getTime()<=now.getTime());
  const expiringSoon=received&&!expired&&
   expiresAt!.getTime()-now.getTime()<=15*60_000;
  return{
