@@ -14,7 +14,7 @@ describe('authentication and approval authority', () => {
   const db: any = { user: { findFirst: vi.fn() } };
   it('rejects human approval with a shared bootstrap credential', async () => {
     const guard = new BootstrapAuthGuard(db);
-    await expect(guard.canActivate(context(request('/marketing/approvals/decide')))).rejects.toThrow('Human approval requires OIDC');
+    await expect(guard.canActivate(context(request('/marketing/approvals/decide')))).rejects.toThrow('limited to portfolio');
   });
   it('prevents cross-tenant bootstrap requests', async () => {
     const guard = new BootstrapAuthGuard(db);
