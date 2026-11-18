@@ -6,12 +6,12 @@ vi.mock('./oidc-identity.js', () => ({ verifyOidcIdentity: vi.fn() }));
 const original = { ...process.env };
 function context(req: any): any { return { switchToHttp: () => ({ getRequest: () => req }) }; }
 function request(url: string, body: any = { organizationId: 'org-1' }) {
-  return { url, method: 'POST', headers: { authorization: 'Bearer pilot-token', 'x-organization-id': 'org-1' } as Record<string, unknown>, body };
+  return { url, method: 'POST', headers: { authorization: 'Bearer pilot-token', 'x-organization-id': 'org-1', 'x-marketing-session-id': '11111111-1111-4111-8111-111111111111' } as Record<string, unknown>, body };
 }
 describe('authentication and approval authority', () => {
   beforeEach(() => { process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID = 'org-1'; process.env.MARKETING_BOOTSTRAP_TOKEN = 'pilot-token'; process.env.MARKETING_AUTH_MODE = 'bootstrap'; vi.clearAllMocks(); });
   afterEach(() => { process.env = { ...original }; });
-  const db: any = { user: { findFirst: vi.fn() } };
+  const db: any = { user: { findFirst: vi.fn() }, authSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session' }) } };
   it('rejects human approval with a shared bootstrap credential', async () => {
     const guard = new BootstrapAuthGuard(db);
     await expect(guard.canActivate(context(request('/marketing/approvals/decide')))).rejects.toThrow('Human approval requires OIDC');
