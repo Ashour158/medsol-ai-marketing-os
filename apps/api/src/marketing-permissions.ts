@@ -28,6 +28,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if(method==='POST'&&path==='/marketing/performance/ingest')return 'SUBMIT_EVIDENCE';
   if(method==='POST'&&path==='/marketing/performance/review')return 'DECIDE_APPROVAL';
   if(method==='GET'&&(path==='/marketing/command-center'||/^\/marketing\/command-center\/incidents\/(BRAIN_NEEDS_INTERVENTION|BRAIN_STALE|OUTBOX_DEAD_LETTER)$/.test(path)))return 'READ_AUDIT';
+  if(method==='POST'&&/^\/marketing\/command-center\/incidents\/(BRAIN_STALE|BRAIN_NEEDS_INTERVENTION|OUTBOX_DEAD_LETTER)\/[^/]+\/acknowledge$/.test(path))return 'DECIDE_APPROVAL';
   if(method==='GET'&&(path==='/marketing/brand/active'||path==='/marketing/brand/revisions'))return 'READ_AUDIT';
   if(method==='POST'&&(path==='/marketing/brand/propose'||path==='/marketing/brand/decide'))return 'DECIDE_APPROVAL';
   if (method === 'GET' && path === '/marketing/me') return null;
@@ -51,7 +52,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'POST' && path === '/marketing/requests') return 'ASSESS';
   if (method === 'POST' && path === '/marketing/workflows') return 'EXECUTE_WORKFLOW';
   if (method === 'POST' && /^\/marketing\/workflows\/[^/]+\/resume$/.test(path)) return 'RESUME_WORKFLOW';
-  if (method === 'GET' && path === '/marketing/operations/delivery') return 'READ_AUDIT';
+  if (method === 'GET' && (path === '/marketing/operations/delivery'||path === '/marketing/operations/workers')) return 'READ_AUDIT';
   if (method === 'GET' && ((path === '/marketing/agents/operations' || path === '/marketing/agents/budget') || /^\/marketing\/agents\/executions\/[^/]+$/.test(path))) return 'READ_AUDIT';
   if (method === 'GET' && /^\/marketing\/campaigns\/[^/]+$/.test(path)) return 'READ_AUDIT';
   if (method === 'GET' && (

@@ -7,12 +7,15 @@ const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const [resource, id, action, operation] = path;
-  if (!resource || !routes.has(resource) || path.length > 4 ||
+  if (!resource || !routes.has(resource) || path.length > 5 ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "performance" && !((path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
         (path.length===2&&request.method==="POST"&&(id==="ingest"||id==="review")))) ||
-      (resource === "command-center" && !(request.method === "GET" && (path.length === 1 || (path.length === 3 && id === "incidents" && ["BRAIN_NEEDS_INTERVENTION","BRAIN_STALE","OUTBOX_DEAD_LETTER"].includes(action??""))))) ||
+      (resource === "command-center" && !(
+        (request.method === "GET" && (path.length === 1 || (path.length === 3 && id === "incidents" && ["BRAIN_NEEDS_INTERVENTION","BRAIN_STALE","OUTBOX_DEAD_LETTER"].includes(action??"")))) ||
+        (request.method === "POST" && path.length === 5 && id === "incidents" && ["BRAIN_NEEDS_INTERVENTION","BRAIN_STALE","OUTBOX_DEAD_LETTER"].includes(action??"") && !!operation && path[4] === "acknowledge")
+      )) ||
       (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "objectives" && (path.length !== 1 || !["GET", "POST"].includes(request.method))) ||
       (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
@@ -27,7 +30,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length === 3 && id === "runs" && request.method === "GET") ||
         (path.length === 4 && id === "runs" && !!action && ((operation === "recovery" && request.method === "GET") || ((operation === "execute" || operation === "quarantine") && request.method === "POST")))
       )) ||
-      (resource === "operations" && !(path.length === 2 && id === "delivery" && request.method === "GET")) ||
+      (resource === "operations" && !(path.length === 2 && (id === "delivery" || id === "workers") && request.method === "GET")) ||
       (resource === "agents" && !(request.method === "GET" && (
         path.length === 1 ||
         (path.length === 2 && (id === "executions" || id === "operations" || id === "budget")) ||

@@ -1,4 +1,6 @@
-import {BadRequestException,Injectable} from '@nestjs/common';
+import {BadRequestException,Injectable,Optional} from '@nestjs/common';
+import {MarketingWorkerHealthService} from './marketing-worker-health.service.js';
+import {MarketingIncidentResponseService,type IncidentKind} from './marketing-incident-response.service.js';
 import {PrismaService} from './prisma.service.js';
 import {MarketingReadService} from './marketing-read.service.js';
 import {DeliveryOperationsService} from './delivery-operations.service.js';
@@ -15,7 +17,9 @@ export class MarketingCommandCenterService {
   private readonly delivery:DeliveryOperationsService,
   private readonly budgets:ModelBudgetService,
   private readonly learning:MarketingLearningService,
-  private readonly brand:BrandMasterService
+  private readonly brand:BrandMasterService,
+  @Optional() private readonly workerHealth?:MarketingWorkerHealthService,
+  @Optional() private readonly responses?:MarketingIncidentResponseService
  ){}
  async snapshot(organizationId:string){
   const staleBefore=new Date(Date.now()-15*60_000);
@@ -51,8 +55,12 @@ export class MarketingCommandCenterService {
   const critical=interventionCount>0||delivery.deadLetters>0;
   const warning=critical||staleCount>0||overview.failedAgentExecutions>0||delivery.retrying>0||
     (budget.enabled&&budget.requiresExternalBillingReconciliation===true);
+  const workerFleet=this.workerHealth?await this.workerHealth.summary():null;
+  const workerAttention=!!workerFleet&&(workerFleet.stale>0||
+    (workerFleet.workerConfiguredHere&&workerFleet.active===0));
   return {
-    asOf:new Date().toISOString(),organizationId,health:critical?'ACTION_REQUIRED':warning?'ATTENTION':'NO_DETECTED_INCIDENTS',
+    workerFleet,
+    asOf:new Date().toISOString(),organizationId,health:critical?'ACTION_REQUIRED':warning||workerAttention?'ATTENTION':'NO_DETECTED_INCIDENTS',
     healthIsSlaGuarantee:false,
     totals:{...overview,brainRuns:brainRunCount,pendingApprovals:approvals,pendingSkillDecisions:skills,
       staleBrainRuns:staleCount,interventionBrainRuns:interventionCount,deadLetterEvents:delivery.deadLetters},
@@ -93,7 +101,13 @@ export class MarketingCommandCenterService {
      select:{id:true,deadLetteredAt:true,lastError:true,eventType:true,attempts:true}})
    ]);
    const visible=rows.slice(0,limit);
+   const responses=this.responses?await this.responses.batch(organizationId,rawKind as IncidentKind,visible.map(r=>r.id)):null;
    return {kind:rawKind,total,incidents:visible.map(r=>({
+    sourceId:r.id,
+    response:responses?.get(r.id)?.occurrenceAt.getTime()===r.deadLetteredAt?.getTime()?
+     {acknowledgedAt:responses?.get(r.id)?.acknowledgedAt??null,
+      acknowledgedBy:responses?.get(r.id)?.acknowledgedBy??null,
+      lastNotifiedLevel:responses?.get(r.id)?.lastNotifiedLevel??-1}:null,
     id:'delivery-dead:'+r.id,severity:'CRITICAL',kind:rawKind,runId:null,
     updatedAt:r.deadLetteredAt,message:r.lastError??'Delivery failed after bounded attempts',
     eventType:r.eventType,attempts:r.attempts
@@ -112,7 +126,13 @@ export class MarketingCommandCenterService {
     select:{id:true,updatedAt:true,currentAgentId:true,lastError:true}})
   ]);
   const visible=rows.slice(0,limit);
+  const responses=this.responses?await this.responses.batch(organizationId,rawKind as IncidentKind,visible.map(r=>r.id)):null;
   return {kind:rawKind,total,incidents:visible.map(r=>({
+   sourceId:r.id,
+   response:responses?.get(r.id)?.occurrenceAt.getTime()===r.updatedAt.getTime()?
+    {acknowledgedAt:responses?.get(r.id)?.acknowledgedAt??null,
+     acknowledgedBy:responses?.get(r.id)?.acknowledgedBy??null,
+     lastNotifiedLevel:responses?.get(r.id)?.lastNotifiedLevel??-1}:null,
    id:(rawKind==='BRAIN_STALE'?'brain-stale:':'brain-intervention:')+r.id,
    severity:rawKind==='BRAIN_STALE'?'WARNING':'CRITICAL',kind:rawKind,runId:r.id,
    updatedAt:r.updatedAt,currentAgentId:r.currentAgentId,
