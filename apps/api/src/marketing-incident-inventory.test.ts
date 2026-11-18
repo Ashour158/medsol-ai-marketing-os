@@ -66,7 +66,7 @@ describe('single-owner paginated incident inventory',()=>{
   expect(first).toMatchObject({total:2,nextCursor:'evt-a'});
   expect(first.incidents[0]).toMatchObject({id:'delivery-dead:evt-a',attempts:8});
   const next=await service.incidentInventory('tenant-a','OUTBOX_DEAD_LETTER','evt-a',1);
-  expect(next.incidents[0].id).toBe('delivery-dead:evt-b');
+  expect(next.incidents[0]?.id).toBe('delivery-dead:evt-b');
   await expect(service.incidentInventory('tenant-b','OUTBOX_DEAD_LETTER','evt-a')).rejects.toBeInstanceOf(BadRequestException);
   expect(db.outboxEvent.findFirst).toHaveBeenCalledWith({where:{organizationId:'tenant-b',deadLetteredAt:{not:null},id:'evt-a'},select:{id:true}});
  });
