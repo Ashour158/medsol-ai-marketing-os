@@ -12,6 +12,7 @@ import {randomUUID} from 'node:crypto';
   return this.db.$transaction(async tx=>{
    const objective=await tx.marketingObjective.findFirst({where:{id:cmd.objectiveId,organizationId:cmd.organizationId}});if(!objective)throw new NotFoundException('Objective not found in tenant');
    if(cmd.productId){const p=await tx.marketingProduct.findFirst({where:{id:cmd.productId,organizationId:cmd.organizationId}});if(!p)throw new NotFoundException('Product not found in tenant')}
+   if(cmd.brandId){const b=await tx.brand.findFirst({where:{organizationId:cmd.organizationId,id:cmd.brandId,status:'ACTIVE'}});if(!b)throw new NotFoundException('Active campaign brand not found in tenant')}
    const dup=await tx.campaign.findUnique({where:{organizationId_code:{organizationId:cmd.organizationId,code:cmd.code}}});if(dup)throw new ConflictException('Campaign code already exists');
    const c=await tx.campaign.create({data:{organizationId:cmd.organizationId,code:cmd.code,name:cmd.name,objectiveId:cmd.objectiveId,...(cmd.productId ? {productId:cmd.productId} : {}),riskLevel:cmd.riskLevel,status:'IDEA'}});
    const response={campaignId:c.id,status:c.status,version:c.version};
