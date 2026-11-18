@@ -16,14 +16,15 @@ pnpm test
 pnpm build
 
 See docs/architecture/16-executable-vertical-slice.md.
-## Blueprint v2.0 target-state development program
+## Blueprint v2.1 target-state development program
 
-The current executable release is a **governed internal vertical slice**; it is not the full customer-facing commercial Agentic Marketing & Communications OS. The approved v2.0 scope is tracked in:
+The current executable release is a **governed internal vertical slice**; it is not the full customer-facing commercial Agentic Marketing & Communications OS. The approved v2.0 scope and v2.1 amendment is tracked in:
 
 - [Master implementation and architectural Reuse Map](docs/blueprint-v2/MASTER_IMPLEMENTATION_CONTROL.md)
+- [Blueprint v2.1 commercial intelligence amendment](docs/blueprint-v2/MASTER_BLUEPRINT_V2_1_AMENDMENT.md)
 - [Deep cognitive Brain and specialist persona charter](docs/blueprint-v2/AGENT_BRAINS_AND_STUDIO_CHARTERS.md)
 - [Planned 500-case acceptance matrix](docs/blueprint-v2/QUALITY_500_CASE_PROGRAM.md)
-- `packages/contracts/src/blueprint-v2.ts`: all **33 logical engines**, **36 workflow families**, **13 studios**, **10 cognitive roles**, and **12 specialist UX personas** mapped to the existing 13 canonical agents.
+- `packages/contracts/src/blueprint-v2.ts`: all **36 logical engines**, **41 workflow families**, **13 studios**, **10 cognitive roles**, and **12 specialist UX personas** mapped to the existing 13 canonical agents.
 - `packages/contracts/src/blueprint-v2-compiler.ts`: **draft-only** node/graph safety lint, not an executable workflow compiler.
 
 Authorized auditors can inspect this target-state inventory from `GET /marketing/architecture/blueprint` in the Command Center. The endpoint and catalog expose **no new external side effects**.
