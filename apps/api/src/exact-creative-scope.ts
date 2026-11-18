@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto';
+/** Approved exact scope must remain valid through scheduled execution. */
+export const EXACT_APPROVAL_EXECUTION_GRACE_MS=5*60_000;
 export type ExactCreativeScope={
  assetId:string;revisionId:string;revisionVersion:number;brandId:string;
  renditionDigest:string;sourceRef:string;channel:'SOCIAL'|'EMAIL'|'WEB';
@@ -34,5 +36,8 @@ export function isExactCreativeScope(raw:unknown):raw is ExactCreativeScope{
   if(!Number.isFinite(Date.parse(x[key] as string))||
     new Date(x[key] as string).toISOString()!==x[key])return false;
  }
+ if(Date.parse(x.expiresAt as string)<=
+    Date.parse(x.scheduledAt as string)+EXACT_APPROVAL_EXECUTION_GRACE_MS)
+  return false;
  return true;
 }

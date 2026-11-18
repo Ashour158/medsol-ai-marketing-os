@@ -63,3 +63,5 @@ Before outbound code can be activated safely:
 5. Complete vendor staging using actual approved credentials, malicious/expired credentials, network failures and webhook replays, two-tenant and agency revoke, security testing, emergency stop, disaster recovery, operations approval, customer UAT and legal release.
 
 Do not convert **R2F-A implemented** into **R2F live publishing complete** until every gate is verified in operational staging. This tranche intentionally makes unsafe live activation impossible.
+
+**R2F-B follow-up:** The incorrect expiry-before-scheduled-release contract is corrected in the canonical ExactCreativeScope validator, CreativeAssetService, ApprovalService, publication preflight and release-readiness. New approvals must remain valid for more than five minutes after scheduled execution. Earlier incompatible approvals remain immutable historical evidence and are invalid for release. [Implementation and acceptance](R2F_B_EXACT_APPROVAL_EXECUTION_WINDOW.md).
