@@ -87,7 +87,7 @@ model User {
   @@index([organizationId])
 }
 model Agent {
-  id String @id
+  id String
   organizationId String
   name String
   status AgentStatus @default(ACTIVE)
@@ -97,6 +97,7 @@ model Agent {
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   executions AgentExecution[]
+  @@id([organizationId,id])
   @@index([organizationId,status])
 }
 model AgentExecution {
@@ -110,7 +111,7 @@ model AgentExecution {
   status String
   startedAt DateTime @default(now())
   completedAt DateTime?
-  agent Agent @relation(fields:[agentId],references:[id],onDelete:Restrict)
+  agent Agent @relation(fields:[organizationId,agentId],references:[organizationId,id],onDelete:Restrict)
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@index([organizationId,correlationId])
 }
