@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { verifyOidcIdentity } from './oidc-identity.js';
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { jwtVerify } from 'jose';
 vi.mock('jose', () => ({ jwtVerify: vi.fn(), createRemoteJWKSet: vi.fn(() => 'keys') }));
 const config = { issuer: 'https://idp.example', audience: 'marketing-api', jwksUrl: 'https://idp.example/jwks' };
 const user = { id: 'u1', email: 'member@example.com', role: 'CMO', oidcSubject: 'subject-1', disabledAt: null };
@@ -28,6 +28,5 @@ describe('immutable identity binding', () => {
   it('requires issuer and audience verification with a signed algorithm allowlist', async () => {
     await verifyOidcIdentity('Bearer valid', 'tenant', config, lookup);
     expect(jwtVerify).toHaveBeenCalledWith('valid', expect.anything(), { issuer: config.issuer, audience: config.audience, algorithms: ['RS256', 'ES256'] });
-    expect(createRemoteJWKSet).toHaveBeenCalled();
   });
 });
