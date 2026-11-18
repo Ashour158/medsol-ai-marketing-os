@@ -109,7 +109,7 @@ The static validator accepts valid draft graphs but always returns `deployAuthor
 
 ## v2.1 amendment (approved target and partial executable logic)
 
-[Read the authoritative v2.1 capability, workflow, schema, brain and acceptance amendment](MASTER_BLUEPRINT_V2_1_AMENDMENT.md).
+[Read the complete consolidated Master Blueprint v2.1](MASTER_BLUEPRINT_V2_1_CONSOLIDATED.md), including the authoritative v2.1 capability, workflow, schema, brain and acceptance amendment.
 
 E34 Search/AI Discovery, E35 Voice of Customer and E36 Corporate Communications extend **existing** Intelligence/Strategy, Social/Community and Content/Brand/Campaign ownership. They do not justify independent agent identities. The ten brains, thirteen canonical agents and thirteen workspaces are unchanged.
 
