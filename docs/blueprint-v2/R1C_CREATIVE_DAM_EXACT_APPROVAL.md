@@ -72,3 +72,7 @@ Even when human approval is valid, the read model explicitly returns `externally
 6. Security issue #4, ECC GitHub Checks permission issue #3, DR rehearsal, independent security review and customer UAT remain open.
 
 **Next tranche:** trusted object storage and asset rights, brand-scoped policy, and persisted social/email approval preflight; do not activate external publishing without R0/R1 staging gates.
+
+## R2F-B correction — execution-valid approval window
+
+The authoritative exact scope now requires the approval expiry to be **strictly later than five minutes after** the scheduled release. The old sandbox rule allowed expiry before scheduling and is no longer valid for new approvals. Existing approved records are not rewritten: stale scopes must obtain a new exact-version request and independent human decision. This changes no DAM ownership, provider capability, external send, media rights or tenant IAM claim. [Full R2F-B Reuse Map and tests](R2F_B_EXACT_APPROVAL_EXECUTION_WINDOW.md).
