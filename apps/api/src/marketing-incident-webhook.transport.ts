@@ -39,7 +39,7 @@ export class MarketingIncidentWebhookTransport implements EventTransport{
   const p=event.payload as Record<string,unknown>|null;
   if(!p||!['BRAIN_STALE','BRAIN_NEEDS_INTERVENTION','OUTBOX_DEAD_LETTER'].includes(String(p.kind))||
      !['WARNING','CRITICAL'].includes(String(p.severity))||
-     !Number.isInteger(p.level)||!(typeof p.level==='number'&&p.level>=0&&p.level<=2)||
+     (typeof p.level!=='number'||!Number.isInteger(p.level)||p.level<0||p.level>2)||
      typeof p.sourceId!=='string'||typeof p.occurrenceAt!=='string'||
      p.externalPublishingAuthorized!==false)
    throw new Error('Invalid incident alert payload');
