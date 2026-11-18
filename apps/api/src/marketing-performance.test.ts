@@ -62,7 +62,7 @@ describe('governed marketing performance evidence',()=>{
   const{db,service}=setup();db.campaign.findFirst.mockResolvedValueOnce(null);
   await expect(service.ingest('other','submitter',input)).rejects.toThrow('not found in tenant');
   expect(permissionForMarketingRoute('POST','/marketing/performance/review')).toBe('DECIDE_APPROVAL');
-  expect(permissionForMarketingRoute('POST','/marketing/performance/ingest')).toBe('ASSESS');
+  expect(permissionForMarketingRoute('POST','/marketing/performance/ingest')).toBe('SUBMIT_EVIDENCE');
   expect(permissionForMarketingRoute('GET','/marketing/performance/campaigns/campaign-1')).toBe('READ_AUDIT');
  });
 });
