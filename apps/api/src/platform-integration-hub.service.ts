@@ -119,7 +119,7 @@ export class PlatformIntegrationHubService{
   return this.scoped(organizationId,async tx=>{
    const conn=await tx.integrationConnection.findFirst({where:{organizationId,id:connectionId}});
    if(!conn)throw new NotFoundException('Destination not found in tenant');
-   const [cred,handshakes,observation]=await Promise.all([
+   const [cred,handshakes,observation,quarantinedWebhookCount]=await Promise.all([
     tx.providerCredential.findUnique({where:{organizationId_integrationConnectionId:{
      organizationId,integrationConnectionId:connectionId}},
      select:{status:true,tokenExpiresAt:true,version:true}}),
@@ -129,7 +129,10 @@ export class PlatformIntegrationHubService{
      select:{status:true,expiresAt:true,createdAt:true}}),
     tx.providerAccountObservation.findFirst({where:{
      organizationId,integrationConnectionId:connectionId},
-     select:{status:true,observedAt:true,expiresAt:true,providerCredentialId:true}})
+     select:{status:true,observedAt:true,expiresAt:true,providerCredentialId:true}}),
+    tx.providerWebhookObservation.count({where:{
+     organizationId,integrationConnectionId:connectionId,status:'QUARANTINED'
+    }})
    ]);
    const lifetime=assessProviderTokenLifetime(cred?.status,cred?.tokenExpiresAt);
    const accountReadbackFresh=conn.status==='PENDING_VERIFICATION'&&
@@ -147,6 +150,8 @@ export class PlatformIntegrationHubService{
     accountReadbackFresh,
     accountObservationExpiresAt:observation?.expiresAt??null,
     customerDestinationBound:false,
+    signedWebhooksQuarantined:quarantinedWebhookCount,
+    remoteDeliveryReceiptsVerified:0,
     accountOwnershipVerified:false,providerCapabilityVerified:false,
     externalEffectsAuthorized:false};
   });
