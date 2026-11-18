@@ -160,6 +160,7 @@ model Campaign {
   objective MarketingObjective @relation(fields:[objectiveId],references:[id],onDelete:Restrict)
   product MarketingProduct? @relation(fields:[productId],references:[id],onDelete:Restrict)
   @@unique([organizationId,code])
+  @@unique([organizationId,id])
   @@index([organizationId,status])
   metricObservations MarketingMetricObservation[]
 }
@@ -449,7 +450,7 @@ model MarketingMetricObservation {
   reviewedAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  campaign Campaign @relation(fields:[campaignId],references:[id],onDelete:Restrict)
+  campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
   @@unique([organizationId,sourceSystem,sourceRecordId,metricKey])
   @@index([organizationId,campaignId,status,observedAt])
 }
