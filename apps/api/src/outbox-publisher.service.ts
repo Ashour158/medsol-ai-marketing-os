@@ -28,7 +28,7 @@ export class OutboxPublisherService {
       const claimed = await this.claimOne();
       if (!claimed) break;
       try {
-        await transport.publish(claimed);
+        await transport.publish({eventId:claimed.eventId,organizationId:claimed.organizationId,eventType:claimed.eventType,aggregateType:claimed.aggregateType,aggregateId:claimed.aggregateId,version:claimed.version,payload:claimed.payload,correlationId:claimed.correlationId,...(claimed.causationId ? {causationId:claimed.causationId} : {})});
         const result = await this.db.outboxEvent.updateMany({ where: { id: claimed.id, publishedAt: null, publishingAt: claimed.publishingAt }, data: { publishedAt: new Date(), publishingAt: null, lastError: null } });
         if (result.count === 1) published += 1;
       } catch (error) {
