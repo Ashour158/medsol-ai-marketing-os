@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { MarketingRequest, MarketingRequestSchema } from '@medsol/contracts';
@@ -86,7 +87,7 @@ export class MarketingWorkflowService {
   private async step<T>(workflowId: string, stepKey: string, input: unknown, run: () => Promise<T>): Promise<T> {
     const existing = await this.db.workflowStepExecution.findUnique({ where: { workflowExecutionId_stepKey: { workflowExecutionId: workflowId, stepKey } } });
     if (existing?.status === 'COMPLETED') return existing.output as T;
-    if (existing?.status === 'FAILED') await this.db.workflowStepExecution.update({ where: { id: existing.id }, data: { status: 'RUNNING', attempt: { increment: 1 }, error: { set: null }, completedAt: null } });
+    if (existing?.status === 'FAILED') await this.db.workflowStepExecution.update({ where: { id: existing.id }, data: { status: 'RUNNING', attempt: { increment: 1 }, error: Prisma.DbNull, completedAt: null } });
     const workflow = await this.db.workflowExecution.findUniqueOrThrow({ where: { id: workflowId } });
     const step = existing ?? await this.db.workflowStepExecution.create({ data: { workflowExecutionId: workflowId, organizationId: workflow.organizationId, stepKey, status: 'RUNNING', input: input as any } });
     await this.db.workflowExecution.update({ where: { id: workflowId }, data: { currentStep: stepKey } });
