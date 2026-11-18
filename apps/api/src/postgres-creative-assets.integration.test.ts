@@ -73,6 +73,16 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
     renditionDigest:'sha256:'+'c'.repeat(64),rightsExpiresAt:plusDays(60),expectedVersion:1
    });
    expect(newer.version).toBe(2);
+   // Separate check: a privileged original asset owner cannot review rights
+   // simply because another employee appended its latest revision.
+   const owned=await assets.create(org,reviewer,{
+    brandId,title:'Admin-authored creative original'});
+   const delegated=await assets.addRevision(org,creator,owned.id,{
+    sourceKind:'FLATTENED_EXPORT',sourceRef:'internal:creative-source/delegated',
+    renditionDigest:'sha256:'+'e'.repeat(64),rightsExpiresAt:plusDays(60),expectedVersion:0
+   });
+   await expect(assets.reviewRights(org,reviewer,delegated.revisionId,
+    'Original creative owner cannot self-review rights')).rejects.toThrow('creator cannot review');
    // A privileged ADMIN who actually authored this revision is still
    // prohibited from reviewing its own media rights.
    await expect(assets.reviewRights(org,reviewer,newer.revisionId,
@@ -87,7 +97,7 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    })).rejects.toThrow();
    expect(await db.auditEvent.count({where:{organizationId:org,
     action:{in:['CREATIVE_ASSET_CREATED','CREATIVE_ASSET_REVISION_CREATED',
-     'CREATIVE_RIGHTS_REVIEWED','CREATIVE_APPROVAL_REQUESTED','CREATIVE_SCOPE_DECIDED']}}})).toBe(6);
+     'CREATIVE_RIGHTS_REVIEWED','CREATIVE_APPROVAL_REQUESTED','CREATIVE_SCOPE_DECIDED']}}})).toBe(8);
   }finally{
    // CI uses a throwaway PostgreSQL service. Immutable RLS metadata has no
    // application delete capability, so do not bypass RLS to erase fixtures.
