@@ -33,6 +33,8 @@ import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scop
     const scope=a.scope;
     if(!isExactCreativeScope(scope)||!a.scopeDigest||!a.scopeExpiresAt||
        a.scopeExpiresAt<=new Date()||new Date(scope.scheduledAt)<=new Date()||
+       Date.parse(scope.expiresAt)<=Date.parse(scope.scheduledAt)+300000||
+       a.scopeExpiresAt.getTime()!==Date.parse(scope.expiresAt)||
        a.creativeAssetRevisionId!==a.objectId||
        exactCreativeScopeHash(scope)!==a.scopeDigest)
      throw new ConflictException('Exact creative scope expired, malformed or changed');
