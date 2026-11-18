@@ -14,7 +14,7 @@ function fixture(options?: {status?:string;ageMinutes?:number;changed?:number;mi
   },
   auditEvent:{create:vi.fn().mockResolvedValue({id:'audit-1'})}
  };
- const db={$transaction:vi.fn((fn:(tx:typeof tx)=>Promise<unknown>)=>fn(tx))};
+ const db={$transaction:vi.fn((fn:(transaction:any)=>Promise<unknown>)=>fn(tx))};
  return{service:new BrainRunLedgerService(db as any),tx};
 }
 
