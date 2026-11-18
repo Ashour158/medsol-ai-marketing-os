@@ -30,6 +30,7 @@ CREATE TABLE "ProviderAccountObservation" (
  CONSTRAINT "ProviderAccountObs_ref_check" CHECK (
     length("providerAccountRef") BETWEEN 3 AND 128 AND
     "providerAccountRef" ~ '^[A-Za-z0-9_:.-]+$'
+ ),
  CONSTRAINT "ProviderAccountObs_scopes_check" CHECK (
    jsonb_typeof("observedScopes")='array' AND
    jsonb_typeof("observedCapabilities")='array'
