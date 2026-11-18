@@ -57,12 +57,22 @@ function approvedConfig(config:ApprovedOAuthProvider){
  */
 export class IntegrationOAuthLifecycleService{
  constructor(private readonly db:PrismaService,private readonly vault:ProviderSecretEnvelope){}
- private scoped<T>(org:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>):Promise<T>{
+ private async scoped<T>(org:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>):Promise<T>{
   formatId(org,'tenant');
-  return this.db.$transaction(async tx=>{
-   await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
-   return fn(tx);
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  // The broker.exchangeCode call is explicitly OUTSIDE this DB-only helper.
+  // Retrying a rolled-back SQL serialization conflict is not an OAuth replay.
+  for(let attempt=0;attempt<4;attempt++){
+   try{
+    return await this.db.$transaction(async tx=>{
+     await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
+     return fn(tx);
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+   }catch(e){
+    if((e as {code?:string})?.code!=='P2034'||attempt===3)throw e;
+    await new Promise(resolve=>setTimeout(resolve,10*(attempt+1)));
+   }
+  }
+  throw new Error('Transaction retry budget exhausted');
  }
  async begin(org:string,actor:string,connectionIdInput:unknown,config:ApprovedOAuthProvider){
   formatId(actor,'human actor');const connectionId=formatId(connectionIdInput,'connection');
