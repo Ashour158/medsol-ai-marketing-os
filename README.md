@@ -52,3 +52,8 @@ The [R1C creative DAM and exact approval implementation](docs/blueprint-v2/R1C_C
 ### R2 campaign-to-creative publication sandbox
 
 [Open the R2 governed publication implementation and release gates](docs/blueprint-v2/R2_GOVERNED_SOCIAL_PUBLICATION_SANDBOX.md). This tranche connects existing Brain-led campaigns, tenant Brand, independent human Campaign approval, immutable creative revision rights and exact asset approval into a **tenant-RLS publication intent with a local synthetic receipt**. It adds a Command Center sandbox and uses the existing MarketingPerformanceService for separately reviewed source metrics. It does **not** post to social platforms, send emails, create live impressions/leads or certify media bytes or connected accounts. External effects remain blocked until verified integrations, consent/identity and staging acceptance are implemented.
+
+
+### R2B provider-neutral integration and media-byte proof
+
+[Read R2B integration architecture, reuse map, security invariants and operational blockers](docs/blueprint-v2/R2B_INTEGRATION_HUB_MEDIA_EVIDENCE.md). New IntegrationConnection metadata records are tenant/brand scoped, explicitly pending, and irreversibly revocable. No social provider credentials or active permissions are stored or claimed. VerifiedMediaEvidence is created only by a backend media reader that returns actual versioned object bytes for independent SHA-256 matching to a CreativeAssetRevision; a production cloud storage reader is not connected yet. The existing publication preflight now reports these evidence types independently while always denying live external publishing. The Command Center has an admin-only Integration Governance Studio. Synthetic sandbox receipts never count as real delivery or marketing metrics.

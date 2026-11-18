@@ -34,6 +34,18 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 }
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
+  if(method==='GET'&&(
+    path==='/marketing/integrations/catalog'||
+    path==='/marketing/integrations'||/^\/marketing\/integrations\/[^/]+$/.test(path)))
+   return 'READ_TENANCY';
+  if(method==='POST'&&(path==='/marketing/integrations'||
+    /^\/marketing\/integrations\/[^/]+\/(suspend|revoke)$/.test(path)))
+   return 'MANAGE_TENANT';
+  if(method==='GET'&&(path==='/marketing/media/evidence'||
+    /^\/marketing\/media\/evidence\/[^/]+$/.test(path)))
+   return 'READ_TENANCY';
+  if(method==='POST'&&/^\/marketing\/media\/evidence\/[^/]+\/revoke$/.test(path))
+   return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/publications')return 'READ_PORTFOLIO';
   if(method==='GET'&&/^\/marketing\/publications\/[^/]+$/.test(path))return 'READ_AUDIT';
   if(method==='GET'&&/^\/marketing\/publications\/[^/]+\/(preflight|performance)$/.test(path))

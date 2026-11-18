@@ -25,6 +25,12 @@ export type PublicationPreflight={
  publicationId:string;internalReady:boolean;externalReady:false;
  independentlyVerified:false;externalEffectsAuthorized:false;
  reasons:string[];limitations:readonly string[];
+ integrationEvidence:{
+  destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
+  mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
+  providerCredentialsVerified:false;providerPublishingCapabilityVerified:false;
+  verifiedExternalDestination:false;
+ };
 };
 type Tx=Prisma.TransactionClient;
 @Injectable()
@@ -90,9 +96,31 @@ export class CampaignPublicationService{
    if(asset&&(approval?.decidedBy===asset.createdBy||approval?.decidedBy===revision?.createdBy))
     reasons.push('independent_media_approver_required');
   }
+  // Observation-only R2B preflight: the absence of verified provider
+  // credentials cannot be filled by a model, client-declared capability,
+  // registered destination or the synthetic sandbox receipt.
+  const connection=isExactCreativeScope(scope)?await tx.integrationConnection.findFirst({
+   where:{organizationId,brandId:scope.brandId,destinationRef:scope.destinationRef}}):null;
+  const evidence=isExactCreativeScope(scope)?await tx.verifiedMediaEvidence.findUnique({
+   where:{organizationId_creativeAssetRevisionId:{
+    organizationId,creativeAssetRevisionId:scope.revisionId}}}):null;
+  const matchingEvidence=!!evidence&&evidence.status==='VERIFIED_READBACK'&&
+   !!revision&&evidence.sourceRef===revision.sourceRef&&
+   evidence.sha256Digest===revision.renditionDigest&&
+   isExactCreativeScope(scope)&&evidence.sha256Digest===scope.renditionDigest;
   return{publicationId:pub.id,internalReady:reasons.length===0,externalReady:false,
    independentlyVerified:false,externalEffectsAuthorized:false,reasons,
-   limitations:SANDBOX_LIMITATIONS};
+   limitations:SANDBOX_LIMITATIONS,
+   integrationEvidence:{
+    destinationRegistered:!!connection,
+    destinationStatus:connection?.status??null,
+    providerKey:connection?.providerKey??null,
+    mediaBytesReadbackVerified:matchingEvidence,
+    mediaObjectVersion:matchingEvidence?evidence!.objectVersion:null,
+    providerCredentialsVerified:false as const,
+    providerPublishingCapabilityVerified:false as const,
+    verifiedExternalDestination:false as const
+   }};
  }
  async prepare(organizationId:string,actorId:string,raw:{
   campaignId?:unknown;approvalId?:unknown;requestKey?:unknown

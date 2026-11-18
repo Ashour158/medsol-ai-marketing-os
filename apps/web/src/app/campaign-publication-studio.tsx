@@ -6,6 +6,9 @@ type Campaign={id:string;code:string;name:string;status:string;brandId:string|nu
 type Publication={id:string;campaignId:string;approvalId:string;status:string;
  version:number;creativeAssetRevisionId?:string};
 type Gate={internalReady:boolean;externalReady:false;reasons:string[];
+ integrationEvidence?:{destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
+ mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
+ providerCredentialsVerified:false;providerPublishingCapabilityVerified:false;verifiedExternalDestination:false};
  limitations:string[];externalEffectsAuthorized:false};
 type Detail=Publication&{scopeDigest:string;preflight:Gate;attempts:Array<{
  id:string;mode:string;outcome:string;evidenceRef:string;recordedAt:string}>};
@@ -117,6 +120,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
      </p>
      {detail.preflight.reasons.length>0&&<p style={{color:"#a11919",fontSize:13}}>
       {detail.preflight.reasons.join(" · ")}</p>}
+     <p style={{color:"#475569",fontSize:13}}>Registered destination: <strong>{detail.preflight.integrationEvidence?.destinationRegistered?"Yes (unverified)":"No"}</strong> · Verified stored media bytes: <strong>{detail.preflight.integrationEvidence?.mediaBytesReadbackVerified?"Readback digest matched":"Not yet"}</strong> · Provider credentials: <strong>Not connected</strong></p>
      <details><summary>Unmet conditions for live platforms</summary>
       <ul>{detail.preflight.limitations.map(r=><li key={r}>{r.replaceAll("_"," ")}</li>)}</ul>
      </details>
