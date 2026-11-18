@@ -6,8 +6,8 @@ const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
-  const [resource, id, action] = path;
-  if (!resource || !routes.has(resource) || path.length > 3 ||
+  const [resource, id, action, operation] = path;
+  if (!resource || !routes.has(resource) || path.length > 4 ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "objectives" && (path.length !== 1 || !["GET", "POST"].includes(request.method))) ||
@@ -20,7 +20,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "brain" && !(
         (path.length === 2 && ((id === "plan" && request.method === "GET") || (id === "assess" && request.method === "POST") || (id === "runs" && (request.method === "GET" || request.method === "POST")))) ||
         (path.length === 3 && id === "runs" && request.method === "GET") ||
-        (path.length === 4 && id === "runs" && path[3] === "execute" && request.method === "POST")
+        (path.length === 4 && id === "runs" && !!action && (operation === "execute" || operation === "quarantine") && request.method === "POST")
       )) ||
       (resource === "operations" && !(path.length === 2 && id === "delivery" && request.method === "GET")) ||
       (resource === "agents" && !(request.method === "GET" && (
