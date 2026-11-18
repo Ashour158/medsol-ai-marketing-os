@@ -80,6 +80,8 @@ model Organization {
   publicationAttempts PublicationAttempt[]
   integrationConnections IntegrationConnection[]
   verifiedMediaEvidence VerifiedMediaEvidence[]
+  oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
+  providerCredentials ProviderCredential[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -703,6 +705,8 @@ model IntegrationConnection {
   @@unique([organizationId,id])
   @@unique([organizationId,destinationRef])
   @@unique([organizationId,brandId,providerKey,destinationLabel],map:"IntegrationConnection_brand_provider_dest_key")
+  oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
+  providerCredential ProviderCredential?
   @@index([organizationId,brandId,status])
 }
 
@@ -728,4 +732,55 @@ model VerifiedMediaEvidence {
   @@unique([organizationId,id])
   @@unique([organizationId,creativeAssetRevisionId],map:"VerifiedMediaEvidence_org_revision_key")
   @@index([organizationId,status,verifiedAt])
+}
+
+/** R2C single-use PKCE transaction. No browser or AI has direct DB access.
+ * The one-time verifier is AES-GCM encrypted under a deployment-owned key.
+ */
+model OAuthAuthorizationAttempt {
+  id String @id @default(cuid())
+  organizationId String
+  integrationConnectionId String
+  providerKey String
+  stateDigest String
+  encryptedCodeVerifier String
+  redirectUri String
+  requestedScopes Json
+  status String @default("PENDING")
+  createdBy String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  claimedAt DateTime?
+  completedAt DateTime?
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"OAuthAttempt_org_connection_fk")
+  @@unique([organizationId,stateDigest])
+  @@unique([organizationId,id])
+  @@index([organizationId,integrationConnectionId,status,expiresAt],map:"OAuthAttempt_org_conn_status_expiry_idx")
+}
+
+/** R2C encrypted provider credential. Tokens can only be created by a trusted
+ * code-exchange broker; credential presence does not verify provider capabilities.
+ * No generic UI/APIs may read encrypted fields or write raw token material.
+ */
+model ProviderCredential {
+  id String @id @default(cuid())
+  organizationId String
+  integrationConnectionId String
+  providerKey String
+  encryptedAccessToken String
+  encryptedRefreshToken String?
+  tokenExpiresAt DateTime
+  grantedScopes Json
+  status String @default("PENDING_ATTESTATION")
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  revokedAt DateTime?
+  revokedBy String?
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"ProviderCredential_org_connection_fk")
+  @@unique([organizationId,id])
+  @@unique([organizationId,integrationConnectionId])
+  @@index([organizationId,providerKey,status])
 }

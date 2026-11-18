@@ -28,6 +28,7 @@ export type PublicationPreflight={
  integrationEvidence:{
   destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
   mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
+  encryptedTokenReceivedPendingAttestation:boolean;
   providerCredentialsVerified:false;providerPublishingCapabilityVerified:false;
   verifiedExternalDestination:false;
  };
@@ -104,6 +105,10 @@ export class CampaignPublicationService{
   const evidence=isExactCreativeScope(scope)?await tx.verifiedMediaEvidence.findUnique({
    where:{organizationId_creativeAssetRevisionId:{
     organizationId,creativeAssetRevisionId:scope.revisionId}}}):null;
+  const pendingCredential=connection?await tx.providerCredential.findUnique({where:{
+   organizationId_integrationConnectionId:{
+    organizationId,integrationConnectionId:connection.id
+   }},select:{status:true,tokenExpiresAt:true}}):null;
   const matchingEvidence=!!evidence&&evidence.status==='VERIFIED_READBACK'&&
    !!revision&&evidence.sourceRef===revision.sourceRef&&
    evidence.sha256Digest===revision.renditionDigest&&
@@ -117,6 +122,9 @@ export class CampaignPublicationService{
     providerKey:connection?.providerKey??null,
     mediaBytesReadbackVerified:matchingEvidence,
     mediaObjectVersion:matchingEvidence?evidence!.objectVersion:null,
+    encryptedTokenReceivedPendingAttestation:connection?.status==='PENDING_VERIFICATION'&&
+      pendingCredential?.status==='PENDING_ATTESTATION'&&
+      pendingCredential.tokenExpiresAt>new Date(),
     providerCredentialsVerified:false as const,
     providerPublishingCapabilityVerified:false as const,
     verifiedExternalDestination:false as const

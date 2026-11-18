@@ -26,12 +26,23 @@ function label(value:unknown):string{
 export class PlatformIntegrationHubService{
  constructor(private readonly db:PrismaService){}
  catalog(){return PLATFORM_CATALOG;}
- private scoped<T>(organizationId:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>):Promise<T>{
+ private async scoped<T>(organizationId:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>):Promise<T>{
   id(organizationId,'tenant');
-  return this.db.$transaction(async tx=>{
-   await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",organizationId);
-   return fn(tx);
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  // All callers perform database-only, rollback-atomic operations. It is safe
+  // to retry a PostgreSQL serialization abort here; NEVER put OAuth code
+  // exchange, provider sends or external HTTP calls inside this helper.
+  for(let attempt=0;attempt<4;attempt++){
+   try{
+    return await this.db.$transaction(async tx=>{
+     await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",organizationId);
+     return fn(tx);
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+   }catch(e){
+    if((e as {code?:string})?.code!=='P2034'||attempt===3)throw e;
+    await new Promise(resolve=>setTimeout(resolve,10*(attempt+1)));
+   }
+  }
+  throw new Error('Transaction retry budget exhausted');
  }
  private present(item:{id:string;brandId:string;providerKey:string;destinationLabel:string;
   destinationRef:string;status:string;version:number;createdAt:Date}){
@@ -82,6 +93,30 @@ export class PlatformIntegrationHubService{
    return items.map(x=>this.present(x));
   });
  }
+ async connectionHealth(organizationId:string,connectionIdInput:unknown){
+  const connectionId=id(connectionIdInput,'connection');
+  return this.scoped(organizationId,async tx=>{
+   const conn=await tx.integrationConnection.findFirst({where:{organizationId,id:connectionId}});
+   if(!conn)throw new NotFoundException('Destination not found in tenant');
+   const [cred,handshakes]=await Promise.all([
+    tx.providerCredential.findUnique({where:{organizationId_integrationConnectionId:{
+     organizationId,integrationConnectionId:connectionId}},
+     select:{status:true,tokenExpiresAt:true,version:true}}),
+    tx.oAuthAuthorizationAttempt.findMany({where:{
+     organizationId,integrationConnectionId:connectionId},take:3,
+     orderBy:{createdAt:'desc'},
+     select:{status:true,expiresAt:true,createdAt:true}})
+   ]);
+   return{connectionId,brandId:conn.brandId,providerKey:conn.providerKey,
+    connectionStatus:conn.status,
+    tokenReceived:cred?.status==='PENDING_ATTESTATION',
+    tokenStatus:cred?.status??'NOT_RECEIVED',
+    tokenExpiresAt:cred?.tokenExpiresAt??null,
+    handshakeHistory:handshakes,
+    accountOwnershipVerified:false,providerCapabilityVerified:false,
+    externalEffectsAuthorized:false};
+  });
+ }
  async get(organizationId:string,connectionIdInput:unknown){
   const connectionId=id(connectionIdInput,'connection');
   return this.scoped(organizationId,async tx=>{
@@ -114,6 +149,16 @@ export class PlatformIntegrationHubService{
      ...(action==='REVOKE'?{revokedAt:new Date(),revokedBy:actorId}:
        {suspendedAt:new Date(),suspendedBy:actorId})}});
    if(changed.count!==1)throw new ConflictException('Concurrent connection policy change');
+   if(action==='REVOKE'){
+    const credential=await tx.providerCredential.findUnique({where:{
+     organizationId_integrationConnectionId:{organizationId,integrationConnectionId:connectionId}
+    }});
+    if(credential?.status==='PENDING_ATTESTATION'){
+     await tx.providerCredential.updateMany({where:{organizationId,
+      integrationConnectionId:connectionId,status:'PENDING_ATTESTATION'},
+      data:{status:'REVOKED',version:{increment:1},revokedAt:new Date(),revokedBy:actorId}});
+    }
+   }
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,
     action:'INTEGRATION_CONNECTION_'+next,objectType:'IntegrationConnection',
     objectId:connectionId,correlationId:connectionId,

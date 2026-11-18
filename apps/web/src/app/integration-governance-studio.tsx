@@ -22,6 +22,9 @@ export default function IntegrationGovernanceStudio({identity}:{identity:Identit
  const [destinationLabel,setDestinationLabel]=useState("");
  const [reason,setReason]=useState("");
  const [selectedId,setSelectedId]=useState("");
+ const [connectionHealth,setConnectionHealth]=useState<{tokenReceived:boolean;tokenStatus:string;
+  connectionStatus:string;accountOwnershipVerified:false;providerCapabilityVerified:false;
+  externalEffectsAuthorized:false}|null>(null);
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [busy,setBusy]=useState(false);
@@ -42,7 +45,7 @@ export default function IntegrationGovernanceStudio({identity}:{identity:Identit
   setConnections(c as Connection[]);setProviders(p as Provider[]);setProofs(m as Proof[]);
  }
  useEffect(()=>{
-  setConnections([]);setProofs([]);setProviders([]);setSelectedId("");setNotice("");
+  setConnections([]);setProofs([]);setProviders([]);setSelectedId("");setConnectionHealth(null);setNotice("");
   if(!authorized)return;
   void load().catch(e=>setError(e instanceof Error?e.message:"Cannot load integration metadata"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,7 +96,7 @@ export default function IntegrationGovernanceStudio({identity}:{identity:Identit
    <fieldset style={{marginTop:16,padding:16,border:"1px solid #e2e8f0",borderRadius:10}}>
     <legend style={{fontWeight:700}}>Govern connection lifecycle</legend>
     <label>Registered destination
-     <select style={field} value={selectedId} onChange={e=>setSelectedId(e.target.value)}>
+     <select style={field} value={selectedId} onChange={e=>{setSelectedId(e.target.value);setConnectionHealth(null);}}>
       <option value="">Select destination</option>
       {connections.map(x=><option key={x.id} value={x.id}>
        {x.destinationLabel} · {x.providerKey} · {x.status}
@@ -105,6 +108,15 @@ export default function IntegrationGovernanceStudio({identity}:{identity:Identit
       Use this immutable reference in a future creative approval:
       <code>{chosen.destinationRef}</code>
      </p>
+     <button style={{...button,marginTop:8}} disabled={busy} onClick={()=>void run(async()=>{
+      setConnectionHealth(await call("integrations/"+encodeURIComponent(chosen.id)+"/health"));
+     })}>Inspect OAuth readiness (read-only)</button>
+     {connectionHealth&&<p role="status" style={{fontSize:13}}>
+      Encrypted token: <strong>{connectionHealth.tokenStatus}</strong> ·
+      Provider account ownership verified: <strong>No</strong> ·
+      Provider publishing capabilities verified: <strong>No</strong> ·
+      External delivery: <strong>Disabled</strong>
+     </p>}
      <p style={{fontSize:13}}>Status: <strong>{chosen.status}</strong> ·
       Credential verification: <strong>NOT CONNECTED</strong> ·
       External delivery authorized: <strong>NO</strong>
