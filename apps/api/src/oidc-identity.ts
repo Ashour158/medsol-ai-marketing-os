@@ -25,6 +25,8 @@ export async function verifyOidcIdentity(
   const tenant = entraTenantId();
   if (config.issuer !== entraIssuer(tenant)) throw new Error('Microsoft Entra issuer mismatch');
   const subject = entraSubject(payload, tenant);
+  const requiredScope = process.env.MARKETING_ENTRA_API_SCOPE?.split('/').at(-1);
+  if (!requiredScope || typeof payload.scp !== 'string' || !payload.scp.split(' ').includes(requiredScope)) throw new ForbiddenException('Delegated Marketing API scope required');
   const user = await lookup(subject, organizationId);
   if (!user || user.disabledAt) throw new ForbiddenException('User is not active in this organization');
   if (!user.oidcSubject || user.oidcSubject !== subject) throw new ForbiddenException('OIDC subject is not bound to the provisioned user');
