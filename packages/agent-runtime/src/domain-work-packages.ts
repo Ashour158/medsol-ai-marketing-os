@@ -54,7 +54,7 @@ export function createMarketingWorkPackage(agentId:string,raw:unknown):Marketing
  const reviewedTotals:Record<string,string>={};
  if(performance.status==='REVIEWED_SOURCE_EVIDENCE'){
   for(const [key,value] of Object.entries(rawTotals)){
-   if(knownMetrics.has(key)&&typeof value==='string'&&/^\\d{1,24}$/.test(value))reviewedTotals[key]=value;
+   if(knownMetrics.has(key)&&typeof value==='string'&&/^\d{1,24}$/.test(value))reviewedTotals[key]=value;
   }
  }
  const marketingEvidence={

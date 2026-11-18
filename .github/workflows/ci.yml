@@ -69,3 +69,52 @@ jobs:
         run: pnpm test
       - name: Build
         run: pnpm build
+
+  security-evidence:
+    name: dependency audit and SBOM evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies for security inspection
+        run: pnpm install --no-frozen-lockfile
+      - name: Generate SPDX software bill of materials
+        id: sbom
+        continue-on-error: true
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+      - name: Record real dependency audit output and exit code
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          pnpm audit --json > dependency-audit.json 2> dependency-audit.stderr
+          status=$?
+          printf '%s\n' "$status" > dependency-audit.exitcode
+          printf 'Dependency audit exit code: %s\n' "$status"
+          exit 0
+      - name: Upload scanner evidence for independent review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-security-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            sbom.spdx.json
+            dependency-audit.json
+            dependency-audit.stderr
+            dependency-audit.exitcode

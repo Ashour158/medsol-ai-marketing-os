@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Comparison/gating corpus for reviewed marketing performance context. This is NOT a RAG retrieval relevance benchmark.",
+  "cases": [
+    {
+      "id": "reviewed-valid-metrics",
+      "status": "REVIEWED_SOURCE_EVIDENCE",
+      "totals": {
+        "impressions": "1000",
+        "clicks": "50",
+        "leads": "5",
+        "spend_micros": "60000000"
+      },
+      "expected": {
+        "impressions": "1000",
+        "clicks": "50",
+        "leads": "5",
+        "spend_micros": "60000000"
+      },
+      "expectedStatus": "HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED"
+    },
+    {
+      "id": "human-review-pending",
+      "status": "INSUFFICIENT_REVIEWED_DATA",
+      "totals": {
+        "impressions": "1000",
+        "clicks": "50"
+      },
+      "expected": {},
+      "expectedStatus": "INSUFFICIENT_REVIEWED_DATA"
+    },
+    {
+      "id": "malformed-metrics-filtered",
+      "status": "REVIEWED_SOURCE_EVIDENCE",
+      "totals": {
+        "clicks": "-1",
+        "leads": "5.6",
+        "impressions": "100",
+        "qualified_leads": "00",
+        "unknown": "100",
+        "spend_micros": "abc"
+      },
+      "expected": {
+        "impressions": "100",
+        "qualified_leads": "00"
+      },
+      "expectedStatus": "HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED"
+    },
+    {
+      "id": "untrusted-boolean-and-overlength",
+      "status": "REVIEWED_SOURCE_EVIDENCE",
+      "totals": {
+        "clicks": 10,
+        "leads": true,
+        "impressions": "1234567890123456789012345",
+        "spend_micros": "0"
+      },
+      "expected": {
+        "spend_micros": "0"
+      },
+      "expectedStatus": "HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED"
+    },
+    {
+      "id": "missing-source-review-status",
+      "status": "QUARANTINED",
+      "totals": {
+        "leads": "10"
+      },
+      "expected": {},
+      "expectedStatus": "INSUFFICIENT_REVIEWED_DATA"
+    }
+  ]
+}
