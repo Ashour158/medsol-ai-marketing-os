@@ -6,7 +6,7 @@ const config = { issuer: 'https://login.microsoftonline.com/11111111-1111-4111-8
 const user = { id: 'u1', email: 'member@example.com', role: 'CMO', oidcSubject: 'entra:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222', disabledAt: null };
 const lookup = vi.fn();
 describe('immutable identity binding', () => {
-  beforeEach(() => { process.env.MARKETING_ENTRA_TENANT_ID = '11111111-1111-4111-8111-111111111111'; vi.clearAllMocks(); vi.mocked(jwtVerify).mockResolvedValue({ payload: { sub: 'subject-1', tid: '11111111-1111-4111-8111-111111111111', oid: '22222222-2222-4222-8222-222222222222' } } as any); lookup.mockResolvedValue(user); });
+  beforeEach(() => { process.env.MARKETING_ENTRA_TENANT_ID = '11111111-1111-4111-8111-111111111111'; process.env.MARKETING_ENTRA_API_SCOPE = 'api://api-id/Marketing.Access'; vi.clearAllMocks(); vi.mocked(jwtVerify).mockResolvedValue({ payload: { sub: 'subject-1', tid: '11111111-1111-4111-8111-111111111111', oid: '22222222-2222-4222-8222-222222222222', scp: 'Marketing.Access' } } as any); lookup.mockResolvedValue(user); });
   it('accepts a matching provisioned subject', async () => {
     await expect(verifyOidcIdentity('Bearer valid', 'tenant', config, lookup)).resolves.toMatchObject({ userId: 'u1', subject: 'entra:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222' });
     expect(lookup).toHaveBeenCalledWith('entra:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222','tenant');
