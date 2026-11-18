@@ -2,7 +2,7 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
-import {exactCreativeScopeHash,isExactCreativeScope,type ExactCreativeScope} from './exact-creative-scope.js';
+import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreativeScope,type ExactCreativeScope} from './exact-creative-scope.js';
 
 const clean=(v:unknown,name:string,max=150)=>{
  if(typeof v!=='string'||!v.trim()||v.trim().length>max)
@@ -160,7 +160,7 @@ export class CreativeAssetService{
   if(!/^v[0-9]{1,9}$/.test(policyVersion))throw new BadRequestException('Policy version required');
   const scheduledAt=date(input?.scheduledAt,'schedule',90);
   const expiresAt=date(input?.expiresAt,'approval expiry',90);
-  if(expiresAt.getTime()<=scheduledAt.getTime()+300000)
+  if(expiresAt.getTime()<=scheduledAt.getTime()+EXACT_APPROVAL_EXECUTION_GRACE_MS)
    throw new BadRequestException('Approval expiry must extend at least five minutes after the scheduled release');
   return this.scoped(organizationId,async tx=>{
    const revision=await tx.creativeAssetRevision.findFirst({where:{id:revisionId,organizationId}});
@@ -226,7 +226,7 @@ export class CreativeAssetService{
     asset.version===revision.version&&revision.rightsReviewedAt!==null&&
     revision.rightsExpiresAt>new Date()&&approval.scopeExpiresAt!==null&&
     approval.scopeExpiresAt>new Date()&&
-    Date.parse(scope.expiresAt)>Date.parse(scope.scheduledAt)+300000&&
+    Date.parse(scope.expiresAt)>Date.parse(scope.scheduledAt)+EXACT_APPROVAL_EXECUTION_GRACE_MS&&
     approval.scopeExpiresAt.getTime()===Date.parse(scope.expiresAt)&&
     scope.revisionId===revision.id&&scope.brandId===asset.brandId&&
     scope.renditionDigest===revision.renditionDigest&&scope.sourceRef===revision.sourceRef&&
