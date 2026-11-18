@@ -18,6 +18,10 @@ type ReleaseReadiness={publicationId:string;releaseBlocked:true;
   candidateEncryptedTokenPresent:boolean;trustedAccountObservationFresh:boolean;
   mediaReadbackClean:boolean;mediaObjectVersionVerified:boolean;
   checks:Record<string,boolean>;blockers:string[]};
+type PreauthorizationStatus={reservationPresent:boolean;
+  authorizationEscrowState:string;reservationExpiresAt:string|null;
+  requiresIndependentProviderAuthorization:true;authorizedRemoteAttempt:false;
+  providerRequestsMade:0;safeToAutomaticallyRetry:false};
 type Reconciliation={correlationState:string;publicationStatus:string;
  signedWebhookObservations:number;signedPostAddCandidates:number;
  postClaimsMatchingObservedAccount:number;authorizedRemoteAttempts:number;
@@ -39,6 +43,9 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
  const [report,setReport]=useState<unknown>(null);
  const [reconciliation,setReconciliation]=useState<Reconciliation|null>(null);
  const [release,setRelease]=useState<ReleaseReadiness|null>(null);
+ const [preauth,setPreauth]=useState<PreauthorizationStatus|null>(null);
+ const [preauthReason,setPreauthReason]=useState("");
+ const [preauthKey,setPreauthKey]=useState("");
  const [holdReason,setHoldReason]=useState("");
  const [holdKey,setHoldKey]=useState("");
  const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
@@ -56,13 +63,17 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   setCampaigns(c as Campaign[]);setPublications(p as Publication[]);
  }
  async function detailFor(id:string){
-  const [d,recon,releaseGate]=await Promise.all([
+  const [d,recon,releaseGate,authorization]=await Promise.all([
    call("publications/"+encodeURIComponent(id)) as Promise<Detail>,
    call("publications/"+encodeURIComponent(id)+"/reconciliation") as Promise<Reconciliation>,
-   call("publications/"+encodeURIComponent(id)+"/release-readiness") as Promise<ReleaseReadiness>
+   call("publications/"+encodeURIComponent(id)+"/release-readiness") as Promise<ReleaseReadiness>,
+   call("publications/"+encodeURIComponent(id)+"/dispatch-reservation") as Promise<PreauthorizationStatus>
   ]);
-  if(selectedId!==id){setHoldReason("");setHoldKey("");}
-  setSelectedId(id);setDetail(d);setReconciliation(recon);setRelease(releaseGate);setReport(null);
+  if(selectedId!==id){
+   setHoldReason("");setHoldKey("");setPreauthReason("");setPreauthKey("");
+  }
+  setSelectedId(id);setDetail(d);setReconciliation(recon);setRelease(releaseGate);
+  setPreauth(authorization);setReport(null);
  }
  async function run(fn:()=>Promise<void>){
   setBusy(true);setError("");setNotice("");
@@ -70,7 +81,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   finally{setBusy(false);}
  }
  useEffect(()=>{
-  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);setHoldReason("");setHoldKey("");
+  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);setPreauth(null);setHoldReason("");setHoldKey("");setPreauthReason("");setPreauthKey("");
   if(!identity)return;
   void inventory().catch(e=>setError(e instanceof Error?e.message:"Unable to load publications"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +243,49 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
         await Promise.all([inventory(),detailFor(detail.id)]);
        })}>Permanently hold publication · No send</button>
      </section>
-     <h4>Sandbox attempt evidence</h4>
+     <section aria-label="Provider preauthorization escrow" style={{marginTop:16,padding:14,
+      border:"1px solid #cbd5e1",borderRadius:8,background:"#f8fafc"}}>
+      <h4 style={{marginTop:0}}>R2F-D · Durable preauthorization · No send</h4>
+      <p style={{fontSize:12,color:"#475569"}}>
+       Stage one tenant-bound, immutable provider authorization escrow for a
+       prepared publication. This is NOT a remote dispatch, does not contact a
+       provider and cannot be converted to an approved send without independent
+       account ownership, commercial entitlement and provider verification.
+      </p>
+      <p style={{fontSize:13}}>
+       Escrow state: <strong>{preauth?.authorizationEscrowState??"Unavailable"}</strong>
+       {" "}· Expiry: <strong>{preauth?.reservationExpiresAt?
+        new Date(preauth.reservationExpiresAt).toLocaleString():"—"}</strong>
+       {" "}· Real provider requests: <strong>0</strong>
+      </p>
+      <textarea aria-label="Preauthorization escrow rationale"
+       style={{...field,minHeight:60}}
+       disabled={busy||!canHold||detail.status!=="PREPARED"}
+       value={preauthReason} onChange={e=>setPreauthReason(e.target.value)}
+       placeholder="Reason for staging a no-send authorization escrow (12–500 characters)" />
+      <button style={{...btn,marginTop:10,background:"#475569"}}
+       disabled={busy||!canHold||detail.status!=="PREPARED"||
+        preauthReason.trim().length<12||preauthReason.trim().length>500}
+       onClick={()=>void run(async()=>{
+        const key=preauthKey||crypto.randomUUID();
+        if(!preauthKey)setPreauthKey(key);
+        await call("publications/"+encodeURIComponent(detail.id)+"/dispatch-reservation",{
+         expectedVersion:detail.version,requestKey:key,reason:preauthReason
+        });
+        setNotice("Preauthorization escrow recorded. No provider send occurred.");
+        await Promise.all([inventory(),detailFor(detail.id)]);
+       })}>Stage authorization escrow · No send</button>
+      {preauth?.authorizationEscrowState==="EXPIRED_NOT_SENT"&&
+       <button style={{...btn,marginTop:10,background:"#7f1d1d"}}
+        disabled={busy||!canHold||detail.status!=="AWAITING_AUTHORIZATION"}
+        onClick={()=>void run(async()=>{
+         await call("publications/"+encodeURIComponent(detail.id)+
+          "/dispatch-reservation/expire",{expectedVersion:detail.version});
+         setNotice("Expired preauthorization closed. No provider send occurred.");
+         await Promise.all([inventory(),detailFor(detail.id)]);
+        })}>Close expired escrow · No send</button>}
+     </section>
+     <h4>Internal attempt evidence</h4>
      {detail.attempts.length===0?<p>No simulation attempt recorded.</p>:
       <ul>{detail.attempts.map(a=><li key={a.id}>
        {a.outcome} · {a.evidenceRef} · {new Date(a.recordedAt).toLocaleString()}
