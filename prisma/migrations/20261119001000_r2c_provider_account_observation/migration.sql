@@ -29,7 +29,7 @@ CREATE TABLE "ProviderAccountObservation" (
  CONSTRAINT "ProviderAccountObs_digest_check" CHECK ("evidenceDigest" ~ '^sha256:[a-f0-9]{64}$'),
  CONSTRAINT "ProviderAccountObs_ref_check" CHECK (
     length("providerAccountRef") BETWEEN 3 AND 128 AND
-    "providerAccountRef" ~ '^[A-Za-z0-9_:.-]+ ),
+    "providerAccountRef" ~ '^[A-Za-z0-9_:.-]+$'
  CONSTRAINT "ProviderAccountObs_scopes_check" CHECK (
    jsonb_typeof("observedScopes")='array' AND
    jsonb_typeof("observedCapabilities")='array'
