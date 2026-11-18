@@ -34,6 +34,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'POST' && path === '/marketing/requests') return 'ASSESS';
   if (method === 'POST' && path === '/marketing/workflows') return 'EXECUTE_WORKFLOW';
   if (method === 'POST' && /^\/marketing\/workflows\/[^/]+\/resume$/.test(path)) return 'RESUME_WORKFLOW';
+  if (method === 'GET' && path === '/marketing/operations/delivery') return 'READ_AUDIT';
   if (method === 'GET' && ((path === '/marketing/agents/operations' || path === '/marketing/agents/budget') || /^\/marketing\/agents\/executions\/[^/]+$/.test(path))) return 'READ_AUDIT';
   if (method === 'GET' && /^\/marketing\/campaigns\/[^/]+$/.test(path)) return 'READ_AUDIT';
   if (method === 'GET' && (
