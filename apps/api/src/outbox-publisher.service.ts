@@ -29,10 +29,10 @@ export class OutboxPublisherService {
       if (!claimed) break;
       try {
         await transport.publish(claimed);
-        await this.db.outboxEvent.update({ where: { id: claimed.id }, data: { publishedAt: new Date(), publishingAt: null, lastError: null } });
-        published += 1;
+        const result = await this.db.outboxEvent.updateMany({ where: { id: claimed.id, publishedAt: null, publishingAt: claimed.publishingAt }, data: { publishedAt: new Date(), publishingAt: null, lastError: null } });
+        if (result.count === 1) published += 1;
       } catch (error) {
-        await this.db.outboxEvent.update({ where: { id: claimed.id }, data: { publishingAt: null, lastError: error instanceof Error ? error.message : 'Unknown publish error' } });
+        await this.db.outboxEvent.updateMany({ where: { id: claimed.id, publishedAt: null, publishingAt: claimed.publishingAt }, data: { publishingAt: null, lastError: error instanceof Error ? error.message : 'Unknown publish error' } });
         failed += 1;
       }
     }
