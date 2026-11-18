@@ -24,6 +24,9 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 }
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
+  if(method==='GET'&&(path==='/marketing/performance/observations'||/^\/marketing\/performance\/campaigns\/[^/]+$/.test(path)))return 'READ_AUDIT';
+  if(method==='POST'&&path==='/marketing/performance/ingest')return 'ASSESS';
+  if(method==='POST'&&path==='/marketing/performance/review')return 'DECIDE_APPROVAL';
   if(method==='GET'&&path==='/marketing/command-center')return 'READ_AUDIT';
   if(method==='GET'&&(path==='/marketing/brand/active'||path==='/marketing/brand/revisions'))return 'READ_AUDIT';
   if(method==='POST'&&(path==='/marketing/brand/propose'||path==='/marketing/brand/decide'))return 'DECIDE_APPROVAL';
