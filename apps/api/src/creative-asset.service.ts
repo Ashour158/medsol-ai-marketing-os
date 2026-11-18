@@ -127,7 +127,10 @@ export class CreativeAssetService{
     select:{role:true}});
    if(!reviewer||!['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','CMO'].includes(reviewer.role.toUpperCase()))
     throw new ForbiddenException('Qualified independent reviewer required');
-   if(revision.createdBy===reviewerId)
+   const asset=await tx.creativeAsset.findFirst({where:{
+    organizationId,id:revision.assetId}});
+   if(!asset)throw new NotFoundException('Asset not found in tenant');
+   if(revision.createdBy===reviewerId||asset.createdBy===reviewerId)
     throw new ForbiddenException('Asset creator cannot review own rights');
    if(revision.rightsReviewedAt)return{revisionId,alreadyReviewed:true,externalEffectsAuthorized:false};
    if(revision.rightsExpiresAt<=new Date())throw new ConflictException('Rights have expired');
