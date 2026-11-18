@@ -756,7 +756,7 @@ model OAuthAuthorizationAttempt {
   connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"OAuthAttempt_org_connection_fk")
   @@unique([organizationId,stateDigest])
   @@unique([organizationId,id])
-  @@index([organizationId,integrationConnectionId,status,expiresAt])
+  @@index([organizationId,integrationConnectionId,status,expiresAt],map:"OAuthAttempt_org_conn_status_expiry_idx")
 }
 
 /** R2C encrypted provider credential. Tokens can only be created by a trusted
