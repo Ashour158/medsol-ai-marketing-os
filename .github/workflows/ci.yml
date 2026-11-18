@@ -46,6 +46,13 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Generate Prisma client
         run: pnpm exec prisma generate --schema prisma/schema.prisma
+      - name: Inspect historical baseline SQL (temporary migration repair probe)
+        run: |
+          git show ee4d6513422bea8ffd0e7e3e1ebf070fc502f971:prisma/schema.prisma > /tmp/marketing-baseline.prisma
+          pnpm exec prisma migrate diff --from-empty --to-schema-datamodel /tmp/marketing-baseline.prisma --script > /tmp/marketing-baseline.sql
+          echo 'BEGIN_MARKETING_BASELINE_SQL'
+          cat /tmp/marketing-baseline.sql
+          echo 'END_MARKETING_BASELINE_SQL'
       - name: Build workspace libraries
         run: pnpm --filter './packages/**' build
       - name: Typecheck
