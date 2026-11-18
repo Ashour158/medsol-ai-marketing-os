@@ -28,9 +28,10 @@ describe.skipIf(!enabled)('R2D immutable scanned media evidence with real Postgr
     slug:'r2d-media',name:'R2D media brand',createdBy:'owner'}});
    await db.$transaction(async tx=>{
     await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
-    for(const [a,r,s] of [
-     [assetId,revisionId,sourceRef],[legacyAssetId,legacyRevisionId,legacySourceRef]
-    ]){
+    for(const [a,r,s] of (
+     [[assetId,revisionId,sourceRef],[legacyAssetId,legacyRevisionId,legacySourceRef]] as
+     [string,string,string][]
+    )){
      await tx.creativeAsset.create({data:{id:a,organizationId:org,
       brandId,title:'Media asset',createdBy:'owner',version:1}});
      await tx.creativeAssetRevision.create({data:{id:r,organizationId:org,assetId:a,
