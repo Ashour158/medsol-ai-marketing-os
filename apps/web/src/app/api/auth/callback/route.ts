@@ -12,9 +12,11 @@ export async function GET(request: NextRequest) {
   const response = redirect("authentication_failed");
   response.cookies.set(FLOW_COOKIE, "", secureCookie(0));
   try {
+    const clientSecret = process.env.MARKETING_ENTRA_CLIENT_SECRET;
+    if (!clientSecret) throw new Error("Microsoft Entra confidential web client credential is required");
     const tokenResult = await fetch(flow.tokenEndpoint, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant_type: "authorization_code", client_id: cfg.clientId, code, code_verifier: flow.verifier, redirect_uri: cfg.origin + "/api/auth/callback" }),
+      body: new URLSearchParams({ grant_type: "authorization_code", client_id: cfg.clientId, client_secret: clientSecret, code, code_verifier: flow.verifier, redirect_uri: cfg.origin + "/api/auth/callback" }),
       cache: "no-store", signal: AbortSignal.timeout(8000)
     });
     if (!tokenResult.ok) return response;
