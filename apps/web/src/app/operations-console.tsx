@@ -5,7 +5,9 @@ import PerformanceConsole from "./performance-console";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Snapshot={
  asOf:string;health:string;totals:Record<string,number>;incidentCoverage?:{shown:number;total:number;truncated:boolean};
- incidents:Array<{id:string;severity:string;kind:string;message:string;runId:string|null}>;
+ workerFleet?:{health:string;active:number;stale:number;stopped:number;lastHeartbeatAt:string|null;thresholdSeconds:number}|null;
+ incidents:Array<{id:string;sourceId?:string;severity:string;kind:string;message:string;runId:string|null;
+  response?:{acknowledgedAt:string|null;acknowledgedBy:string|null;lastNotifiedLevel:number}|null}>;
  brainRuns:Array<{id:string;status:string;currentAgentId:string|null;updatedAt:string}>;
  modelBudget:{enabled:boolean;estimatedSpentMicros?:string;verifiedBilledMicros?:string;awaitingInvoiceCount?:number};
  brand:{approved:boolean;version:number|null};
@@ -23,6 +25,7 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
  const [incidentRows,setIncidentRows]=useState<Snapshot["incidents"]>([]);
  const [incidentCursor,setIncidentCursor]=useState<string|null>(null);
  const [incidentTotal,setIncidentTotal]=useState<number|null>(null);
+ const [ackReason,setAckReason]=useState("");
  const [brand,setBrand]=useState<{version:number;rules:unknown;sourceReference:string}|null>(null);
  const [revisions,setRevisions]=useState<BrandRevision[]>([]);
  const [signals,setSignals]=useState<Signal[]>([]);
@@ -102,7 +105,15 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
     {Object.entries(snapshot.totals).filter(([k])=>["brainRuns","pendingApprovals","pendingSkillDecisions","failedAgentExecutions","interventionBrainRuns","staleBrainRuns"].includes(k))
      .map(([k,v])=><div key={k} style={surface}><strong style={{fontSize:24,color:"#124d83"}}>{v}</strong><div style={{fontSize:12,color:"#475569"}}>{k.replace(/([A-Z])/g," $1")}</div></div>)}
    </div>
-   <h3>Incidents requiring investigation ({snapshot.incidentCoverage?.total??snapshot.incidents.length} total)</h3>
+   <div style={{...surface,marginTop:12}}>
+     <h3 style={{marginTop:0}}>Brain worker liveness</h3>
+     {snapshot.workerFleet?<div style={{fontSize:13}}>
+      <strong>{snapshot.workerFleet.health.replaceAll("_"," ")}</strong>
+      <span style={{marginLeft:10}}>Healthy: {snapshot.workerFleet.active} · Stale: {snapshot.workerFleet.stale} · Stopped in 24h: {snapshot.workerFleet.stopped}</span>
+      <div style={{color:"#64748b",marginTop:5}}>Last heartbeat: {snapshot.workerFleet.lastHeartbeatAt?new Date(snapshot.workerFleet.lastHeartbeatAt).toLocaleString():"None"} · stale after {snapshot.workerFleet.thresholdSeconds}s. No active heartbeat is not healthy.</div>
+     </div>:<p style={{fontSize:13,color:"#92400e"}}>Worker liveness data unavailable.</p>}
+    </div>
+    <h3>Incidents requiring investigation ({snapshot.incidentCoverage?.total??snapshot.incidents.length} total)</h3>
    {snapshot.incidentCoverage?.truncated&&<p style={{fontSize:13,color:"#92400e"}}>Showing {snapshot.incidentCoverage.shown} sampled incidents. Use the full inventory below to investigate all records.</p>}
    {snapshot.incidents.length===0?<p style={{color:"#64748b"}}>No incidents detected by the current checks.</p>:
     <div style={{display:"grid",gap:8}}>{snapshot.incidents.map(issue=><div key={issue.id} style={{...surface,background:issue.severity==="CRITICAL"?"#fff8f8":"#fffcf4"}}>
@@ -120,10 +131,21 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
     </select></label>
     <button style={{...button,marginLeft:8}} disabled={busy}
      onClick={()=>act(()=>loadIncidentPage(incidentKind))}>Load inventory</button>
-    {incidentTotal!==null&&<p style={{fontSize:13}}>Loaded {incidentRows.length} of {incidentTotal} incident records. Read-only; no automatic replay.</p>}
+    {incidentTotal!==null&&<p style={{fontSize:13}}>Loaded {incidentRows.length} of {incidentTotal} incident records. Acknowledgement does not resolve or replay an incident.</p>}
+    <label style={{display:"block",marginTop:12,fontSize:13}}>Investigation acknowledgement rationale (12–500 characters)
+     <textarea style={{...field,minHeight:65}} value={ackReason} maxLength={500} onChange={e=>setAckReason(e.target.value)}
+      placeholder="Describe the investigation owner and evidence checked"/></label>
     {incidentRows.map(issue=><div key={issue.id} style={{borderTop:"1px solid #cbd5e1",padding:"10px 0",fontSize:13}}>
      <strong>{issue.severity} · {issue.kind}</strong> — {issue.message}
      {issue.runId&&<button style={{marginLeft:8}} onClick={()=>onRunSelected(issue.runId!)}>Investigate run</button>}
+      {issue.response?.acknowledgedAt?
+       <span style={{marginLeft:10,color:"#166534"}}>Acknowledged {new Date(issue.response.acknowledgedAt).toLocaleString()}</span>:
+       <button style={{...button,marginLeft:8}} disabled={busy||!manageable||ackReason.trim().length<12||!issue.sourceId}
+        onClick={()=>act(async()=>{
+         await call("command-center/incidents/"+issue.kind+"/"+encodeURIComponent(issue.sourceId!)+"/acknowledge",{reason:ackReason.trim()});
+         setAckReason("");
+         await loadIncidentPage(incidentKind);
+        })}>Acknowledge for investigation</button>}
     </div>)}
     {incidentCursor&&<button style={button} disabled={busy}
      onClick={()=>act(()=>loadIncidentPage(incidentKind,incidentCursor))}>Load next 25</button>}
