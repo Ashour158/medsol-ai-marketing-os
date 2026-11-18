@@ -40,11 +40,12 @@ export class OutboxPublisherService {
   }
 
   private async claimOne() {
+    const leaseCutoff = new Date(Date.now() - 5 * 60 * 1000);
     return this.db.$transaction(async tx => {
-      const event = await tx.outboxEvent.findFirst({ where: { publishedAt: null, publishingAt: null }, orderBy: { occurredAt: 'asc' } });
+      const event = await tx.outboxEvent.findFirst({ where: { publishedAt: null, OR: [{ publishingAt: null }, { publishingAt: { lt: leaseCutoff } }] }, orderBy: { occurredAt: 'asc' } });
       if (!event) return null;
       const claimedAt = new Date();
-      const result = await tx.outboxEvent.updateMany({ where: { id: event.id, publishedAt: null, publishingAt: null }, data: { publishingAt: claimedAt, attempts: { increment: 1 } } });
+      const result = await tx.outboxEvent.updateMany({ where: { id: event.id, publishedAt: null, OR: [{ publishingAt: null }, { publishingAt: { lt: leaseCutoff } }] }, data: { publishingAt: claimedAt, attempts: { increment: 1 } } });
       if (result.count !== 1) return null;
       return { ...event, publishingAt: claimedAt };
     });
