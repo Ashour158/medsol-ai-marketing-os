@@ -73,3 +73,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R2F-B approval lifetime semantics aligned with scheduled execution
 
 [Read the R2F-B exact approval execution-window correction](docs/blueprint-v2/R2F_B_EXACT_APPROVAL_EXECUTION_WINDOW.md). The canonical ExactCreativeScope/ApprovalService/DAM/Publication services now reject approval expiries that precede the scheduled release or fail to provide a minimum five-minute execution margin. This fixes a previously detected sandbox-only policy mismatch. Historical incompatible approvals remain immutable audit records and require a new exact-version human approval, while live external sending stays blocked.
+
+### R2F-C durable no-send dispatch hold and locked provider adapter boundary
+
+[Review R2F-C Reuse Map, one-use database fence, default-deny provider adapter port and live-release prerequisites](docs/blueprint-v2/R2F_C_ONE_USE_DISPATCH_FENCE.md). The canonical PublicationAttempt ledger now supports a one-use **non-dispatchable RELEASE_FENCE** in addition to SANDBOX, with tenant-admin OIDC, version CAS, idempotent replay, immutable audit and internal event. Operators can permanently block a PREPARED publication from the Publication Studio. There is no provider egress, no active REMOTE attempt, no verified delivery, and no new independent publication owner.

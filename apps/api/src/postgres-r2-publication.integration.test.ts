@@ -245,6 +245,113 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     'CampaignPublicationPreparedInternal','CampaignPublicationSandboxSimulatedInternal']);
    expect(await db.auditEvent.count({where:{organizationId:org,
     objectType:'CampaignPublication',objectId:intent.publicationId}})).toBe(2);
+   // R2F-C one-use operator dispatch fence belongs to PublicationAttempt,
+   // never to a second delivery queue and never to a REMOTE mode.
+   const originalApproval=await db.approval.findFirstOrThrow({where:{
+    organizationId:org,id:preparedCreative.approvalId}});
+   const heldPublicationId=randomUUID(),holdApprovalId=randomUUID();
+   await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    await tx.approval.create({data:{
+     id:holdApprovalId,organizationId:org,
+     objectType:'CreativeAssetRevision',objectId:version.revisionId,
+     creativeAssetRevisionId:version.revisionId,requestedBy:creator,
+     requiredAuthority:'HUMAN_CREATIVE_RELEASE',riskLevel:'R2',
+     decision:'APPROVED',decidedBy:reviewer,decidedAt:new Date(),
+     scope:originalApproval.scope!,scopeDigest:originalApproval.scopeDigest!,
+     scopeExpiresAt:originalApproval.scopeExpiresAt
+    }});
+    await tx.campaignPublication.create({data:{
+     id:heldPublicationId,organizationId:org,campaignId:campaign.campaignId,
+     creativeAssetRevisionId:version.revisionId,approvalId:holdApprovalId,
+     scopeDigest:originalApproval.scopeDigest!,requestKey:randomUUID(),
+     createdBy:creator,status:'PREPARED',version:1
+    }});
+   });
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.create({data:{
+     id:randomUUID(),organizationId:org,publicationId:heldPublicationId,
+     sequence:1,mode:'RELEASE_FENCE',outcome:'BLOCKED',
+     evidenceRef:'internal:release-fence/'+'f'.repeat(64),
+     inputDigest:'sha256:'+'f'.repeat(64),recordedBy:reviewer
+    }});
+   })).rejects.toThrow();
+   const holdKey='hold-'+randomUUID();
+   const holdInput={expectedVersion:1,requestKey:holdKey,
+    reason:'Approved security hold to prevent external dispatch'};
+   await expect(publications.placeDispatchHold(foreign,identity,
+    heldPublicationId,holdInput)).rejects.toThrow('tenant administrator');
+   await expect(publications.placeDispatchHold(org,{
+    ...identity,subject:'forged-oidc'},heldPublicationId,holdInput))
+    .rejects.toThrow('matching OIDC');
+   await expect(publications.placeDispatchHold(org,{
+    ...identity,role:'MARKETING_SPECIALIST'},heldPublicationId,holdInput))
+    .rejects.toThrow('tenant administrator');
+   const settled=await Promise.allSettled([
+    publications.placeDispatchHold(org,identity,heldPublicationId,holdInput),
+    publications.placeDispatchHold(org,identity,heldPublicationId,holdInput)
+   ]);
+   expect(settled.some(x=>x.status==='fulfilled')).toBe(true);
+   const replayHold=await publications.placeDispatchHold(
+    org,identity,heldPublicationId,holdInput);
+   expect(replayHold).toMatchObject({
+    status:'BLOCKED',replayed:true,releaseFenceDurable:true,
+    remoteAttemptCreated:false,automaticRetryAllowed:false,
+    externalEffectsAuthorized:false
+   });
+   await expect(publications.placeDispatchHold(org,identity,heldPublicationId,{
+    ...holdInput,requestKey:'different-'+randomUUID()
+   })).rejects.toThrow('idempotency');
+   expect(await db.publicationAttempt.count({where:{
+    organizationId:org,publicationId:heldPublicationId
+   }})).toBe(1);
+   const fence=await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.findFirstOrThrow({where:{
+     organizationId:org,publicationId:heldPublicationId
+    }});
+   });
+   expect(fence).toMatchObject({
+    mode:'RELEASE_FENCE',outcome:'BLOCKED',sequence:1,inputDigest:originalApproval.scopeDigest
+   });
+   expect(fence.evidenceRef).toMatch(/^internal:release-fence\/[a-f0-9]{64}$/);
+   expect(await publications.reconcileProviderDelivery(org,heldPublicationId))
+    .toMatchObject({correlationState:'NO_AUTHORIZED_REMOTE_ATTEMPT',
+     authorizedRemoteAttempts:0,verifiedRemoteReceipts:0,externallyPublished:false});
+   expect(await publications.releaseReadiness(org,identity,heldPublicationId))
+    .toMatchObject({publicationStatus:'BLOCKED',releaseBlocked:true,
+     externalEffectsAuthorized:false,existingAuthorizedRemoteAttempts:0});
+   await expect(publications.simulate(org,creator,heldPublicationId,1))
+    .rejects.toThrow('no longer ready');
+   await expect(publications.assertProviderDispatchUnavailable(
+    org,identity,heldPublicationId)).rejects.toThrow('Official provider dispatch unavailable');
+   expect(await db.auditEvent.count({where:{
+    organizationId:org,objectId:heldPublicationId,
+    action:'CAMPAIGN_PUBLICATION_DISPATCH_HELD'
+   }})).toBe(1);
+   expect(await db.outboxEvent.count({where:{
+    organizationId:org,aggregateId:heldPublicationId,
+    eventType:'CampaignPublicationDispatchHeldInternal'
+   }})).toBe(1);
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.update({where:{id:fence.id},
+     data:{outcome:'OUTCOME_UNKNOWN'}});
+   })).rejects.toThrow();
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.delete({where:{id:fence.id}});
+   })).rejects.toThrow();
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.create({data:{
+     id:randomUUID(),organizationId:org,publicationId:heldPublicationId,
+     sequence:2,mode:'REMOTE',outcome:'OUTCOME_UNKNOWN',
+     evidenceRef:'internal:release-fence/'+'f'.repeat(64),
+     inputDigest:originalApproval.scopeDigest!,recordedBy:reviewer
+    }});
+   })).rejects.toThrow();
    // A new creative version changes the authoritative asset and invalidates
    // the old exact approval; its old simulated result remains evidence only.
    await creatives.addRevision(org,creator,asset.id,{
@@ -278,6 +385,10 @@ describe('R2 governed sandbox publication from real approved campaign and creati
  },90000);
  it('enforces R2 route permissions, including no bootstrap publication access',()=>{
   expect(permissionForMarketingRoute('POST','/marketing/publications')).toBe('MANAGE_CAMPAIGN');
+  expect(permissionForMarketingRoute('POST','/marketing/publications/abc/dispatch-hold'))
+   .toBe('MANAGE_TENANT');
+  expect(()=>permissionForMarketingRoute('POST','/marketing/publications/abc/dispatch'))
+   .toThrow('not in the permission registry');
   expect(permissionForMarketingRoute('POST','/marketing/publications/abc/simulate'))
    .toBe('EXECUTE_WORKFLOW');
   expect(permissionForMarketingRoute('GET','/marketing/publications/abc/performance')).toBe('READ_AUDIT');

@@ -29,7 +29,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
        (path.length===3&&!!id&&request.method==="GET"&&
           (action==="preflight"||action==="performance"||action==="reconciliation"||action==="release-readiness")) ||
        (path.length===3&&!!id&&request.method==="POST"&&
-          (action==="simulate"||action==="cancel"))
+          (action==="simulate"||action==="cancel"||action==="dispatch-hold"))
       )) ||
       (resource === "assets" && !(
         (request.method==="GET" && (path.length===1 ||

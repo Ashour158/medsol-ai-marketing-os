@@ -174,3 +174,9 @@ R2F-A is an implemented **release barrier**, not live channel delivery. The requ
 [Read the R2F-B single-owner Reuse Map, legacy acceptance, source-of-truth and tests](R2F_B_EXACT_APPROVAL_EXECUTION_WINDOW.md).
 
 Corrected the legacy sandbox rule that permitted a human approval to expire before its scheduled publication. ExactCreativeScope, CreativeAssetService, existing ApprovalService, CampaignPublicationService and the Creative Governance Studio now require approval expiry to extend **more than five minutes past** the planned release time. Existing invalid scopes are not modified or silently promoted; independent reapproval with a new exact scope is necessary. No new approval or publishing engine, and all external delivery remains disabled until full R2F credential, entitlement, permission and staging gates.
+
+## R2F-C durable one-use dispatch hold and locked official-adapter port
+
+[Read the authoritative R2F-C Reuse Map, atomic SQL release-fence contract, test plan and R2F-D blockers](R2F_C_ONE_USE_DISPATCH_FENCE.md).
+
+R2F-C extends **existing** CampaignPublicationService and PublicationAttempt to add a permanent, one-use, tenant-admin/OIDC-authorized `RELEASE_FENCE` (outcome BLOCKED), with exact immutable scope, serializable CAS, one audit and one internal Outbox event. The database permits only SANDBOX and non-dispatchable RELEASE_FENCE; REMOTE and PUBLISHED remain forbidden. Signed webhook evidence, sandbox simulation and holds cannot count as remote sends. The Integration Hub's provider-neutral adapter port exists but its runtime gateway is **always locked** and has zero provider network activity, even for forged capability/permit objects. **This is not an authorized remote attempt reservation**: genuine egress must await verified customer account, official app review, entitlement/consent, durable REMOTE state, actual signed provider receipt and staging testing.
