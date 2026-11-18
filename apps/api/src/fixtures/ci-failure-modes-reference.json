@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "source": "Captured GitHub Actions logs from Medsol AI Marketing OS PRs #1 and #2; command strings are reproduction guidance, not reenacted logs.",
+  "cases": [
+    {
+      "id": "web-optional-route-param",
+      "runId": 44317984699,
+      "job": "verify",
+      "stage": "Typecheck",
+      "exitCode": 2,
+      "errorCode": "TS2345",
+      "location": "apps/web/src/app/api/marketing/[...path]/route.ts",
+      "observed": "Argument of type 'string | undefined' is not assignable to parameter of type 'string'.",
+      "expectedGate": "BLOCK",
+      "resolution": "Validate and narrow optional path before use; action ?? ''.",
+      "reproduction": "pnpm typecheck",
+      "url": "https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44317984699"
+    },
+    {
+      "id": "api-unsafe-index",
+      "runId": 44318159159,
+      "job": "verify",
+      "stage": "Typecheck",
+      "exitCode": 2,
+      "errorCode": "TS2532",
+      "location": "apps/api/src/marketing-incident-inventory.test.ts",
+      "observed": "Object is possibly 'undefined'.",
+      "expectedGate": "BLOCK",
+      "resolution": "Use an explicit non-null check or optional access and assert the test result.",
+      "reproduction": "pnpm typecheck",
+      "url": "https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44318159159"
+    },
+    {
+      "id": "commonjs-import-meta",
+      "runId": 44320547067,
+      "job": "verify",
+      "stage": "Typecheck",
+      "exitCode": 2,
+      "errorCode": "TS1470",
+      "location": "apps/api/src/marketing-analyzer-golden.test.ts",
+      "observed": "The 'import.meta' meta-property is not allowed in files which will build into CommonJS output.",
+      "expectedGate": "BLOCK",
+      "resolution": "Resolve fixtures from the package cwd rather than import.meta.",
+      "reproduction": "pnpm typecheck",
+      "url": "https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44320547067"
+    },
+    {
+      "id": "dependency-audit-advisories",
+      "runId": 44320547067,
+      "job": "dependency audit and SBOM evidence",
+      "stage": "Dependency audit",
+      "exitCode": 1,
+      "errorCode": "PNPM_AUDIT_ADVISORY",
+      "location": "dependency-audit.json",
+      "observed": "Initial scan: 2 critical, 2 high, 3 moderate vulnerabilities.",
+      "expectedGate": "BLOCK_PRODUCTION_APPROVAL",
+      "resolution": "Refresh dependencies; inspect SBOM and scan artifact, track remaining severity, apply approved exceptions only.",
+      "reproduction": "pnpm audit --json",
+      "url": "https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44320547067"
+    }
+  ]
+}
