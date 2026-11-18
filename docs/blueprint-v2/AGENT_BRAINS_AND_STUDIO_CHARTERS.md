@@ -46,3 +46,21 @@ Each versioned agent definition shall include: canonical ID; persona alias; owne
 
 ## Non-completion notice
 No true Agent Studio factory, signed runtime manifest migration, multi-provider router, MCP/A2A tool execution, long-term tenant memory, dynamic teams, design application connectors, social posting or email sender has been implemented merely by this charter.
+
+
+## v2.1 advanced specialist capability attachments (same canonical 13-agent roster)
+
+All additions **extend** existing agent contracts; the brain numbers, runtime identities, authority and approval constraints do not change.
+
+| Capability | Existing agent / brain | New specialist knowledge and reasoning skills | Required evidence and evaluation |
+| --- | --- | --- | --- |
+| E34 Search & AI Discovery | MKT-STR-001 B03, MKT-ANA-001 B07 | Query-intent portfolio, website/search visibility hypotheses, sampled AI-answer citation auditing, multilingual query equivalence, controlled optimization experiments | Query frame, authorized source, timestamps, coverage and repeatability; never invent ranking |
+| E35 Voice of Customer | MKT-SOC-001 B06, MKT-STR-001 B03 | Permitted feedback theme coding, buying objection/JTBD, journey friction, complaint risk, sampling bias, cohort privacy | Purpose and data-rights owner, reviewer, minimum-cohort suppression and independent multilingual labels |
+| E36 PR & Earned Media | MKT-CONT-001, MKT-BRAND-001 B02, MKT-SCI-001 B08 | Corporate messaging, speeches, media evidence, spokesperson identity, coverage analysis, crisis escalation and corrections | Verified quotes, rights, brand and qualified legal/scientific review, exact approval |
+| E20/E21 Revenue Decisions | MKT-ANA-001 B07, MKT-GROWTH-001 B10 | Marketing mix scenarios, cost and unit margin sensitivity, true experimental incrementality vs attributed performance | Reconciled source metrics, documented assumptions, finance owner and explicit causality label |
+| E14 Content Authenticity | MKT-CREATIVE-001 B05, MKT-BRAND-001 B02 | Design source vs export, asset digest, usage rights, license expiry, source and C2PA evidence when actually verified | Immutable hashes, license, capability-specific editability and human rights review |
+| WF40 Sales/Partner Enablement | MKT-PM-001 B10, MKT-CONT-001 B04 | Territory/channel kits, objections, partner product claims, compliant collateral and co-marketing | Authorized partner grant, ERP/PIM product revision, territorial rights and approved claims |
+| WF41 Customer Activation | MKT-OPS-001 B01, tenant operator | Guided first campaign, value milestones, customer training and service-health adoption | Verified tenant/agency/brand/IAM/entitlements/approval data; independent UAT |
+
+### Learning depth and governance for all added specialist skills
+Skills are hypotheses until evaluated. For each agent add curated and tenant-scoped knowledge corpus, source rights and expiry, task-specific evaluation fixtures, red-team negatives, expected structured output and cost budget, review owner, canary/promotion/rollback criterion and incident runbook. Feedback may propose improvements, but never change its own prompts, tools, policies or privilege ceilings without independent release approval. Marketing performance is judged on evidence and meaningful customer outcomes, not model verbosity.
