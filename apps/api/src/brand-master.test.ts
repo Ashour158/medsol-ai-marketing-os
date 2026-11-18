@@ -32,7 +32,7 @@ describe('authoritative versioned Brand Master',()=>{
  });
  it('requires a distinct independent reviewer and records decision',async()=>{
   const {tx,service}=setup();const revision={id:'rev-1',organizationId:'tenant',status:'DRAFT',version:3,proposedBy:'author'};
-  tx.brandMasterRevision.findFirst.mockResolvedValueOnce(revision).mockResolvedValueOnce({version:2});
+  tx.brandMasterRevision.findFirst.mockResolvedValueOnce(revision);
   await expect(service.decide('tenant','author','rev-1','APPROVE','Reviewed official branding guidelines')).rejects.toThrow('Independent');
   tx.brandMasterRevision.findFirst.mockResolvedValueOnce(revision).mockResolvedValueOnce({version:2});
   const result=await service.decide('tenant','other-reviewer','rev-1','APPROVE','Reviewed official branding guidelines');
