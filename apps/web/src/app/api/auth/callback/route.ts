@@ -26,7 +26,16 @@ export async function GET(request: NextRequest) {
     // API validates access-token issuer, audience, signature, and authoritative user membership on every request.
     const ttl = Math.min(3600, Math.max(0, Math.floor(tokens.expires_in) - 30));
     if (ttl < 30) return response;
-    const session = await seal({ accessToken: tokens.access_token, organizationId: cfg.organizationId, expiresAt: Date.now() + ttl * 1000 }, ttl);
+    const expiresAt = Date.now() + ttl * 1000;
+    const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001";
+    const registration = await fetch(new URL("/marketing/sessions", apiBase), {
+      method: "POST", headers: { authorization: "Bearer " + tokens.access_token, "x-organization-id": cfg.organizationId, "content-type": "application/json" },
+      body: JSON.stringify({ expiresAt }), cache: "no-store", signal: AbortSignal.timeout(8000)
+    });
+    if (!registration.ok) return response;
+    const registered = await registration.json();
+    if (typeof registered.sessionId !== "string") return response;
+    const session = await seal({ accessToken: tokens.access_token, organizationId: cfg.organizationId, expiresAt, sessionId: registered.sessionId }, ttl);
     const success = NextResponse.redirect(new URL("/", cfg.origin));
     success.cookies.set(FLOW_COOKIE, "", secureCookie(0));
     success.cookies.set(SESSION_COOKIE, session, secureCookie(ttl));
