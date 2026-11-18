@@ -31,7 +31,7 @@ export class ModelBudgetService {
       if (result && (!Number.isSafeInteger(result.actualCostMicros) || result.actualCostMicros < 0 || BigInt(result.actualCostMicros) > usage.reservedMicros || !Number.isSafeInteger(result.inputTokens) || !Number.isSafeInteger(result.outputTokens) || result.inputTokens < 0 || result.outputTokens < 0 || !result.model)) throw new ForbiddenException('Invalid model usage');
       const updated = await tx.modelUsage.updateMany({ where: { id, organizationId, status: 'RESERVED' }, data: {
         status: result ? 'SETTLED' : 'RELEASED', actualMicros: result ? BigInt(result.actualCostMicros) : null,
-        model: result?.model, inputTokens: result?.inputTokens, outputTokens: result?.outputTokens, completedAt: new Date()
+        ...(result ? { model: result.model, inputTokens: result.inputTokens, outputTokens: result.outputTokens } : {}), completedAt: new Date()
       } });
       if (updated.count !== 1) throw new ConflictException('Model usage was concurrently settled');
       await tx.modelBudget.update({ where: { organizationId }, data: {
