@@ -19,11 +19,13 @@ describe.skipIf(!enabled)('PostgreSQL Brain crash-window/fencing acceptance',()=
    const current=await ledger.create(organizationId,input,'run-a-'+randomUUID());
    const other=await ledger.create(organizationId,input,'run-b-'+randomUUID());
    await db.brainRun.update({where:{id:current.id},data:{status:'RUNNING'}});
-   await db.agentExecution.create({data:{
+   const otherExecution=await db.agentExecution.create({data:{
     id:'other-'+randomUUID(),organizationId,agentId,correlationId,
     input:{brainRunId:other.id,upstreamExecutionId:null},status:'COMPLETED',completedAt:new Date()
    }});
-   await expect(ledger.checkpoint(organizationId,current.id,agentId,'not-owned')).rejects.toThrow('No completed matching');
+   // Exact ID, tenant, agent and correlation match; only the originating Brain run differs.
+   await expect(ledger.checkpoint(organizationId,current.id,agentId,otherExecution.id))
+    .rejects.toThrow('No completed matching');
    expect(await db.outboxEvent.count({where:{organizationId,aggregateId:current.id}})).toBe(0);
    const execution=await db.agentExecution.create({data:{
     id:'exec-'+randomUUID(),organizationId,agentId,correlationId,
