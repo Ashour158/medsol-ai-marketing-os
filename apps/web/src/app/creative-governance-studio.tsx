@@ -43,6 +43,9 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
  const [policyVersion,setPolicyVersion]=useState("v1");
  const [scheduledAt,setScheduledAt]=useState("");
  const [approvalExpiry,setApprovalExpiry]=useState("");
+ const approvalWindowValid=!!scheduledAt&&!!approvalExpiry&&
+  Number.isFinite(Date.parse(scheduledAt))&&Number.isFinite(Date.parse(approvalExpiry))&&
+  Date.parse(approvalExpiry)>Date.parse(scheduledAt)+300000;
  const [approvalId,setApprovalId]=useState("");
  const [approval,setApproval]=useState<Decision|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
@@ -187,11 +190,16 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
       onChange={e=>setPolicyVersion(e.target.value)}/></label>
      <label>Scheduled time<input type="datetime-local" style={field} value={scheduledAt}
       onChange={e=>setScheduledAt(e.target.value)}/></label>
-     <label>Approval expires<input type="datetime-local" style={field} value={approvalExpiry}
+     <label>Approval expires (after scheduled release)<input type="datetime-local" style={field} value={approvalExpiry}
       onChange={e=>setApprovalExpiry(e.target.value)}/></label>
     </div>
+    <p role="note" style={{fontSize:12,color:"#475569"}}>
+     Approval must remain valid at the scheduled publishing time and expire at
+     least five minutes afterwards. Existing approvals with an earlier expiry
+     must be reviewed again under a new immutable scope.
+    </p>
     <button style={{...button,marginTop:12}} disabled={!canEdit||busy||!selectedRevision||!chosen?.rightsReviewedAt||
-     !scheduledAt||!approvalExpiry}
+     !approvalWindowValid}
      onClick={()=>void run(async()=>{
       const r=await call("assets/revisions/"+encodeURIComponent(selectedRevision)+"/submit-approval",{
        channel,destinationRef,audienceRef,policyVersion,
