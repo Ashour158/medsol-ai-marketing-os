@@ -5,6 +5,7 @@ export type MarketingWorkPackage={
  requiredInputs:string[]; analysisSteps:string[]; acceptanceChecks:string[];
  successIndicators:string[]; reviewOwner:string; blockedOn:string[];
  references:{topic:string;url:string;verification:'UNVERIFIED'}[];
+ catalog:{source:string|null;product:{id:string;code:string;name:string;vendor:string|null}|null;objective:{id:string;name:string}|null;scientificClaimsVerified:false;regulatoryApprovalVerified:false};
  executable:false;
 };
 type Playbook={deliverable:string;inputs:string[];steps:string[];checks:string[];metrics:string[];owner:string};
@@ -30,6 +31,20 @@ export function createMarketingWorkPackage(agentId:string,raw:unknown):Marketing
  const text=(value:unknown,max=250):string|null=>typeof value==='string'&&value.trim()?value.trim().slice(0,max):null;
  const ctx=input.trendContext&&typeof input.trendContext==='object'?input.trendContext as {topics?:unknown}:null;
  const topics=Array.isArray(ctx?.topics)?ctx.topics.slice(0,5):[];
+ const authority=input.authorityContext&&typeof input.authorityContext==='object'?
+    input.authorityContext as Record<string,unknown>:{};
+ const product=authority.source==='TENANT_MARKETING_CATALOG'&&authority.product&&typeof authority.product==='object'?
+    authority.product as Record<string,unknown>:null;
+ const objective=authority.source==='TENANT_MARKETING_CATALOG'&&authority.objective&&typeof authority.objective==='object'?
+    authority.objective as Record<string,unknown>:null;
+ const catalog={
+    source:authority.source==='TENANT_MARKETING_CATALOG'?'TENANT_MARKETING_CATALOG':null,
+    product:product&&typeof product.id==='string'&&typeof product.code==='string'&&typeof product.name==='string'?
+      {id:product.id,code:product.code,name:product.name,vendor:typeof product.vendor==='string'?product.vendor:null}:null,
+    objective:objective&&typeof objective.id==='string'&&typeof objective.name==='string'?
+      {id:objective.id,name:objective.name}:null,
+    scientificClaimsVerified:false as const,regulatoryApprovalVerified:false as const
+ };
  const references:{topic:string;url:string;verification:'UNVERIFIED'}[]=[];
  for(const topic of topics){
   if(!topic||typeof topic!=='object')continue;
@@ -46,5 +61,5 @@ export function createMarketingWorkPackage(agentId:string,raw:unknown):Marketing
   market:text(input.market),audience:text(input.targetAudience),
   requiredInputs:[...playbook.inputs],analysisSteps:[...playbook.steps],acceptanceChecks:[...playbook.checks],
   successIndicators:[...playbook.metrics],reviewOwner:playbook.owner,blockedOn:[...playbook.inputs],
-  references,executable:false};
+  references,catalog,executable:false};
 }
