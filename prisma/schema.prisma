@@ -198,6 +198,7 @@ model Approval {
   @@index([organizationId,objectType,objectId])
   @@index([organizationId,decision])
   @@index([organizationId,workflowExecutionId])
+  @@index([organizationId,creativeAssetRevisionId])
 }
 model AuditEvent {
   id String @id @default(cuid())
