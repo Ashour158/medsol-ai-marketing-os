@@ -44,6 +44,9 @@ describe('Blueprint v2.1 bounded specialist review logic',()=>{
   expect(small.status).toBe('INSUFFICIENT_EVIDENCE');
   expect(reviewVoiceOfCustomer('tenant-a',{...input,signals:[
    ...input.signals.slice(0,4),{...make(5),purposeAllowed:false}]},fixed).excludedCount).toBe(1);
+  const segregated=reviewVoiceOfCustomer('tenant-a',{...input,signals:[
+    make(0),make(1),make(2),make(3),{...make(4),theme:'TRUST'}]},fixed);
+  expect(segregated.themeCounts).toEqual({});
   expect(()=>reviewVoiceOfCustomer('tenant-a',{...input,signals:[
    {...make(1),email:'private@example.org'}]},fixed)).toThrow('Raw customer identity');
   expect(()=>reviewVoiceOfCustomer('tenant-a',{...input,signals:[
