@@ -12,7 +12,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "performance" && !((path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
         (path.length===2&&request.method==="POST"&&(id==="ingest"||id==="review")))) ||
-      (resource === "command-center" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "command-center" && !(request.method === "GET" && (path.length === 1 || (path.length === 3 && id === "incidents" && ["BRAIN_NEEDS_INTERVENTION","BRAIN_STALE","OUTBOX_DEAD_LETTER"].includes(action))))) ||
       (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "objectives" && (path.length !== 1 || !["GET", "POST"].includes(request.method))) ||
       (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
@@ -48,7 +48,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const authorization = "Bearer " + session.accessToken;
   const organizationId = session.organizationId;
   try {
-    const response = await fetch(new URL("/marketing/" + path.map(encodeURIComponent).join("/"), apiBase), {
+    const response = await fetch(new URL("/marketing/" + path.map(encodeURIComponent).join("/") + (request.nextUrl.searchParams.toString()?"?"+request.nextUrl.searchParams.toString():""), apiBase), {
       method: request.method,
       headers: { authorization, "x-organization-id": organizationId, "x-marketing-session-id": session.sessionId, ...(request.method === "POST" ? { "content-type": "application/json" } : {}) },
       ...(request.method === "POST" ? { body: await request.text() } : {}),
