@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Golden cases for the existing 13-agent deterministic domain assessment, not simulated LLM quality or regulatory validation.",
+  "cases": [
+    {
+      "id": "cmo-base-pass",
+      "agentId": "MKT-CMO-001",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "ops-human-release",
+      "agentId": "MKT-OPS-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "human_campaign_release_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "strategy-evidence-missing",
+      "agentId": "MKT-STR-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "independently_verified_evidence_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "strategy-human-review-is-not-verification",
+      "agentId": "MKT-STR-001",
+      "evidenceKind": "reviewedOnly",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "independently_verified_evidence_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "strategy-primary-verification",
+      "agentId": "MKT-STR-001",
+      "evidenceKind": "independentlyVerified",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "EVIDENCE_REVIEWED",
+      "expectedEvidenceIds": [
+        "source-1"
+      ]
+    },
+    {
+      "id": "analytics-evidence-and-metric-adapter",
+      "agentId": "MKT-ANA-001",
+      "evidenceKind": "independentlyVerified",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "authoritative_metrics_adapter_required"
+      ],
+      "expectedConfidence": "EVIDENCE_REVIEWED",
+      "expectedEvidenceIds": [
+        "source-1"
+      ]
+    },
+    {
+      "id": "product-needs-evidence",
+      "agentId": "MKT-PM-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "independently_verified_evidence_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "scientific-claim-no-evidence",
+      "agentId": "MKT-SCI-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "independently_verified_evidence_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "growth-no-consent",
+      "agentId": "MKT-GROWTH-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "consent_record_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "growth-with-consent",
+      "agentId": "MKT-GROWTH-001",
+      "consentReference": "internal:consent-ledger-proof",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "crm-no-consent",
+      "agentId": "MKT-CRM-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "consent_record_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "crm-with-consent",
+      "agentId": "MKT-CRM-001",
+      "consentReference": "internal:consent-ledger-proof",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "content-no-brand",
+      "agentId": "MKT-CONT-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "authoritative_brand_master_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "social-with-brand",
+      "agentId": "MKT-SOC-001",
+      "brandMasterVersion": "v1",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "creative-no-brand",
+      "agentId": "MKT-CREATIVE-001",
+      "expectedGate": "REVIEW",
+      "expectedReasons": [
+        "authoritative_brand_master_required"
+      ],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "brand-with-master",
+      "agentId": "MKT-BRAND-001",
+      "brandMasterVersion": "v1",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "events-plan",
+      "agentId": "MKT-EVENT-001",
+      "expectedGate": "PASS",
+      "expectedReasons": [],
+      "expectedConfidence": "UNVERIFIED",
+      "expectedEvidenceIds": []
+    },
+    {
+      "id": "cross-tenant-evidence",
+      "agentId": "MKT-SCI-001",
+      "evidenceKind": "foreignTenant",
+      "expectedError": "Cross-tenant evidence prohibited"
+    }
+  ]
+}
