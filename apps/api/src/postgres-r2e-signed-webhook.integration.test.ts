@@ -86,6 +86,45 @@ describe('R2E-A signed webhook ingress is server-only and fail closed',()=>{
    expect(separate.observationId).not.toBe(saved.observationId);
    expect(await db.inboxEvent.count({where:{organizationId:org,
     consumerName:'META_SIGNED_WEBHOOK'}})).toBe(2);
+   const pageId='123456789012',postRef=pageId+'_987654321012';
+   const signedPost=Buffer.from(JSON.stringify({object:'page',entry:[{
+    id:pageId,time:Math.floor(Date.now()/1000),
+    changes:[{field:'feed',value:{item:'post',verb:'add',post_id:postRef}}]
+   }]}));
+   const postReceipt=await svc.ingestMeta(org,'meta_adapter',
+    connection.id,signedPost,signature(signedPost));
+   const claims=await db.$transaction(async tx=>{
+    await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
+    return tx.providerWebhookObservation.findUniqueOrThrow({
+     where:{id:postReceipt.observationId}});
+   });
+   expect(claims).toMatchObject({status:'QUARANTINED'});
+   expect(claims.candidateAccountDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+   expect(claims.candidatePostDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+   expect(claims.candidateEventAt).toBeInstanceOf(Date);
+   expect(JSON.stringify(claims)).not.toContain(postRef);
+   expect(JSON.stringify(claims)).not.toContain(pageId);
+   expect(await svc.ingestMeta(org,'meta_adapter',connection.id,
+    signedPost,signature(signedPost))).toMatchObject({
+     observationId:postReceipt.observationId,replayed:true,
+     receiptReconciled:false,externalEffectsAuthorized:false
+    });
+   const samePostOnOtherSubscription=await svc.ingestMeta(org,'meta_adapter',
+    separateConnection.id,signedPost,signature(signedPost));
+   const otherClaims=await db.$transaction(async tx=>{
+    await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
+    return tx.providerWebhookObservation.findUniqueOrThrow({
+     where:{id:samePostOnOtherSubscription.observationId}});
+   });
+   expect(otherClaims.candidatePostDigest).not.toBe(claims.candidatePostDigest);
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
+    return tx.providerWebhookObservation.update({
+     where:{id:postReceipt.observationId},
+     data:{candidatePostDigest:'sha256:'+'f'.repeat(64)}});
+   })).rejects.toThrow();
+   expect(await db.inboxEvent.count({where:{organizationId:org,
+    consumerName:'META_SIGNED_WEBHOOK'}})).toBe(4);
    await expect(db.$transaction(async tx=>{
     await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",org);
     return tx.providerWebhookObservation.update({
