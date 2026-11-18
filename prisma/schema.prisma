@@ -726,6 +726,6 @@ model VerifiedMediaEvidence {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   creativeAssetRevision CreativeAssetRevision @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
   @@unique([organizationId,id])
-  @@unique([organizationId,creativeAssetRevisionId])
+  @@unique([organizationId,creativeAssetRevisionId],map:"VerifiedMediaEvidence_org_revision_key")
   @@index([organizationId,status,verifiedAt])
 }
