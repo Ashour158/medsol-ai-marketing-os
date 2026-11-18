@@ -11,7 +11,7 @@ concurrency:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
