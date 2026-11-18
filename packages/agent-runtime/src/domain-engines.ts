@@ -3,6 +3,8 @@ import { assessDomain } from './domain-intelligence.js';
 import { createMarketingWorkPackage } from './domain-work-packages.js';
 import { AGENT_ROSTER, type AgentManifest } from './roster.js';
 import { triageSocialDiscussion } from './social-discussion.js';
+import {reviewSearchDiscovery,reviewVoiceOfCustomer,reviewCorporateCommunication,reviewRevenueScenario,
+  reviewAssetAuthenticity,reviewPartnerEnablement,reviewCustomerActivation} from './marketing-expansion.js';
 
 type StructuredInput = Record<string, unknown>;
 function record(value: unknown): StructuredInput {
@@ -55,6 +57,24 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
   const socialTriage=manifest.id==='MKT-SOC-001'&&input.discussion!==undefined?
    triageSocialDiscussion(context.organizationId,input.discussion):null;
   if(socialTriage)missing.push('human_social_moderation_review_required');
+  // Reuse the thirteen canonical agents. Extended capabilities are bounded
+  // in-memory decision packets, not new agent identities or domain writes.
+  const expansionReview=
+    manifest.id==='MKT-STR-001'&&input.searchDiscoveryInput!==undefined?
+      reviewSearchDiscovery(context.organizationId,input.searchDiscoveryInput):
+    manifest.id==='MKT-SOC-001'&&input.voiceOfCustomerInput!==undefined?
+      reviewVoiceOfCustomer(context.organizationId,input.voiceOfCustomerInput):
+    manifest.id==='MKT-CONT-001'&&input.corporateCommunicationInput!==undefined?
+      reviewCorporateCommunication(context.organizationId,input.corporateCommunicationInput):
+    manifest.id==='MKT-ANA-001'&&input.revenueScenarioInput!==undefined?
+      reviewRevenueScenario(context.organizationId,input.revenueScenarioInput):
+    manifest.id==='MKT-CREATIVE-001'&&input.assetAuthenticityInput!==undefined?
+      reviewAssetAuthenticity(context.organizationId,input.assetAuthenticityInput):
+    manifest.id==='MKT-PM-001'&&input.partnerEnablementInput!==undefined?
+      reviewPartnerEnablement(context.organizationId,input.partnerEnablementInput):
+    manifest.id==='MKT-OPS-001'&&input.customerActivationInput!==undefined?
+      reviewCustomerActivation(context.organizationId,input.customerActivationInput):null;
+  if(expansionReview)missing.push('specialist_evidence_and_human_review_required');
   const state: EngineState = scientific && refs.length === 0 ? 'INSUFFICIENT_EVIDENCE' : missing.length ? 'REVIEW_REQUIRED' : 'DRAFT';
   const assessment = assessDomain(manifest.id, { organizationId: context.organizationId, objective: String(input.objective ?? input.requestedOutcome ?? 'Unspecified objective'), market: String(input.market ?? 'Unspecified market'), audience: String(input.targetAudience ?? 'Unspecified audience'), productId: typeof input.productId === 'string' ? input.productId : null, evidence: [], brandMasterVersion: typeof input.brandMasterVersion === 'string' ? input.brandMasterVersion : null, consentReference: typeof input.consentReference === 'string' ? input.consentReference : null });
   const output: EngineOutput = {
@@ -74,7 +94,7 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
     riskLevel: scientific ? 'R3' : highRisk || external ? 'R2' : 'R1',
     rationale: manifest.mission + ' Output is a deterministic proposal, not an authoritative write or verified external fact.',
     approvalRequired: output.controls.humanApproval,
-    payload: {...output, domainAssessment: assessment, workPackage: createMarketingWorkPackage(manifest.id,input), ...(socialTriage?{socialTriage}:{})}
+    payload: {...output, domainAssessment: assessment, workPackage: createMarketingWorkPackage(manifest.id,input), ...(socialTriage?{socialTriage}:{}), ...(expansionReview?{expansionReview}:{})}
   };
 }
 export class MarketingDomainAgent implements Agent {
