@@ -3,7 +3,7 @@
 ## Registration model (single tenant, delegated user authentication)
 Create TWO Microsoft Entra app registrations under the SAME workforce tenant:
 
-1. **Medsol Marketing Web**: platform **Web**, redirect URI `https://YOUR-HOST/api/auth/callback`. Register as a confidential server-side web client and configure a client secret stored ONLY on the Next.js server (or prefer certificate credentials in a later hardening pass). Never place credentials in client JavaScript. The current callback uses public-client PKCE and does not yet send a client credential; for the current implementation, configure the app registration to permit public client flows only in a controlled staging configuration, or finish confidential-client authentication before production.
+1. **Medsol Marketing Web**: platform **Web**, redirect URI `https://YOUR-HOST/api/auth/callback`. Register as a confidential server-side web client and configure a client secret stored ONLY on the Next.js server (or prefer certificate credentials in a later hardening pass). Never place credentials in client JavaScript. The callback requires a confidential-client secret in addition to PKCE; disable public-client flows. Rotate the secret through your secret manager and prefer certificate credentials as a later improvement.
 2. **Medsol Marketing API**: expose a delegated scope `api://API-APPLICATION-ID/Marketing.Access`, add it to Web app API permissions and grant tenant admin consent. Configure API access token version 2 in the API manifest. Never request Microsoft Graph access tokens to authenticate the Medsol API.
 
 Use tenant-specific authority `https://login.microsoftonline.com/TENANT-GUID/v2.0`. Do not use `common`, `organizations`, or multi-tenant issuer substitution. Validate `tid` and immutable `oid` from signed tokens. User.oidcSubject is `entra:tenant-guid:object-guid` (lowercase). The subject is tenant-scoped and independent of email or display name. Explicitly provision every approved user and role; no just-in-time self-provisioning.
@@ -13,6 +13,7 @@ Web:
 - MARKETING_ENTRA_TENANT_ID=TENANT-GUID
 - MARKETING_OIDC_ISSUER=https://login.microsoftonline.com/TENANT-GUID/v2.0
 - MARKETING_OIDC_CLIENT_ID=WEB-APPLICATION-ID
+- MARKETING_ENTRA_CLIENT_SECRET=SERVER-ONLY-WEB-APP-SECRET
 - MARKETING_ENTRA_API_SCOPE=api://API-APPLICATION-ID/Marketing.Access
 - MARKETING_PUBLIC_ORIGIN=https://STAGING-HOST
 - MARKETING_BOOTSTRAP_ORGANIZATION_ID=MEDSOL-ORGANIZATION-ID
@@ -38,4 +39,4 @@ API:
 Build an agent registry and runtime control plane with tenant-scoped capability grants, tool allowlists, model budgets, execution traces, human approval gates, replay-safe jobs, prompt-injection defenses and scientific/brand review. Integrate campaign execution only after the authentication release gates are met.
 
 ## Current limitation
-Actual tenant GUID, app registrations, credentials, DNS/TLS deployment and live test accounts have not been supplied. Code-only checks cannot verify real Entra login. The current public-client PKCE token exchange must be upgraded to a confidential-client flow before internet-facing production deployment. Do not claim production-ready authentication until these steps are completed.
+Actual tenant GUID, app registrations, credentials, DNS/TLS deployment and live test accounts have not been supplied. Code-only checks cannot verify real Entra login. The confidential-client exchange requires an actual Entra app secret; certificate-based credentials, production abuse controls and provider-backed E2E validation remain outstanding. Do not claim production-ready authentication until these steps are completed.
