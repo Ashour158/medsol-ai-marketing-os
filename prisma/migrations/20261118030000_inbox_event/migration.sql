@@ -1,0 +1,4 @@
+CREATE TABLE "InboxEvent" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"eventId" TEXT NOT NULL,"consumerName" TEXT NOT NULL,"receivedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"processedAt" TIMESTAMP(3),"status" TEXT NOT NULL DEFAULT 'RECEIVED',"lastError" TEXT,"attempts" INTEGER NOT NULL DEFAULT 0,CONSTRAINT "InboxEvent_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "InboxEvent_organizationId_consumerName_eventId_key" ON "InboxEvent"("organizationId","consumerName","eventId");
+CREATE INDEX "InboxEvent_organizationId_status_receivedAt_idx" ON "InboxEvent"("organizationId","status","receivedAt");
+ALTER TABLE "InboxEvent" ADD CONSTRAINT "InboxEvent_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
