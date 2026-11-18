@@ -352,6 +352,142 @@ describe('R2 governed sandbox publication from real approved campaign and creati
      inputDigest:originalApproval.scopeDigest!,recordedBy:reviewer
     }});
    })).rejects.toThrow();
+   // R2F-D: one-use preauthorization is durable, tenant-bound and NOT
+   // equivalent to a real provider attempt. Reuse the same approval owner.
+   const escrowApprovalId=randomUUID(),escrowPublicationId=randomUUID();
+   await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    await tx.approval.create({data:{
+     id:escrowApprovalId,organizationId:org,
+     objectType:'CreativeAssetRevision',objectId:version.revisionId,
+     creativeAssetRevisionId:version.revisionId,requestedBy:creator,
+     requiredAuthority:'HUMAN_CREATIVE_RELEASE',riskLevel:'R2',
+     decision:'APPROVED',decidedBy:reviewer,decidedAt:new Date(),
+     scope:originalApproval.scope!,scopeDigest:originalApproval.scopeDigest!,
+     scopeExpiresAt:originalApproval.scopeExpiresAt
+    }});
+    await tx.campaignPublication.create({data:{
+     id:escrowPublicationId,organizationId:org,campaignId:campaign.campaignId,
+     creativeAssetRevisionId:version.revisionId,approvalId:escrowApprovalId,
+     scopeDigest:originalApproval.scopeDigest!,requestKey:randomUUID(),
+     createdBy:creator,status:'PREPARED',version:1
+    }});
+   });
+   const escrowKey='preauth-'+randomUUID();
+   const escrowInput={expectedVersion:1,requestKey:escrowKey,
+    reason:'Stage exact approved content without enabling external dispatch'};
+   await expect(publications.reserveDispatchPreauthorization(
+    foreign,identity,escrowPublicationId,escrowInput)).rejects.toThrow('OIDC administrator');
+   await expect(publications.reserveDispatchPreauthorization(
+    org,{...identity,subject:'wrong-subject'},escrowPublicationId,escrowInput))
+    .rejects.toThrow('matching OIDC');
+   await expect(publications.reserveDispatchPreauthorization(
+    org,{...identity,role:'VIEWER'},escrowPublicationId,escrowInput))
+    .rejects.toThrow('OIDC administrator');
+   const staged=await Promise.allSettled([
+    publications.reserveDispatchPreauthorization(org,identity,
+     escrowPublicationId,escrowInput),
+    publications.reserveDispatchPreauthorization(org,identity,
+     escrowPublicationId,escrowInput)
+   ]);
+   expect(staged.some(r=>r.status==='fulfilled')).toBe(true);
+   const escrowReplay=await publications.reserveDispatchPreauthorization(
+    org,identity,escrowPublicationId,escrowInput);
+   expect(escrowReplay).toMatchObject({
+    status:'AWAITING_AUTHORIZATION',replayed:true,
+    authorizedRemoteAttempt:false,providerRequestsMade:0,
+    automaticRetryAllowed:false,externalEffectsAuthorized:false
+   });
+   await expect(publications.reserveDispatchPreauthorization(
+    org,identity,escrowPublicationId,
+    {...escrowInput,requestKey:'different-'+randomUUID()}
+   )).rejects.toThrow('idempotency');
+   const escrowRow=await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.findFirstOrThrow({where:{
+     organizationId:org,publicationId:escrowPublicationId
+    }});
+   });
+   expect(escrowRow).toMatchObject({
+    mode:'DISPATCH_RESERVATION',outcome:'AWAITING_AUTHORIZATION',
+    integrationConnectionId:destination.id,providerKey:'META_GRAPH',
+    sequence:1,inputDigest:originalApproval.scopeDigest
+   });
+   expect(escrowRow.evidenceRef).toMatch(/^internal:dispatch-reservation\/[a-f0-9]{64}$/);
+   expect(escrowRow.reservationExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+   expect(await db.publicationAttempt.count({where:{
+    organizationId:org,publicationId:escrowPublicationId
+   }})).toBe(1);
+   expect(await publications.dispatchReservationStatus(org,escrowPublicationId))
+    .toMatchObject({reservationPresent:true,
+     authorizationEscrowState:'WAITING_FOR_AUTHORIZATION',
+     authorizedRemoteAttempt:false,providerRequestsMade:0,
+     safeToAutomaticallyRetry:false});
+   expect(await publications.reconcileProviderDelivery(org,escrowPublicationId))
+    .toMatchObject({preauthorizationReservationPresent:true,
+     authorizedRemoteAttempts:0,verifiedRemoteReceipts:0,
+     externallyPublished:false,correlationState:'NO_AUTHORIZED_REMOTE_ATTEMPT'});
+   await expect(publications.simulate(org,creator,escrowPublicationId,1))
+    .rejects.toThrow('no longer ready');
+   await expect(publications.placeDispatchHold(org,identity,
+    escrowPublicationId,holdInput)).rejects.toThrow('Only current unexecuted');
+   await expect(publications.expireDispatchPreauthorization(
+    org,identity,escrowPublicationId,2)).rejects.toThrow('not yet expired');
+   expect(await db.auditEvent.count({where:{
+    organizationId:org,objectId:escrowPublicationId,
+    action:'CAMPAIGN_PUBLICATION_PREAUTHORIZATION_RESERVED'
+   }})).toBe(1);
+   expect(await db.outboxEvent.count({where:{
+    organizationId:org,aggregateId:escrowPublicationId,
+    eventType:'CampaignPublicationPreauthorizationReservedInternal'
+   }})).toBe(1);
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.update({where:{id:escrowRow.id},
+     data:{outcome:'SIMULATED'}});
+   })).rejects.toThrow();
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.create({data:{
+     id:randomUUID(),organizationId:org,publicationId:escrowPublicationId,
+     sequence:2,mode:'REMOTE',outcome:'OUTCOME_UNKNOWN',
+     evidenceRef:escrowRow.evidenceRef,inputDigest:escrowRow.inputDigest,
+     recordedBy:reviewer
+    }});
+   })).rejects.toThrow();
+   // Source-bound direct SQL spoofing cannot invent account authorization.
+   const fakeApprovalId=randomUUID(),fakePublicationId=randomUUID();
+   await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    await tx.approval.create({data:{
+     id:fakeApprovalId,organizationId:org,
+     objectType:'CreativeAssetRevision',objectId:version.revisionId,
+     creativeAssetRevisionId:version.revisionId,requestedBy:creator,
+     requiredAuthority:'HUMAN_CREATIVE_RELEASE',riskLevel:'R2',
+     decision:'APPROVED',decidedBy:reviewer,decidedAt:new Date(),
+     scope:originalApproval.scope!,scopeDigest:originalApproval.scopeDigest!,
+     scopeExpiresAt:originalApproval.scopeExpiresAt
+    }});
+    await tx.campaignPublication.create({data:{
+     id:fakePublicationId,organizationId:org,campaignId:campaign.campaignId,
+     creativeAssetRevisionId:version.revisionId,approvalId:fakeApprovalId,
+     scopeDigest:originalApproval.scopeDigest!,requestKey:randomUUID(),
+     createdBy:creator,status:'PREPARED',version:1
+    }});
+   });
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.publicationAttempt.create({data:{
+     id:randomUUID(),organizationId:org,publicationId:fakePublicationId,
+     sequence:1,mode:'DISPATCH_RESERVATION',outcome:'AWAITING_AUTHORIZATION',
+     evidenceRef:'internal:dispatch-reservation/'+'f'.repeat(64),
+     inputDigest:'sha256:'+'e'.repeat(64),recordedBy:reviewer,
+     integrationConnectionId:destination.id,providerKey:'META_GRAPH',
+     reservationExpiresAt:new Date(Date.now()+600000)
+    }});
+   })).rejects.toThrow();
+   await expect(publications.dispatchReservationStatus(
+    foreign,escrowPublicationId)).rejects.toThrow('not found');
    // A new creative version changes the authoritative asset and invalidates
    // the old exact approval; its old simulated result remains evidence only.
    await creatives.addRevision(org,creator,asset.id,{
@@ -387,6 +523,12 @@ describe('R2 governed sandbox publication from real approved campaign and creati
   expect(permissionForMarketingRoute('POST','/marketing/publications')).toBe('MANAGE_CAMPAIGN');
   expect(permissionForMarketingRoute('POST','/marketing/publications/abc/dispatch-hold'))
    .toBe('MANAGE_TENANT');
+  expect(permissionForMarketingRoute('POST','/marketing/publications/abc/dispatch-reservation'))
+   .toBe('MANAGE_TENANT');
+  expect(permissionForMarketingRoute('POST','/marketing/publications/abc/dispatch-reservation/expire'))
+   .toBe('MANAGE_TENANT');
+  expect(permissionForMarketingRoute('GET','/marketing/publications/abc/dispatch-reservation'))
+   .toBe('READ_AUDIT');
   expect(()=>permissionForMarketingRoute('POST','/marketing/publications/abc/dispatch'))
    .toThrow('not in the permission registry');
   expect(permissionForMarketingRoute('POST','/marketing/publications/abc/simulate'))
