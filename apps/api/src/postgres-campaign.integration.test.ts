@@ -35,7 +35,7 @@ describe.skipIf(!enabled)('PostgreSQL campaign authority and approval integratio
       await expect(approvals.approve({ ...cmd, commandId: randomUUID(), organizationId: otherId, approverUserId: reviewer.id })).rejects.toThrow('Approval not found in tenant');
       const acceptedCommand = { ...cmd, commandId: randomUUID(), approverUserId: reviewer.id };
       const decision = await approvals.approve(acceptedCommand);
-      expect(decision.decision).toBe('APPROVED');
+      expect(decision).toMatchObject({ decision: 'APPROVED' });
       expect(await approvals.approve(acceptedCommand)).toEqual(decision);
       await expect(approvals.approve({ ...acceptedCommand, commandId: randomUUID(), decision: 'REJECTED' })).rejects.toThrow('already decided');
       expect((await db.campaign.findUniqueOrThrow({ where: { id: created.campaignId } })).status).toBe('APPROVED');
