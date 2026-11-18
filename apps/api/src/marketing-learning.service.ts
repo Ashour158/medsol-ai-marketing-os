@@ -51,15 +51,17 @@ export class MarketingLearningService {
   if(!manifest.capabilities.includes(skillKey))throw new ForbiddenException('Skill outside signed agent manifest');
   const signal=await this.db.learningSignal.findFirst({where:{id:signalId,organizationId}});
   if(!signal)throw new NotFoundException('Evidence signal not found in tenant');
-  if(signal.status!=='VERIFIED')throw new ConflictException('Evidence must be verified before skill proposal');
+  if(signal.status!=='REVIEWED')throw new ConflictException('Evidence must be reviewed before skill proposal');
   const existing=await this.db.agentSkillProposal.findUnique({where:{organizationId_agentId_skillKey_version:{organizationId,agentId,skillKey,version:1}}});
   if(existing)return existing;
   return this.db.agentSkillProposal.create({data:{id:randomUUID(),organizationId,agentId,skillKey,rationale,evidenceSignalId:signal.id,version:1,status:'PROPOSED',evaluation:{evaluationStatus:'NOT_RUN',proposedBy:actorId}}});
  }
  async verify(organizationId:string,actorId:string,signalId:string){
-  const changed=await this.db.learningSignal.updateMany({where:{id:signalId,organizationId,status:'QUARANTINED'},data:{status:'VERIFIED'}});
-  if(changed.count!==1)throw new ConflictException('Evidence not found or already reviewed');
-  await this.db.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,action:'LEARNING_SIGNAL_VERIFIED',objectType:'LearningSignal',objectId:signalId,correlationId:randomUUID(),after:{status:'VERIFIED'}}});
-  return{signalId,status:'VERIFIED'};
+  return this.db.$transaction(async tx=>{
+   const changed=await tx.learningSignal.updateMany({where:{id:signalId,organizationId,status:'QUARANTINED'},data:{status:'REVIEWED'}});
+   if(changed.count!==1)throw new ConflictException('Evidence not found or already reviewed');
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,action:'LEARNING_SIGNAL_REVIEWED',objectType:'LearningSignal',objectId:signalId,correlationId:randomUUID(),after:{status:'REVIEWED',verification:'NOT_INDEPENDENTLY_VERIFIED'}}});
+   return{signalId,status:'REVIEWED'};
+  });
  }
 }
