@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from './prisma.service.js';
 import { BrainRunExecutorService } from './brain-run-executor.service.js';
-import { OutboxPublisherService } from './outbox-publisher.service.js';
+import { OutboxPublisherService,type PublishedEvent } from './outbox-publisher.service.js';
 import { BrainHandoffConsumer, BRAIN_INTERNAL_EVENTS } from './brain-handoff-consumer.service.js';
 import {MarketingWorkerHealthService} from './marketing-worker-health.service.js';
 import {MarketingIncidentResponseService,INCIDENT_ALERT_EVENT} from './marketing-incident-response.service.js';
@@ -83,7 +83,12 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
   try{
    const queued=await this.incidentResponses.scan(25);
    const delivery=this.alertTransport?
-    await this.outbox.publishBatch(this.alertTransport,25,[INCIDENT_ALERT_EVENT]):
+    await this.outbox.publishBatch({publish:async (event:PublishedEvent)=>{
+     // Do not contact an on-call destination after the source was resolved
+     // or acknowledged while the alert waited in the durable outbox.
+     if(await this.incidentResponses!.shouldDeliver(event))
+      await this.alertTransport!.publish(event);
+    }},25,[INCIDENT_ALERT_EVENT]):
     {published:0,failed:0};
    return {status:'OBSERVED',queued:queued.queued,delivery,
     externalAlertsEnabled:!!this.alertTransport};
