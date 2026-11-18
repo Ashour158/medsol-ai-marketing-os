@@ -3,6 +3,7 @@ import {Prisma} from '@prisma/client';
 import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
 import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
+import {providerClaimDigest} from './provider-claim-digest.js';
 
 /**
  * R2 publication intent is the owner of the *desired* campaign channel action.
@@ -212,6 +213,85 @@ export class CampaignPublicationService{
      id:a.id,sequence:a.sequence,mode:a.mode,outcome:a.outcome,
      evidenceRef:a.evidenceRef,recordedAt:a.createdAt
     })),externalEffectsAuthorized:false};
+  });
+ }
+
+ /**
+  * R2E-C read-only correlation. The canonical PublicationAttempt table is
+  * still SANDBOX-only at the database layer. A provider-signed post claim
+  * has no authenticated outbound attempt to attach to, so this can never
+  * report a confirmed remote publication in R2E-C.
+  *
+  * No second receipt ledger, fabricated remote success, or external effect.
+  */
+ async reconcileProviderDelivery(organizationId:string,publicationIdInput:unknown){
+  const publicationId=id(publicationIdInput,'publication');
+  return this.scoped(organizationId,async tx=>{
+   const pub=await tx.campaignPublication.findFirst({where:{
+    organizationId,id:publicationId}});
+   if(!pub)throw new NotFoundException('Publication not found in tenant');
+   const approval=await tx.approval.findFirst({where:{
+    organizationId,id:pub.approvalId},select:{scope:true,scopeDigest:true}});
+   const scope=approval?.scope;
+   const exactScope=isExactCreativeScope(scope)&&
+    approval?.scopeDigest===pub.scopeDigest&&
+    exactCreativeScopeHash(scope)===pub.scopeDigest;
+   const connection=exactScope?await tx.integrationConnection.findFirst({where:{
+    organizationId,brandId:scope.brandId,destinationRef:scope.destinationRef
+   },select:{id:true,providerKey:true,status:true}}):null;
+   const base={organizationId,...(connection?{integrationConnectionId:connection.id}:{})};
+   const [allSigned,postClaims,latest,remoteAttempts,observedAccount]=await Promise.all([
+    connection?tx.providerWebhookObservation.count({where:base}):Promise.resolve(0),
+    connection?tx.providerWebhookObservation.count({where:{
+     ...base,candidatePostDigest:{not:null}
+    }}):Promise.resolve(0),
+    connection?tx.providerWebhookObservation.findFirst({where:base,
+     orderBy:{verifiedAt:'desc'},select:{verifiedAt:true}}):Promise.resolve(null),
+    tx.publicationAttempt.count({where:{
+     organizationId,publicationId,mode:{not:'SANDBOX'}
+    }}),
+    connection?tx.providerAccountObservation.findFirst({where:{
+     organizationId,integrationConnectionId:connection.id,status:'OBSERVED',
+     expiresAt:{gt:new Date()}
+    },select:{providerAccountRef:true}}):Promise.resolve(null)
+   ]);
+   let accountClaimMatchCount=0;
+   if(connection&&connection.providerKey==='META_GRAPH'&&
+      observedAccount&&/^[0-9]{4,32}$/.test(observedAccount.providerAccountRef)){
+    const candidateAccountDigest=providerClaimDigest(organizationId,
+     connection.id,'ACCOUNT',observedAccount.providerAccountRef);
+    accountClaimMatchCount=await tx.providerWebhookObservation.count({where:{
+     ...base,candidateAccountDigest,candidatePostDigest:{not:null}
+    }});
+   }
+   const reasons:string[]=[];
+   if(!exactScope)reasons.push('exact_publication_approval_scope_invalid');
+   if(!connection)reasons.push('registered_provider_destination_not_found');
+   if(connection?.status!=='PENDING_VERIFICATION')
+    reasons.push('provider_destination_not_pending_verification');
+   if(!observedAccount)reasons.push('no_fresh_provider_account_observation');
+   reasons.push('no_verified_customer_destination_binding');
+   if(remoteAttempts===0)reasons.push('no_authorized_remote_dispatch_evidence');
+   reasons.push('no_independent_provider_delivery_receipt_readback');
+   if(allSigned>0)reasons.push('signed_webhook_is_not_proof_of_publication');
+   if(postClaims>0)reasons.push('provider_post_claim_not_linked_to_outbound_dispatch');
+   return{
+    publicationId,publicationStatus:pub.status,
+    scopeDigest:pub.scopeDigest,providerKey:connection?.providerKey??null,
+    connectionStatus:connection?.status??null,
+    correlationState:remoteAttempts>0?'OUTCOME_UNKNOWN':'NO_AUTHORIZED_REMOTE_ATTEMPT',
+    signedWebhookObservations:allSigned,
+    signedPostAddCandidates:postClaims,
+    postClaimsMatchingObservedAccount:accountClaimMatchCount,
+    lastSignedWebhookAt:latest?.verifiedAt??null,
+    authorizedRemoteAttempts:remoteAttempts,
+    verifiedRemoteReceipts:0,
+    providerReceiptVerified:false as const,
+    customerDestinationBound:false as const,
+    externallyPublished:false as const,
+    externalEffectsAuthorized:false as const,
+    reasons
+   };
   });
  }
  async preflight(organizationId:string,publicationIdInput:unknown){
