@@ -78,6 +78,13 @@ describe('R1 policy preflight: immutable tenant, brand, delegation and exact sco
   admin.tenant.entitledActions=['MANAGE_PRIVILEGES'];
   expect(authorizeCommercialScope(admin,now).reasons).toContain('separate_iam_change_workflow_required');
  });
+ it('unknown runtime action is denied even if injected through a cast',()=>{
+  const x=base();
+  (x as {action:string}).action='DELETE_ALL_TENANT_DATA';
+  x.identity.grantedActions=['DELETE_ALL_TENANT_DATA' as any];
+  x.tenant.entitledActions=['DELETE_ALL_TENANT_DATA' as any];
+  expect(authorizeCommercialScope(x,now).reasons).toContain('unknown_commercial_action');
+ });
  it('low-risk drafts do not gain external-effect authorization',()=>{
   const x=base();x.action='CREATIVE_DRAFT';x.external=null;
   x.identity.grantedActions=['CREATIVE_DRAFT'];x.tenant.entitledActions=['CREATIVE_DRAFT'];
