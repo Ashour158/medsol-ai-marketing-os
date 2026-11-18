@@ -39,7 +39,9 @@ export class BootstrapAuthGuard implements CanActivate {
       throw new UnauthorizedException('Unsupported authentication mode');
     }
     const permission = permissionForMarketingRoute(req.method ?? '', req.url?.split('?')[0] ?? '');
-    if (permission) assertMarketingPermission(req.identity, permission);
+    if (permission && mode === 'bootstrap') {
+      if (permission !== 'READ_PORTFOLIO' && permission !== 'ASSESS') throw new ForbiddenException('Bootstrap pilot access is limited to portfolio reads and assessment');
+    } else if (permission) assertMarketingPermission(req.identity, permission);
     if (req.body && 'organizationId' in req.body) req.body.organizationId = organizationId;
     req.headers['x-organization-id'] = organizationId;
     return true;
