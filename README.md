@@ -77,3 +77,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R2F-C durable no-send dispatch hold and locked provider adapter boundary
 
 [Review R2F-C Reuse Map, one-use database fence, default-deny provider adapter port and live-release prerequisites](docs/blueprint-v2/R2F_C_ONE_USE_DISPATCH_FENCE.md). The canonical PublicationAttempt ledger now supports a one-use **non-dispatchable RELEASE_FENCE** in addition to SANDBOX, with tenant-admin OIDC, version CAS, idempotent replay, immutable audit and internal event. Operators can permanently block a PREPARED publication from the Publication Studio. There is no provider egress, no active REMOTE attempt, no verified delivery, and no new independent publication owner.
+
+### R2F-D durable no-send provider preauthorization escrow
+
+[R2F-D Reuse Map, expiry and recovery contract and real-provider prerequisites](docs/blueprint-v2/R2F_D_PREAUTHORIZATION_RESERVATION.md). The existing publication and immutable attempt authorities now stage a one-use, admin-OIDC controlled **DISPATCH_RESERVATION** against the exact approved tenant, provider connection and creative, with an idempotency fingerprint, bounded expiry, atomic audit and Outbox. Read-only recovery identifies expired-but-not-sent escrow, and operators may permanently close it; duplicate, forged, foreign-tenant and premature transitions fail. **REMOTE sending and PUBLISHED remain blocked at SQL and API layers.**
