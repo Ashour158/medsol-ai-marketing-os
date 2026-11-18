@@ -8,6 +8,7 @@ export default function Home() {
   const [organizationId, setOrganizationId] = useState("");
   const [goal, setGoal] = useState("");
   const [objectiveId, setObjectiveId] = useState("");
+  const [campaignBrandId, setCampaignBrandId] = useState("");
   const [newObjectiveName, setNewObjectiveName] = useState("");
   const [newObjectiveDescription, setNewObjectiveDescription] = useState("");
   const [workflowId, setWorkflowId] = useState("");
