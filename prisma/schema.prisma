@@ -243,7 +243,9 @@ model OutboxEvent {
   lastError String?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([organizationId,eventId])
-  @@index([organizationId,publishedAt,publishingAt,occurredAt])
+  @@index([organizationId,publishedAt,publishingAt,occurredAt], map:"OutboxEvent_organizationId_publishedAt_publishingAt_occurredAt_")
+  @@index([organizationId,publishedAt,occurredAt])
+  @@index([publishedAt,deadLetteredAt,nextAttemptAt,occurredAt], map:"OutboxEvent_delivery_schedule_idx")
 }
 
 enum WorkflowExecutionStatus {
@@ -277,6 +279,7 @@ model WorkflowExecution {
   approvals Approval[]
   @@index([organizationId,status])
   @@index([organizationId,correlationId])
+  @@index([status,leaseExpiresAt])
 }
 model WorkflowStepExecution {
   id String @id @default(cuid())
@@ -366,8 +369,8 @@ model AgentSkillProposal {
   decidedAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  @@unique([organizationId,agentId,skillKey,version])
-  @@index([organizationId,status,createdAt])
+  @@unique([organizationId,agentId,skillKey,version], map:"AgentSkillProposal_org_agent_skill_version_key")
+  @@index([organizationId,status,createdAt], map:"AgentSkillProposal_org_status_created_idx")
 }
 
 model BrainRun {
