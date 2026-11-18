@@ -68,6 +68,8 @@ model Organization {
   workflowSteps WorkflowStepExecution[]
   learningSignals LearningSignal[]
   skillProposals AgentSkillProposal[]
+  brainRuns BrainRun[]
+  brainRunSteps BrainRunStep[]
 }
 model User {
   id String @id @default(cuid())
@@ -366,4 +368,40 @@ model AgentSkillProposal {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([organizationId,agentId,skillKey,version])
   @@index([organizationId,status,createdAt])
+}
+
+model BrainRun {
+  id String @id @default(cuid())
+  organizationId String
+  commandKey String
+  correlationId String
+  input Json
+  status String @default("PENDING")
+  currentAgentId String?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  completedAt DateTime?
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  steps BrainRunStep[]
+  @@unique([organizationId,commandKey])
+  @@index([organizationId,status,createdAt])
+}
+model BrainRunStep {
+  id String @id @default(cuid())
+  organizationId String
+  runId String
+  agentId String
+  stage String
+  ordinal Int
+  status String @default("PENDING")
+  executionId String?
+  error String?
+  startedAt DateTime?
+  completedAt DateTime?
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  run BrainRun @relation(fields:[runId],references:[id],onDelete:Restrict)
+  @@unique([runId,agentId])
+  @@unique([runId,ordinal])
+  @@index([organizationId,runId,status])
 }
