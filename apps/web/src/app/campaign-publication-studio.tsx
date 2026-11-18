@@ -39,6 +39,8 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
  const [report,setReport]=useState<unknown>(null);
  const [reconciliation,setReconciliation]=useState<Reconciliation|null>(null);
  const [release,setRelease]=useState<ReleaseReadiness|null>(null);
+ const [holdReason,setHoldReason]=useState("");
+ const [holdKey,setHoldKey]=useState("");
  const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  async function call(path:string,body?:unknown):Promise<any>{
   const response=await fetch("/api/marketing/"+path,{method:body===undefined?"GET":"POST",
@@ -59,6 +61,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
    call("publications/"+encodeURIComponent(id)+"/reconciliation") as Promise<Reconciliation>,
    call("publications/"+encodeURIComponent(id)+"/release-readiness") as Promise<ReleaseReadiness>
   ]);
+  if(selectedId!==id){setHoldReason("");setHoldKey("");}
   setSelectedId(id);setDetail(d);setReconciliation(recon);setRelease(releaseGate);setReport(null);
  }
  async function run(fn:()=>Promise<void>){
@@ -67,12 +70,13 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   finally{setBusy(false);}
  }
  useEffect(()=>{
-  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);
+  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);setHoldReason("");setHoldKey("");
   if(!identity)return;
   void inventory().catch(e=>setError(e instanceof Error?e.message:"Unable to load publications"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[identity?.organizationId,identity?.userId]);
  const canPlan=!!identity&&["ADMIN","SUPER_ADMIN","CMO","MARKETING_DIRECTOR"].includes(identity.role.toUpperCase());
+ const canHold=!!identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase());
  const canSimulate=!!identity&&["ADMIN","SUPER_ADMIN","CMO","MARKETING_DIRECTOR",
   "MARKETING_MANAGER","MARKETING_SPECIALIST"].includes(identity.role.toUpperCase());
  return <details style={{marginTop:20,background:"white",border:"1px solid #dbe4ed",
@@ -201,6 +205,32 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
       </details>
       <button style={{...btn,background:"#475569",marginTop:10}} disabled={busy}
        onClick={()=>void run(()=>detailFor(detail.id))}>Refresh governed-release evidence</button>
+     </section>
+     <section aria-label="Operator permanent dispatch hold" style={{marginTop:16,padding:14,
+      border:"1px solid #cbd5e1",borderRadius:8}}>
+      <h4 style={{marginTop:0}}>R2F-C · One-use dispatch hold</h4>
+      <p style={{fontSize:12,color:"#475569"}}>
+       An authorized tenant administrator may permanently block a prepared publication,
+       creating a single immutable release-fence record. This does not schedule
+       or authorize any external provider call. A new creative approval and
+       publication are required to replace a blocked intent.
+      </p>
+      <textarea aria-label="Reason for permanent dispatch hold"
+       style={{...field,minHeight:60}} disabled={busy||!canHold||detail.status!=="PREPARED"}
+       value={holdReason} onChange={e=>setHoldReason(e.target.value)}
+       placeholder="Specific security or release hold rationale (12–500 characters)" />
+      <button style={{...btn,marginTop:10,background:"#7f1d1d"}}
+       disabled={busy||!canHold||detail.status!=="PREPARED"||
+        holdReason.trim().length<12||holdReason.trim().length>500}
+       onClick={()=>void run(async()=>{
+        const key=holdKey||crypto.randomUUID();
+        if(!holdKey)setHoldKey(key);
+        await call("publications/"+encodeURIComponent(detail.id)+"/dispatch-hold",{
+         expectedVersion:detail.version,requestKey:key,reason:holdReason
+        });
+        setNotice("Immutable dispatch hold recorded. No external post was sent.");
+        await Promise.all([inventory(),detailFor(detail.id)]);
+       })}>Permanently hold publication · No send</button>
      </section>
      <h4>Sandbox attempt evidence</h4>
      {detail.attempts.length===0?<p>No simulation attempt recorded.</p>:
