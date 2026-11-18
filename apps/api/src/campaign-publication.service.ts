@@ -1,4 +1,4 @@
-import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
@@ -253,7 +253,7 @@ export class CampaignPublicationService{
     connection?tx.providerWebhookObservation.findFirst({where:base,
      orderBy:{verifiedAt:'desc'},select:{verifiedAt:true}}):Promise.resolve(null),
     tx.publicationAttempt.count({where:{
-     organizationId,publicationId,mode:{not:'SANDBOX'}
+     organizationId,publicationId,mode:'REMOTE'
     }}),
     connection?tx.providerAccountObservation.findFirst({where:{
      organizationId,integrationConnectionId:connection.id,status:'OBSERVED',
@@ -329,7 +329,7 @@ export class CampaignPublicationService{
     tx.organization.findUnique({where:{id:organizationId},select:{id:true}}),
     tx.approval.findFirst({where:{organizationId,id:pub.approvalId}}),
     tx.publicationAttempt.count({where:{
-     organizationId,publicationId,mode:{not:'SANDBOX'}
+     organizationId,publicationId,mode:'REMOTE'
     }})
    ]);
    const scope=approval?.scope;
@@ -464,6 +464,116 @@ export class CampaignPublicationService{
   * POST route until the provider-specific approved worker + durable attempt
   * fence, global IAM, verified customer ownership and staged adapter exist.
   */
+
+ /**
+  * Durable one-use DENIAL fence (NOT an outbound dispatch reservation). The
+  * only permitted write is a non-dispatchable RELEASE_FENCE / BLOCKED evidence
+  * row inside the canonical PublicationAttempt authority.
+  */
+ async placeDispatchHold(organizationId:string,identity:VerifiedIdentity,
+  publicationIdInput:unknown,input:{expectedVersion?:unknown;requestKey?:unknown;reason?:unknown}){
+  const publicationId=id(publicationIdInput,'publication');
+  if(!identity||identity.organizationId!==organizationId||!identity.userId||
+     !identity.subject||!hasMarketingPermission(identity,'MANAGE_TENANT'))
+   throw new ForbiddenException('Verified tenant administrator required');
+  if(!Number.isSafeInteger(input?.expectedVersion)||(input.expectedVersion as number)<1)
+   throw new BadRequestException('Expected publication version required');
+  const expectedVersion=input.expectedVersion as number;
+  const requestKey=id(input?.requestKey,'hold idempotency key',160);
+  if(requestKey.length<12)throw new BadRequestException('Hold key must have 12+ characters');
+  const reason=typeof input?.reason==='string'?input.reason.trim():'';
+  if(reason.length<12||reason.length>500)
+   throw new BadRequestException('Specific release-hold rationale (12–500 characters) required');
+  const fenceRef='internal:release-fence/'+createHash('sha256').update(JSON.stringify([
+   'medsol-r2f-c-fence-v1',organizationId,publicationId,requestKey
+  ])).digest('hex');
+  const work=async(tx:Tx)=>{
+   const actor=await tx.user.findFirst({where:{
+    organizationId,id:identity.userId,oidcSubject:identity.subject,disabledAt:null
+   },select:{role:true}});
+   if(!actor||actor.role.toUpperCase()!==identity.role.toUpperCase()||
+      !['ADMIN','SUPER_ADMIN'].includes(actor.role.toUpperCase()))
+    throw new ForbiddenException('Active matching OIDC tenant administrator required');
+   const row=await tx.campaignPublication.findFirst({where:{organizationId,id:publicationId}});
+   if(!row)throw new NotFoundException('Publication not found in tenant');
+   const prior=await tx.publicationAttempt.findFirst({where:{
+    organizationId,publicationId,mode:'RELEASE_FENCE'
+   }});
+   if(prior){
+    if(prior.evidenceRef!==fenceRef||row.status!=='BLOCKED')
+     throw new ConflictException('Release fence does not match idempotency key');
+    return{publicationId,status:'BLOCKED' as const,attemptId:prior.id,
+     replayed:true,releaseFenceDurable:true,remoteAttemptCreated:false,
+     automaticRetryAllowed:false,externalEffectsAuthorized:false};
+   }
+   if(row.status!=='PREPARED'||row.version!==expectedVersion)
+    throw new ConflictException('Only current unexecuted publication may be held');
+   const count=await tx.publicationAttempt.count({where:{organizationId,publicationId}});
+   if(count!==0)throw new ConflictException('Existing attempt prevents a new release fence');
+   const attempt=await tx.publicationAttempt.create({data:{
+    id:randomUUID(),organizationId,publicationId,sequence:1,
+    mode:'RELEASE_FENCE',outcome:'BLOCKED',evidenceRef:fenceRef,
+    inputDigest:row.scopeDigest,recordedBy:identity.userId
+   }});
+   const updated=await tx.campaignPublication.updateMany({where:{
+    organizationId,id:publicationId,status:'PREPARED',version:row.version
+   },data:{status:'BLOCKED',version:{increment:1}}});
+   if(updated.count!==1)throw new ConflictException('Concurrent publication transition');
+   await tx.auditEvent.create({data:{
+    organizationId,actorType:'HUMAN',actorId:identity.userId,
+    action:'CAMPAIGN_PUBLICATION_DISPATCH_HELD',objectType:'CampaignPublication',
+    objectId:publicationId,correlationId:attempt.id,
+    after:{reason,attemptId:attempt.id,scopeDigest:row.scopeDigest,
+     mode:'RELEASE_FENCE',remoteAttemptCreated:false,externalEffectsAuthorized:false}
+   }});
+   await tx.outboxEvent.create({data:{
+    organizationId,eventId:randomUUID(),
+    eventType:'CampaignPublicationDispatchHeldInternal',
+    aggregateType:'CampaignPublication',aggregateId:publicationId,
+    correlationId:attempt.id,version:row.version+1,
+    payload:{publicationId,attemptId:attempt.id,mode:'RELEASE_FENCE',
+     reason,automaticRetryAllowed:false,externalEffectsAuthorized:false}
+   }});
+   return{publicationId,status:'BLOCKED' as const,attemptId:attempt.id,
+    replayed:false,releaseFenceDurable:true,remoteAttemptCreated:false,
+    automaticRetryAllowed:false,externalEffectsAuthorized:false};
+  };
+  try{return await this.scoped(organizationId,work);}
+  catch(error){
+   const code=(error as {code?:string})?.code;
+   if(code!=='P2002'&&code!=='P2034'&&!(error instanceof ConflictException))
+    throw error;
+   return this.scoped(organizationId,async tx=>{
+    const actor=await tx.user.findFirst({where:{
+     organizationId,id:identity.userId,oidcSubject:identity.subject,disabledAt:null
+    },select:{role:true}});
+    if(!actor||actor.role.toUpperCase()!==identity.role.toUpperCase()||
+       !['ADMIN','SUPER_ADMIN'].includes(actor.role.toUpperCase()))throw error;
+    const [row,prior]=await Promise.all([
+     tx.campaignPublication.findFirst({where:{organizationId,id:publicationId}}),
+     tx.publicationAttempt.findFirst({where:{
+      organizationId,publicationId,mode:'RELEASE_FENCE'
+     }})
+    ]);
+    if(!row||row.status!=='BLOCKED'||!prior||prior.evidenceRef!==fenceRef)
+     throw error;
+    return{publicationId,status:'BLOCKED' as const,attemptId:prior.id,
+     replayed:true,releaseFenceDurable:true,remoteAttemptCreated:false,
+     automaticRetryAllowed:false,externalEffectsAuthorized:false};
+   });
+  }
+ }
+ /**
+  * Absolute external adapter boundary. Neither a sandbox attempt nor a
+  * release fence is a provider-write permit. No HTTP adapter is invoked.
+  */
+ async assertProviderDispatchUnavailable(organizationId:string,
+  identity:VerifiedIdentity,publicationIdInput:unknown){
+  const readiness=await this.releaseReadiness(organizationId,identity,publicationIdInput);
+  throw new ConflictException('Official provider dispatch unavailable: '+
+   [...new Set([...readiness.blockers,'no_durable_authorized_remote_attempt',
+    'provider_egress_disabled_in_database'])].join(', '));
+ }
  async assertExternalDispatchBlocked(organizationId:string,identity:VerifiedIdentity,
   publicationIdInput:unknown){
   const result=await this.releaseReadiness(organizationId,identity,publicationIdInput);
