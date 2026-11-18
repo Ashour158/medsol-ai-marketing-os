@@ -24,7 +24,7 @@ export function validateBrainPlan(plan:BrainPlan): void {
  }
  if(!plan.controls.noExternalWrites||!plan.controls.humanApprovalBeforePublishing||!plan.controls.scientificEvidenceRequired||!plan.controls.consentRequiredForCRM)throw new Error('Brain safety gates cannot be disabled');
 }
-export type BrainCommand={organizationId:string;correlationId:string;requestedOutcome:string;targetAudience?:string;productId?:string;market?:string;objectiveId?:string; evidenceReferences?:string[];brandMasterVersion?:string;consentReference?:string};
+export type BrainCommand={organizationId:string;correlationId:string;requestedOutcome:string;targetAudience?:string;productId?:string;market?:string;objectiveId?:string;campaignId?:string; evidenceReferences?:string[];brandMasterVersion?:string;consentReference?:string};
 export function validateBrainCommand(raw:unknown):BrainCommand{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('Invalid brain command');
  const r=raw as Record<string,unknown>;
