@@ -66,6 +66,8 @@ model Organization {
   inboxEvents InboxEvent[]
   workflows WorkflowExecution[]
   workflowSteps WorkflowStepExecution[]
+  learningSignals LearningSignal[]
+  skillProposals AgentSkillProposal[]
 }
 model User {
   id String @id @default(cuid())
@@ -328,5 +330,40 @@ model ModelUsage {
   completedAt DateTime?
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   @@unique([organizationId,requestId])
+  @@index([organizationId,status,createdAt])
+}
+
+model LearningSignal {
+  id String @id @default(cuid())
+  organizationId String
+  fingerprint String
+  topic String
+  sector String
+  sourceUrl String
+  sourceTitle String
+  observedAt DateTime
+  sourcePublishedAt DateTime?
+  evidence Json
+  status String @default("QUARANTINED")
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,fingerprint])
+  @@index([organizationId,sector,status,observedAt])
+}
+model AgentSkillProposal {
+  id String @id @default(cuid())
+  organizationId String
+  agentId String
+  skillKey String
+  version Int @default(1)
+  rationale String
+  evidenceSignalId String
+  evaluation Json?
+  status String @default("PROPOSED")
+  decidedBy String?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,agentId,skillKey,version])
   @@index([organizationId,status,createdAt])
 }
