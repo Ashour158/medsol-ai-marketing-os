@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "name": "Medsol ECC repository-level reference evidence",
+  "scope": "ENTIRE_REPOSITORY_NOT_CHANGED_FILES",
+  "purposes": [
+    "Expose durable evidence artifacts independently from per-PR diff matching",
+    "Preserve truth of evidence limitations and nonimplemented provider features",
+    "Do not publish a GitHub Check or claim any app permissions"
+  ],
+  "areas": [
+    {
+      "id": "deep-analyzer",
+      "label": "Deep analyzer corpus",
+      "classification": "DETERMINISTIC_GOLDEN",
+      "paths": [
+        "apps/api/src/fixtures/marketing-analyzer-golden.json",
+        "apps/api/src/marketing-analyzer-golden.test.ts"
+      ],
+      "limits": "Covers current deterministic domain assessments, not LLM quality or all future commercial engines."
+    },
+    {
+      "id": "retrieval-evaluator",
+      "label": "RAG/evaluator comparison",
+      "classification": "LEXICAL_RETRIEVAL_ONLY",
+      "paths": [
+        "apps/api/src/fixtures/retrieval-evaluator-reference-set.json",
+        "apps/api/src/retrieval-evaluator-reference.test.ts"
+      ],
+      "limits": "Reference ranking for bounded Europe PMC metadata; no vector RAG, cross-tenant knowledge index or production relevance judge."
+    },
+    {
+      "id": "pr-salvage-review",
+      "label": "PR salvage/review corpus",
+      "classification": "MAINTAINER_OFFLINE_POLICY_ONLY",
+      "paths": [
+        "scripts/quality/pr-review-salvage-policy.mjs",
+        "scripts/quality/fixtures/pr-review-salvage-golden.json",
+        "scripts/quality/pr-review-salvage-policy.test.mjs"
+      ],
+      "limits": "Repository maintainer guidance only, not Marketing OS product module. No GitHub bot, automatic close/reopen/merge, or Check publishing."
+    },
+    {
+      "id": "discussion-triage",
+      "label": "Discussion triage corpus",
+      "classification": "REVIEW_ONLY_GOLDEN",
+      "paths": [
+        "apps/api/src/fixtures/discussion-triage-golden.json",
+        "apps/api/src/discussion-triage-golden.test.ts"
+      ],
+      "limits": "Synthetic social discussion triage with human-review controls; no social inbox connector, public replies or moderation enforcement."
+    },
+    {
+      "id": "harness-compatibility",
+      "label": "Harness compatibility",
+      "classification": "NEGATIVE_ADAPTER_DENIAL",
+      "paths": [
+        "apps/api/src/model-harness-compatibility.test.ts",
+        "apps/api/src/governed-model.service.ts"
+      ],
+      "limits": "Negative evidence that Claude, Codex, OpenCode, Zed, dmux are rejected when unconfigured; NOT interoperability certification."
+    },
+    {
+      "id": "security-evidence",
+      "label": "Security evidence",
+      "classification": "SCANNER_ARTIFACT_INDEX",
+      "paths": [
+        "docs/security/SBOM_AND_AUDIT_EVIDENCE.md",
+        ".github/workflows/ci.yml"
+      ],
+      "limits": "GitHub Actions generates Syft SPDX SBOM and pnpm audit artifact; a clean job does not imply clean audit, SARIF, AgentShield or release certification. Open high severity issue #4."
+    },
+    {
+      "id": "ci-failure-modes",
+      "label": "CI failure-mode evidence",
+      "classification": "CAPTURED_FAILURE_REPRODUCTIONS",
+      "paths": [
+        "apps/api/src/fixtures/ci-failure-modes-reference.json",
+        "apps/api/src/ci-failure-modes-reference.test.ts",
+        "docs/quality/CI_FAILURE_MODES.md"
+      ],
+      "limits": "Captured past runs and local regressions, not completed distributed fault-injection certification."
+    }
+  ]
+}
