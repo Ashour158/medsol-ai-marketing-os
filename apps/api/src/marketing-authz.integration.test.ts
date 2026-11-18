@@ -30,6 +30,17 @@ describe('API-wide permission enforcement', () => {
     await expect(guard.canActivate(ctx(req('/marketing/publications/intent-1/simulate','POST'))))
      .rejects.toThrow('require verified OIDC identity');
   });
+  it('bootstrap cannot register integrations or view/forge verified media proof',async()=>{
+    const guard=new BootstrapAuthGuard(db,{assertActorPermission:vi.fn()} as any);
+    for(const route of ['/marketing/integrations','/marketing/integrations/catalog',
+      '/marketing/media/evidence','/marketing/media/evidence/revision-1']){
+      await expect(guard.canActivate(ctx(req(route)))).rejects.toThrow('require verified OIDC identity');
+    }
+    await expect(guard.canActivate(ctx(req('/marketing/integrations','POST'))))
+     .rejects.toThrow('require verified OIDC identity');
+    await expect(guard.canActivate(ctx(req('/marketing/media/evidence/revision-1/revoke','POST'))))
+     .rejects.toThrow('require verified OIDC identity');
+  });
   it('bootstrap cannot inspect approval inbox or campaign audit history', async () => {
     const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(ctx(req('/marketing/approvals/pending')))).rejects.toThrow('limited to portfolio');
