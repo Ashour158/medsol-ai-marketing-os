@@ -78,6 +78,8 @@ model Organization {
   creativeAssetRevisions CreativeAssetRevision[]
   campaignPublications CampaignPublication[]
   publicationAttempts PublicationAttempt[]
+  integrationConnections IntegrationConnection[]
+  verifiedMediaEvidence VerifiedMediaEvidence[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -202,6 +204,7 @@ model Approval {
   workflow WorkflowExecution? @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
   creativeAssetRevision CreativeAssetRevision? @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
   publications CampaignPublication[]
+  mediaEvidence VerifiedMediaEvidence[]
   @@unique([organizationId,id])
   @@index([organizationId,objectType,objectId])
   @@index([organizationId,decision])
@@ -531,6 +534,7 @@ model Brand {
   agencyGrants AgencyGrant[]
   creativeAssets CreativeAsset[]
   campaigns Campaign[]
+  integrationConnections IntegrationConnection[]
   @@unique([organizationId,slug])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -673,4 +677,55 @@ model PublicationAttempt {
   publication CampaignPublication @relation(fields:[organizationId,publicationId],references:[organizationId,id],onDelete:Restrict)
   @@unique([organizationId,publicationId,sequence])
   @@index([organizationId,publicationId,createdAt])
+}
+
+/** R2B provider-neutral destination registration, NOT credential storage.
+ * No user-controlled field may mark an account as provider-verified.
+ */
+model IntegrationConnection {
+  id String @id @default(cuid())
+  organizationId String
+  brandId String
+  providerKey String
+  destinationLabel String
+  destinationRef String
+  status String @default("PENDING_VERIFICATION")
+  version Int @default(1)
+  createdBy String
+  suspendedAt DateTime?
+  suspendedBy String?
+  revokedAt DateTime?
+  revokedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([organizationId,id])
+  @@unique([organizationId,destinationRef])
+  @@unique([organizationId,brandId,providerKey,destinationLabel])
+  @@index([organizationId,brandId,status])
+}
+
+/** R2B actual-byte readback proof linked to an immutable creative revision.
+ * Only server-owned verifier may create; no public arbitrary SHA assertion API.
+ */
+model VerifiedMediaEvidence {
+  id String @id @default(cuid())
+  organizationId String
+  creativeAssetRevisionId String
+  sourceRef String
+  objectVersion String
+  sha256Digest String
+  sizeBytes Int
+  detectedMime String
+  status String @default("VERIFIED_READBACK")
+  verifiedAt DateTime @default(now())
+  verifiedBy String
+  revokedAt DateTime?
+  revokedBy String?
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  creativeAssetRevision CreativeAssetRevision @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([organizationId,id])
+  @@unique([organizationId,creativeAssetRevisionId])
+  @@index([organizationId,status,verifiedAt])
 }
