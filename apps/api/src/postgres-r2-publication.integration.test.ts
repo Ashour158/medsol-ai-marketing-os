@@ -8,6 +8,7 @@ import {CampaignService} from './campaign.service.js';
 import {CreativeAssetService} from './creative-asset.service.js';
 import {ApprovalService} from './approval.service.js';
 import {CampaignPublicationService} from './campaign-publication.service.js';
+import {exactCreativeScopeHash,type ExactCreativeScope} from './exact-creative-scope.js';
 import {OutboxService} from './outbox.service.js';
 import {MarketingPerformanceService} from './marketing-performance.service.js';
 import {permissionForMarketingRoute,hasMarketingPermission} from './marketing-permissions.js';
@@ -94,6 +95,39 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    await approvals.approve({organizationId:org,commandId:randomUUID(),
     correlationId:randomUUID(),approvalId:preparedCreative.approvalId,
     approverUserId:reviewer,decision:'APPROVED',rationale:'Exact asset and audience scope checked'});
+   expect(await creatives.reviewApprovalState(org,preparedCreative.approvalId))
+    .toMatchObject({decision:'APPROVED',scopeCurrent:true,humanDecisionValid:true,
+     externallyExecutable:false});
+   // Existing immutable approvals with pre-scheduled expiry must not be
+   // magically corrected; fail at the ApprovalService decision and read model.
+   const legacyScope:ExactCreativeScope={
+    assetId:asset.id,revisionId:version.revisionId,revisionVersion:1,brandId,
+    renditionDigest:digest,sourceRef:'internal:creative-source/r2-demo',
+    channel:'SOCIAL',destinationRef:destination.destinationRef,
+    audienceRef:'internal:audience-snapshot/staging-demo',policyVersion:'v1',
+    scheduledAt:later(10),expiresAt:later(8)
+   };
+   const legacyApproval=await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.approval.create({data:{
+     id:randomUUID(),organizationId:org,
+     objectType:'CreativeAssetRevision',objectId:version.revisionId,
+     creativeAssetRevisionId:version.revisionId,
+     requiredAuthority:'HUMAN_CREATIVE_RELEASE',riskLevel:'R2',
+     requestedBy:creator,scope:legacyScope,scopeDigest:exactCreativeScopeHash(legacyScope),
+     scopeExpiresAt:new Date(legacyScope.expiresAt)
+    }});
+   });
+   await expect(approvals.approve({organizationId:org,commandId:randomUUID(),
+    correlationId:randomUUID(),approvalId:legacyApproval.id,
+    approverUserId:reviewer,decision:'APPROVED',
+    rationale:'Legacy expiry cannot authorize a scheduled provider action'
+   })).rejects.toThrow('Exact creative scope expired');
+   expect((await creatives.reviewApprovalState(org,legacyApproval.id)))
+    .toMatchObject({scopeCurrent:false,humanDecisionValid:false,
+     externallyExecutable:false});
+   expect((await db.approval.findUniqueOrThrow({where:{id:legacyApproval.id}}))
+    .decision).toBe('PENDING');
    const requestKey=randomUUID();
    const intent=await publications.prepare(org,creator,{
     campaignId:campaign.campaignId,approvalId:preparedCreative.approvalId,requestKey});
