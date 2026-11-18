@@ -73,7 +73,7 @@ CREATE TABLE "VerifiedMediaEvidence" (
 );
 CREATE UNIQUE INDEX "VerifiedMediaEvidence_organizationId_id_key"
  ON "VerifiedMediaEvidence"("organizationId","id");
-CREATE UNIQUE INDEX "VerifiedMediaEvidence_organizationId_creativeAssetRevisionId_key"
+CREATE UNIQUE INDEX "VerifiedMediaEvidence_org_revision_key"
  ON "VerifiedMediaEvidence"("organizationId","creativeAssetRevisionId");
 CREATE INDEX "VerifiedMediaEvidence_organizationId_status_verifiedAt_idx"
  ON "VerifiedMediaEvidence"("organizationId","status","verifiedAt");
