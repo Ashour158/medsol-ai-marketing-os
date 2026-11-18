@@ -25,7 +25,7 @@ function fixture(status: string, version = 4) {
   };
   const db = {
     commandReceipt: { findUnique: vi.fn().mockResolvedValue(null) },
-    $transaction: async (fn: (tx: typeof tx) => Promise<unknown>) => fn(tx)
+    $transaction: async (fn: (transaction: any) => Promise<unknown>) => fn(tx)
   };
   const outbox = { enqueue: vi.fn() };
   const service = new CampaignService(db as any, outbox as any);
