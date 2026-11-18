@@ -8,6 +8,7 @@ These examples come from actual prior Medsol GitHub Actions runs, **not fictiona
 | [44318159159](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44318159159) | TS2532: unsafe test array indexing | Block, assert presence/use safe indexing, rerun |
 | [44320547067](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44320547067) | TS1470: `import.meta` in CommonJS module | Block, resolve fixture path using supported module/package path |
 | [44320547067](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44320547067) | Nonzero `pnpm audit` with real dependency advisories | Block production release approval, even when evidence upload succeeds |
+| [44372190913](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44372190913) | Prisma P2003 FK failure: incident scanner fixture scanned another test's disposable tenant and created an outbox alert during cleanup | Scope incident scanner fixture to its tenant; preserve production scanner behavior, rerun full PostgreSQL CI |
 
 ## Diagnosing future runs
 

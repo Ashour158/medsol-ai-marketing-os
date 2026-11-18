@@ -67,6 +67,20 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
+      - name: Validate maintainer PR review reference policy
+        run: node --test scripts/quality/pr-review-salvage-policy.test.mjs
+      - name: Verify repository-wide ECC evidence manifest (not a GitHub App check)
+        run: |
+          node --test scripts/quality/ecc-repository-readiness.test.mjs
+          node scripts/quality/ecc-repository-readiness.mjs --output ecc-reference-readiness.json
+      - name: Upload verified reference index (not product or security certification)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-repository-reference-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: ecc-reference-readiness.json
       - name: Build
         run: pnpm build
 

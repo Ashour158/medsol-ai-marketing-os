@@ -17,7 +17,7 @@ describe('captured CI failure-mode reference evidence',()=>{
    expect(c.url).toBe('https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/'+c.runId);
    expect(c.expectedGate.startsWith('BLOCK')).toBe(true);
    expect(c.exitCode).not.toBe(0);
-   expect(c.errorCode).toMatch(/^(TS\d+|PNPM_AUDIT_ADVISORY)$/);
+   expect(c.errorCode).toMatch(/^(TS\d+|PNPM_AUDIT_ADVISORY|PRISMA_P2003)$/);
    expect(c.location.length).toBeGreaterThan(4);
    expect(c.observed.length).toBeGreaterThan(15);
    expect(c.resolution.length).toBeGreaterThan(12);

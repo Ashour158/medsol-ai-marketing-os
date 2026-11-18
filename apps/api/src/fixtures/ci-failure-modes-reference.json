@@ -57,6 +57,20 @@
       "resolution": "Refresh dependencies; inspect SBOM and scan artifact, track remaining severity, apply approved exceptions only.",
       "reproduction": "pnpm audit --json",
       "url": "https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44320547067"
+    },
+    {
+      "id": "shared-tenant-incident-outbox-race",
+      "runId": 44372190913,
+      "job": "verify",
+      "stage": "Test",
+      "exitCode": 1,
+      "errorCode": "PRISMA_P2003",
+      "location": "apps/api/src/postgres-brain-crash-recovery.integration.test.ts",
+      "observed": "Prisma P2003 on deleting a disposable Organization: incident-response scanner in another integration test processed a shared tenant and emitted an OutboxEvent after cleanup; cross-test DB interference.",
+      "expectedGate": "BLOCK",
+      "resolution": "Isolate incident scanner integration fixtures to their own disposable tenant, preserve global production scan behavior, and rerun all PostgreSQL tests together.",
+      "reproduction": "pnpm test",
+      "url": "https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44372190913"
     }
   ]
 }
