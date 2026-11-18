@@ -79,10 +79,17 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    expect(verified).toMatchObject({status:'VERIFIED_READBACK',externalEffectsAuthorized:false});
    await creatives.reviewRights(org,reviewer,version.revisionId,
     'Reviewed authorized licensing for internal test');
-   const preparedCreative=await creatives.submitForApproval(org,creator,version.revisionId,{
+   // R2F-B: a historical approval that expires before its planned release
+   // can never authorize a real post. Reject it at creation.
+   await expect(creatives.submitForApproval(org,creator,version.revisionId,{
     channel:'SOCIAL',destinationRef:destination.destinationRef,
     audienceRef:'internal:audience-snapshot/staging-demo',policyVersion:'v1',
     scheduledAt:later(10),expiresAt:later(8)
+   })).rejects.toThrow('Approval expiry must extend');
+   const preparedCreative=await creatives.submitForApproval(org,creator,version.revisionId,{
+    channel:'SOCIAL',destinationRef:destination.destinationRef,
+    audienceRef:'internal:audience-snapshot/staging-demo',policyVersion:'v1',
+    scheduledAt:later(10),expiresAt:later(12)
    });
    await approvals.approve({organizationId:org,commandId:randomUUID(),
     correlationId:randomUUID(),approvalId:preparedCreative.approvalId,
@@ -120,7 +127,7 @@ describe('R2 governed sandbox publication from real approved campaign and creati
     'customer_authorized_destination_binding_required',
     'deployment_operator_egress_unlock_required',
     'audience_consent_or_no_targeting_authorization_required',
-    'approved_release_window_required'
+    'provider_or_platform_kill_switch_must_be_clear'
    ])expect(releaseGate.blockers).toContain(missing);
    await expect(publications.releaseReadiness(foreign,identity,intent.publicationId))
     .rejects.toThrow('Verified tenant-scoped human required');
