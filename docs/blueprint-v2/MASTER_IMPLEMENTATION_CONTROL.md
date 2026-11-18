@@ -105,3 +105,16 @@ The static validator accepts valid draft graphs but always returns `deployAuthor
 - High severity dependency advisory and GitHub App Checks permissions remain open; do not misread ECC diff-level scores as product readiness.
 
 **Important:** The repository is a working internal governance pilot. This specification and registry are a *development baseline*; most customer-facing engines remain unimplemented.
+
+
+## v2.1 amendment (approved target and partial executable logic)
+
+[Read the authoritative v2.1 capability, workflow, schema, brain and acceptance amendment](MASTER_BLUEPRINT_V2_1_AMENDMENT.md).
+
+E34 Search/AI Discovery, E35 Voice of Customer and E36 Corporate Communications extend **existing** Intelligence/Strategy, Social/Community and Content/Brand/Campaign ownership. They do not justify independent agent identities. The ten brains, thirteen canonical agents and thirteen workspaces are unchanged.
+
+WF37 Search/AEO monitoring, WF38 feedback synthesis, WF39 PR releases, WF40 partner enablement and WF41 onboarding extend the workflow target count to **41**. E20/E21 revenue scenario decisioning, E14 authenticity/provenance, sales partner permissions and customer success deepen existing engine responsibilities.
+
+The first v2.1 code implements bounded, review-only decisions in `packages/agent-runtime/src/marketing-expansion.ts` and a **not-yet-integrated** R1 tenant/brand/agency/exact-approval preflight in `packages/policy/src/commercial-scope.ts`. The canonical agent dispatcher returns `expansionReview` only on explicitly provided scoped input. No new external provider connection, creative file authority, IAM migration, customer authentication, media release or revenue attribution is claimed.
+
+**Next R1 implementation** must bind those policy primitives to server-verified tenancy, roles, entitlements, and signed ApprovalService evidence, with PostgreSQL row-level security and two-tenant/agency-revocation tests. External effects remain blocked until all ownership and staging gates pass.
