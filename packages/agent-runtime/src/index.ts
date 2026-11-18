@@ -10,3 +10,5 @@ async execute(agentId:string,context:AgentContext){assertAgentExecutionBoundary(
 }
 export * from './roster.js';
 export * from './agent-security.js';
+
+export * from './model-gateway.js';
