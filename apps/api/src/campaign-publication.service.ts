@@ -29,6 +29,8 @@ export type PublicationPreflight={
   destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
   mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
   encryptedTokenReceivedPendingAttestation:boolean;
+  accountReadbackObserved:boolean;accountReadbackFresh:boolean;
+  customerDestinationBound:false;
   providerCredentialsVerified:false;providerPublishingCapabilityVerified:false;
   verifiedExternalDestination:false;
  };
@@ -109,6 +111,9 @@ export class CampaignPublicationService{
    organizationId_integrationConnectionId:{
     organizationId,integrationConnectionId:connection.id
    }},select:{status:true,tokenExpiresAt:true}}):null;
+  const accountObservation=connection?await tx.providerAccountObservation.findFirst({where:{
+   organizationId,integrationConnectionId:connection.id},
+   select:{status:true,expiresAt:true,providerCredentialId:true}}):null;
   const matchingEvidence=!!evidence&&evidence.status==='VERIFIED_READBACK'&&
    !!revision&&evidence.sourceRef===revision.sourceRef&&
    evidence.sha256Digest===revision.renditionDigest&&
@@ -125,6 +130,13 @@ export class CampaignPublicationService{
     encryptedTokenReceivedPendingAttestation:connection?.status==='PENDING_VERIFICATION'&&
       pendingCredential?.status==='PENDING_ATTESTATION'&&
       pendingCredential.tokenExpiresAt>new Date(),
+    accountReadbackObserved:!!accountObservation,
+    accountReadbackFresh:connection?.status==='PENDING_VERIFICATION'&&
+      pendingCredential?.status==='PENDING_ATTESTATION'&&
+      pendingCredential.tokenExpiresAt>new Date()&&
+      !!accountObservation&&accountObservation.status==='OBSERVED'&&
+      accountObservation.expiresAt>new Date(),
+    customerDestinationBound:false as const,
     providerCredentialsVerified:false as const,
     providerPublishingCapabilityVerified:false as const,
     verifiedExternalDestination:false as const
