@@ -40,6 +40,31 @@ export class MarketingLearningService {
    throw error;
   }
  }
+ async trendBrief(organizationId:string,sector?:string){
+  const normalized=typeof sector==='string'&&sector.trim()?sector.trim().slice(0,120):undefined;
+  const signals=await this.db.learningSignal.findMany({
+   where:{organizationId,status:'REVIEWED',...(normalized?{sector:normalized}:{})},
+   orderBy:{observedAt:'desc'},take:200,
+   select:{id:true,topic:true,sector:true,sourceUrl:true,sourceTitle:true,sourcePublishedAt:true,observedAt:true}
+  });
+  const groups=new Map<string,{topic:string;sector:string;signals:typeof signals}>();
+  for(const item of signals){
+   const key=item.sector.toLowerCase()+'::'+item.topic.toLowerCase();
+   const group=groups.get(key)??{topic:item.topic,sector:item.sector,signals:[]};
+   group.signals.push(item);groups.set(key,group);
+  }
+  const now=Date.now();
+  const topics=[...groups.values()].map(group=>{
+   const recent=group.signals.filter(item=>now-item.observedAt.getTime()<=90*86400000).length;
+   const distinctSources=new Set(group.signals.map(item=>{try{return new URL(item.sourceUrl).hostname}catch{return item.sourceUrl}})).size;
+   return{topic:group.topic,sector:group.sector,evidenceCount:group.signals.length,recentSignals90Days:recent,distinctSourceHosts:distinctSources,
+    evidence:group.signals.slice(0,10).map(item=>({signalId:item.id,title:item.sourceTitle,url:item.sourceUrl,publishedAt:item.sourcePublishedAt})),
+    priority:recent>=3&&distinctSources>=2?'RESEARCH_PRIORITY':'MONITOR',
+    status:'HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED',inferenceAuthorized:false};
+  }).sort((a,b)=>b.recentSignals90Days-a.recentSignals90Days||b.distinctSourceHosts-a.distinctSourceHosts);
+  return{organizationId,sector:normalized??null,topics,processed:signals.length,sourceType:'LEARNING_SIGNAL_REGISTRY',
+   independentVerification:false,externalPublishingEnabled:false};
+ }
  async signals(organizationId:string){return this.db.learningSignal.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:100});}
  async proposals(organizationId:string){return this.db.agentSkillProposal.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:100});}
  async propose(organizationId:string,actorId:string,raw:{signalId:string;agentId:string;skillKey:string;rationale:string}){
