@@ -27,6 +27,7 @@ export class ModelReconciliationService {
       const changed = await tx.modelUsage.updateMany({
         where: { id: usage.id, organizationId: evidence.organizationId, status: 'RESERVED' },
         data: { status: 'SETTLED', actualMicros: BigInt(evidence.actualCostMicros), model: evidence.model,
+          providerRequestId: evidence.providerRequestId, evidenceReference: evidence.evidenceReference,
           inputTokens: evidence.inputTokens, outputTokens: evidence.outputTokens, completedAt: new Date() }
       });
       if (changed.count !== 1) throw new ConflictException('Usage already reconciled');
