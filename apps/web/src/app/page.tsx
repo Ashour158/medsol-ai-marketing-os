@@ -11,6 +11,9 @@ export default function Home() {
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [agents, setAgents] = useState<unknown>(null);
   const [pendingApprovals, setPendingApprovals] = useState<unknown>(null);
+  const [identity, setIdentity] = useState<{userId:string;organizationId:string;email:string;role:string}|null>(null);
+  const [approvalRationale, setApprovalRationale] = useState("");
+  const [selectedApprovalId, setSelectedApprovalId] = useState("");
   const [assessment, setAssessment] = useState<unknown>(null);
   const [overview, setOverview] = useState<Record<string, number> | null>(null);
   const [campaigns, setCampaigns] = useState<Array<{id:string;code:string;name:string;status:string;riskLevel:string;updatedAt:string}>>([]);
@@ -33,6 +36,17 @@ export default function Home() {
     const result: unknown = await response.json();
     if (!response.ok) throw new Error(typeof result === "object" && result !== null && "message" in result ? String(result.message) : "Request failed (" + response.status + ")");
     return result;
+  }
+  async function decide(decision: "APPROVED" | "REJECTED") {
+    if (!identity || identity.organizationId !== organizationId.trim()) throw new Error("Verify your individual OIDC identity before deciding");
+    if (!selectedApprovalId || !approvalRationale.trim()) throw new Error("Select an approval and provide a rationale");
+    await call("approvals/decide", {
+      commandId: crypto.randomUUID(), correlationId: crypto.randomUUID(), organizationId: identity.organizationId,
+      approvalId: selectedApprovalId, approverUserId: identity.userId, decision, rationale: approvalRationale.trim()
+    });
+    setPendingApprovals(await call("approvals/pending"));
+    setApprovalRationale(""); setSelectedApprovalId("");
+    await loadDashboard();
   }
   async function loadDashboard() {
     const [summary, portfolio, objectiveList, productList, workflowList, history, approvals] = await Promise.all([
@@ -66,6 +80,8 @@ export default function Home() {
         <label>Access token (pilot/OIDC)<input style={fieldStyle} type="password" value={token} onChange={e => setToken(e.target.value)} autoComplete="off" placeholder="Bearer token" /></label>
       </div>
       <button style={{ ...buttonStyle, marginTop: 16 }} disabled={busy} onClick={() => perform(async () => { setAgents(await call("agents")); })}>Verify access and load agents</button>
+      <button style={{ ...buttonStyle, marginTop: 16, marginLeft: 12 }} disabled={busy} onClick={() => perform(async () => { setIdentity(await call("me") as typeof identity); })}>Verify individual identity (OIDC)</button>
+      {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
@@ -104,12 +120,23 @@ export default function Home() {
     </section>
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>5. Pending human approvals</h2>
-      <p style={{ color: "#64748b" }}>Read-only approval inbox. Decisions are blocked until individual approver authentication is available.</p>
+      <p style={{ color: "#64748b" }}>Approval decisions require a verified OIDC user and an authorized marketing role. Shared bootstrap tokens cannot approve.</p>
       <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { setPendingApprovals(await call("approvals/pending")); })}>Refresh approval inbox</button>
       {Array.isArray(pendingApprovals) && <p>{pendingApprovals.length} pending approval(s)</p>}
+      {identity && Array.isArray(pendingApprovals) && pendingApprovals.length > 0 && <div style={{ marginTop: 16 }}>
+        <label>Approval to decide<select style={fieldStyle} value={selectedApprovalId} onChange={e => setSelectedApprovalId(e.target.value)}>
+          <option value="">Choose pending approval</option>
+          {(pendingApprovals as Array<{id:string;objectType:string;objectId:string;riskLevel:string}>).map(a => <option key={a.id} value={a.id}>{a.objectType} {a.objectId} ({a.riskLevel})</option>)}
+        </select></label>
+        <label style={{ display: "block", marginTop: 12 }}>Decision rationale<textarea style={{ ...fieldStyle, minHeight: 70 }} value={approvalRationale} onChange={e => setApprovalRationale(e.target.value)} /></label>
+        <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+          <button style={buttonStyle} disabled={busy || !selectedApprovalId || !approvalRationale.trim()} onClick={() => perform(() => decide("APPROVED"))}>Approve</button>
+          <button style={{ ...buttonStyle, background: "#9f3030" }} disabled={busy || !selectedApprovalId || !approvalRationale.trim()} onClick={() => perform(() => decide("REJECTED"))}>Reject</button>
+        </div>
+      </div>}
       {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
     </section>
     {error && <p role="alert" style={{ color: "#a11919", padding: 16, background: "#fff1f1", borderRadius: 8 }}>{error}</p>}
-    <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions are intentionally unavailable in this console until per-user authentication and approver identity verification are implemented.</p>
+    <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions require a verified OIDC identity and an authorized database role. Manual token entry is for restricted pilot testing only.</p>
   </main>;
 }
