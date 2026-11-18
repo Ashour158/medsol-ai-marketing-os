@@ -15,7 +15,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "campaigns" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id)))) ||
       (resource === "agents" && !(request.method === "GET" && (
         path.length === 1 ||
-        (path.length === 2 && (id === "executions" || id === "operations")) ||
+        (path.length === 2 && (id === "executions" || id === "operations" || id === "budget")) ||
         (path.length === 3 && id === "executions" && !!action)
       ))) ||
       (resource === "approvals" && !((path.length === 2 && id === "pending" && request.method === "GET") || (path.length === 2 && id === "decide" && request.method === "POST"))) ||
