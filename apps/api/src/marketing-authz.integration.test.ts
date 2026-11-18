@@ -26,6 +26,16 @@ describe('API-wide permission enforcement', () => {
     await expect(guard.canActivate(ctx(req('/marketing/campaigns', 'POST')))).rejects.toThrow('MANAGE_CAMPAIGN');
     await expect(guard.canActivate(ctx(req('/marketing/campaigns/transition', 'POST')))).rejects.toThrow('MANAGE_CAMPAIGN');
   });
+  it('denies revoked or missing server sessions even with a valid OIDC token', async () => {
+    process.env.MARKETING_AUTH_MODE = 'oidc';
+    vi.mocked(verifyOidcIdentity).mockResolvedValue({ userId: 'cmo', organizationId: 'tenant', email: 'cmo@example.com', role: 'CMO', subject: 'sub' });
+    db.authSession.findFirst.mockResolvedValueOnce(null);
+    const guard = new BootstrapAuthGuard(db);
+    await expect(guard.canActivate(ctx(req('/marketing/campaigns', 'POST')))).rejects.toThrow('Session expired or revoked');
+    const noSession = req('/marketing/overview');
+    delete noSession.headers['x-marketing-session-id'];
+    await expect(guard.canActivate(ctx(noSession))).rejects.toThrow('Active server session required');
+  });
   it('OIDC manager may manage campaigns and approval decisions', async () => {
     process.env.MARKETING_AUTH_MODE = 'oidc';
     vi.mocked(verifyOidcIdentity).mockResolvedValue({ userId: 'cmo', organizationId: 'tenant', email: 'cmo@example.com', role: 'CMO', subject: 'sub' });
