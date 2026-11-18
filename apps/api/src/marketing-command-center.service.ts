@@ -105,9 +105,9 @@ export class MarketingCommandCenterService {
    return {kind:rawKind,total,incidents:visible.map(r=>({
     sourceId:r.id,
     response:responses?.get(r.id)?.occurrenceAt.getTime()===r.deadLetteredAt?.getTime()?
-     {acknowledgedAt:responses.get(r.id)?.acknowledgedAt??null,
-      acknowledgedBy:responses.get(r.id)?.acknowledgedBy??null,
-      lastNotifiedLevel:responses.get(r.id)?.lastNotifiedLevel??-1}:null,
+     {acknowledgedAt:responses?.get(r.id)?.acknowledgedAt??null,
+      acknowledgedBy:responses?.get(r.id)?.acknowledgedBy??null,
+      lastNotifiedLevel:responses?.get(r.id)?.lastNotifiedLevel??-1}:null,
     id:'delivery-dead:'+r.id,severity:'CRITICAL',kind:rawKind,runId:null,
     updatedAt:r.deadLetteredAt,message:r.lastError??'Delivery failed after bounded attempts',
     eventType:r.eventType,attempts:r.attempts
@@ -130,9 +130,9 @@ export class MarketingCommandCenterService {
   return {kind:rawKind,total,incidents:visible.map(r=>({
    sourceId:r.id,
    response:responses?.get(r.id)?.occurrenceAt.getTime()===r.updatedAt.getTime()?
-    {acknowledgedAt:responses.get(r.id)?.acknowledgedAt??null,
-     acknowledgedBy:responses.get(r.id)?.acknowledgedBy??null,
-     lastNotifiedLevel:responses.get(r.id)?.lastNotifiedLevel??-1}:null,
+    {acknowledgedAt:responses?.get(r.id)?.acknowledgedAt??null,
+     acknowledgedBy:responses?.get(r.id)?.acknowledgedBy??null,
+     lastNotifiedLevel:responses?.get(r.id)?.lastNotifiedLevel??-1}:null,
    id:(rawKind==='BRAIN_STALE'?'brain-stale:':'brain-intervention:')+r.id,
    severity:rawKind==='BRAIN_STALE'?'WARNING':'CRITICAL',kind:rawKind,runId:r.id,
    updatedAt:r.updatedAt,currentAgentId:r.currentAgentId,
