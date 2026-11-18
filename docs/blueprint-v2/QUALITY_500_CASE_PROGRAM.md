@@ -25,3 +25,17 @@
 Every eventual case shall have: ID, release, domain owner, setup, actor roles, tenant/brand, prerequisites, exact input, expected domain state, expected denied side effects, audit/trace evidence, runner, automation status, result, failure reference and signoff. Any P0 unauthorized effect, consent breach, cross-tenant read or duplicate irreversible operation blocks production regardless of a weighted score.
 
 **Baseline for this register:** R0-R5 progress must use GitHub test artifacts, not ECC changed-file reference scores.
+
+
+## v2.1 coverage additions within the existing 500 planned scenarios
+
+No increase to the 500-scenario target is claimed, and these are **planned future E2E cases**, not evidence of completed integration tests.
+
+- **T07 Knowledge / memory:** tested search source permissions, snapshot freshness, AI answer vs organic ranking distinction, excluded prompts and tenant-segregated query corpora (E34).
+- **T09 Social/community:** permissioned VoC import, raw PII suppression, five-record minimum *per theme*, crisis PR routing and qualified spokesperson/source approval (E35, E36).
+- **T11 Creative/brief:** asset SHA-256 changes revoke approval, real editability vs flattened export, license expiry, invalid content credentials, provider capability and rights authorization.
+- **T13 Conversion/CRM/attribution:** scenario microcurrency arithmetic, modelled ROI vs experimentally identified causal lift, partner-territory grant revocation, co-marketing collateral rights, source-reconciled outcomes.
+- **T16 UX/accessibility/onboarding:** guided activation progress, authentic customer milestone records, agency-safe customer views, ownerless setup denial and time-to-first-approved-campaign.
+- **T01/T02/T03 Security cross-cutting:** trusted tenant/brand/agency context, expired/revoked delegation, missing subscription entitlement, altered approval digest, self-approval denial, privacy/region and emergency kill switch, and unsupported provider effects.
+
+Tests with assertions against in-memory algorithms exist in `apps/api/src/blueprint-v2-1-intelligence.test.ts` and `packages/policy/src/commercial-scope.test.ts`. Real provider/UAT tests and database RLS/identity integration remain unperformed.

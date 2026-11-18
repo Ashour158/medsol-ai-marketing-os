@@ -1,5 +1,5 @@
 /**
- * Master Blueprint v2.0 target-state register.
+ * Master Blueprint v2.1 target-state register (v2.0 plus approved capability amendment).
  * Declarative classification only: NOTHING here registers executable agents,
  * exposes external network connectors, approves actions, or creates database owners.
  * Status describes observed repository implementation as of main b1900a7 (2026-11-18);
@@ -307,6 +307,34 @@ export const TARGET_ENGINES = [
     "state": "NOT_IMPLEMENTED",
     "blocker": "Europe PMC fixed API is not general governed acquisition"
   }
+,
+  {
+    "id": "E34",
+    "name": "Search & AI Discovery Intelligence",
+    "goal": "SEO, AEO/GEO and evidenced search/AI answer visibility diagnostics",
+    "release": "R4",
+    "owner": "MarketingLearningService",
+    "state": "PARTIAL",
+    "blocker": "Deterministic evidence review exists; no authorized search-console/AI answer data connector or search operations authority"
+  },
+  {
+    "id": "E35",
+    "name": "Voice of Customer Intelligence",
+    "goal": "Privacy-preserving first-party feedback themes and unmet-needs intelligence",
+    "release": "R4",
+    "owner": "MarketingLearningService",
+    "state": "PARTIAL",
+    "blocker": "Governed cohort screening exists; no survey/support/CRM provider connection or production contact permissions"
+  },
+  {
+    "id": "E36",
+    "name": "Corporate Communications & Earned Media",
+    "goal": "Governed PR, media relations, executive communication and crisis review packages",
+    "release": "R2",
+    "owner": "CampaignService",
+    "state": "PARTIAL",
+    "blocker": "Draft risk triage exists; no earned-media distribution connector or public statements authority"
+  }
 ] as const satisfies readonly TargetDomain[];
 export const TARGET_WORKFLOWS = [
   {
@@ -561,6 +589,42 @@ export const TARGET_WORKFLOWS = [
     "owner": "MarketingLearningService",
     "state": "NOT_IMPLEMENTED"
   }
+,
+  {
+    "id": "WF37",
+    "name": "Search, SEO and AI discovery review",
+    "release": "R4",
+    "owner": "MarketingLearningService",
+    "state": "DRAFT_ONLY"
+  },
+  {
+    "id": "WF38",
+    "name": "Customer insight and feedback research",
+    "release": "R4",
+    "owner": "MarketingLearningService",
+    "state": "DRAFT_ONLY"
+  },
+  {
+    "id": "WF39",
+    "name": "PR and earned-media approval and monitoring",
+    "release": "R2",
+    "owner": "CampaignService",
+    "state": "DRAFT_ONLY"
+  },
+  {
+    "id": "WF40",
+    "name": "Sales and partner enablement",
+    "release": "R4",
+    "owner": "MarketingProduct",
+    "state": "DRAFT_ONLY"
+  },
+  {
+    "id": "WF41",
+    "name": "Customer onboarding and value realization",
+    "release": "R1",
+    "owner": "Tenancy & Commercial",
+    "state": "NOT_IMPLEMENTED"
+  }
 ] as const satisfies readonly TargetDomain[];
 export const TARGET_STUDIOS = [
   {
@@ -791,7 +855,7 @@ export const TARGET_PERSONAS = [
     "state": "PERSONA_ALIAS_TARGET"
   }
 ] as const satisfies readonly TargetAlias[];
-export const TARGET_COUNTS = {engines:33,workflows:36,studios:13,brains:10,personas:12} as const;
+export const TARGET_COUNTS = {engines:36,workflows:41,studios:13,brains:10,personas:12} as const;
 export const RELEASE_GATES = {
  R0:['Migration dry-run on existing data','Multi-process staging fault injection','Provider billing discrepancy governance','High vulnerability review','Restore drill'],
  R1:['Two tenants and agency grant isolation','PostgreSQL RLS on tenant tables','Scoped IAM/ABAC and entitlement checks','Exact content/audience approval binding','Versioned asset rights'],
@@ -801,13 +865,13 @@ export const RELEASE_GATES = {
  R5:['Paid media provider permissions','Messaging opt-in and templates','Influencer and commerce legal review','Marketplace package security']
 } as const;
 export type BlueprintInventory={
- version:'2.0';asOfCommit:string;targetStateOnly:true;
+ version:'2.1';asOfCommit:string;targetStateOnly:true;
  counts:typeof TARGET_COUNTS;engines:typeof TARGET_ENGINES;workflows:typeof TARGET_WORKFLOWS;
  studios:typeof TARGET_STUDIOS;brains:typeof TARGET_BRAINS;personas:typeof TARGET_PERSONAS;
  releaseGates:typeof RELEASE_GATES;
 };
 export function getBlueprintV2Inventory():BlueprintInventory {
- return {version:'2.0',asOfCommit:'b1900a7d0aba7e6d12b5a61752dfc7bf98548da5',
+ return {version:'2.1',asOfCommit:'b1900a7d0aba7e6d12b5a61752dfc7bf98548da5',
   targetStateOnly:true,counts:TARGET_COUNTS,engines:TARGET_ENGINES,
   workflows:TARGET_WORKFLOWS,studios:TARGET_STUDIOS,
   brains:TARGET_BRAINS,personas:TARGET_PERSONAS,releaseGates:RELEASE_GATES};

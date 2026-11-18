@@ -9,7 +9,7 @@ describe('Integrated target inventory and canonical marketing engine authority',
   const inventory=getBlueprintV2Inventory();
   for(const alias of [...inventory.brains,...inventory.personas])
    expect(ids.has(alias.canonicalAgentId)).toBe(true);
-  expect(inventory.counts).toEqual({engines:33,workflows:36,studios:13,brains:10,personas:12});
+  expect(inventory.counts).toEqual({engines:36,workflows:41,studios:13,brains:10,personas:12});
  });
  it('restricts read-only blueprint inventory to an authenticated auditor',()=>{
   const p=permissionForMarketingRoute('GET','/marketing/architecture/blueprint');
