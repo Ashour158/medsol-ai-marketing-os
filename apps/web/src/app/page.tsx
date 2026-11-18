@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import OperationsConsole from "./operations-console";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -102,6 +103,10 @@ export default function Home() {
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
+    <OperationsConsole identity={identity} onRunSelected={id => {
+      setBrainRunId(id);setBrainRunDetail(null);
+      void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
+    }} />
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>2. Portfolio and operational overview</h2>
       <button style={buttonStyle} disabled={busy} onClick={() => perform(loadDashboard)}>Refresh command center</button>
@@ -179,7 +184,7 @@ export default function Home() {
       {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
     </section>
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
-      <h2 style={{ marginTop: 0 }}>Marketing Brain & Learning Intelligence</h2>
+      <h2 style={{ marginTop: 0 }} id="brain-operations">Marketing Brain & Learning Intelligence</h2>
       <p style={{ color: "#64748b" }}>Review all agent stages, evidence quarantine and proposed skills. No automatic skill activation or external publishing.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainPlan(await call("brain/plan")))}>Load brain map</button>
@@ -189,6 +194,16 @@ export default function Home() {
       <div style={{ marginTop: 20, padding: 16, border: "1px solid #dbe4ed", borderRadius: 10 }}>
         <h3>Durable brain execution operations</h3>
         <p style={{ color: "#64748b", fontSize: 13 }}>Only authorized operators may quarantine runs inactive for more than 15 minutes. Quarantine never retries a possibly completed agent action.</p>
+        <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginBottom:14 }}>
+          <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={()=>perform(async()=>{
+            const created=await call("brain/runs",{commandKey:crypto.randomUUID(),requestedOutcome:goal.trim(),
+              ...(objectiveId?{objectiveId}:{}),market:"MENA"}) as {id:string};
+            setBrainRunId(created.id);
+            setBrainRunDetail(created);
+            setBrainRuns(await call("brain/runs") as typeof brainRuns);
+          })}>Create durable 13-agent Brain run</button>
+          <span style={{fontSize:12,color:"#64748b",alignSelf:"center"}}>The optional worker automatically dispatches pending runs when enabled.</span>
+        </div>
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRuns(await call("brain/runs") as typeof brainRuns))}>Load persisted brain runs</button>
         {brainRuns.length > 0 && <label style={{ display: "block", marginTop: 12 }}>Select brain run
           <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);}}>
@@ -198,6 +213,11 @@ export default function Home() {
         </label>}
         {brainRunId && <div style={{ marginTop: 12 }}>
           <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRunDetail(await call("brain/runs/" + encodeURIComponent(brainRunId))))}>Inspect persisted checkpoints</button>
+          {brainRuns.find(r=>r.id===brainRunId)?.status==="PENDING"&&<button style={{...buttonStyle,marginLeft:10}} disabled={busy} onClick={()=>perform(async()=>{
+            setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(brainRunId)+"/execute",{}));
+            setBrainRuns(await call("brain/runs") as typeof brainRuns);
+          })}>Execute pending run (synchronous)</button>}
+
           {brainRunDetail !== null && <details open><summary>Run evidence</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainRunDetail,null,2)}</pre></details>}
           {brainRuns.find(r => r.id === brainRunId)?.status === "RUNNING" && <>
             <label style={{ display: "block", marginTop: 12 }}>Quarantine rationale
