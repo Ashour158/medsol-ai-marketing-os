@@ -21,6 +21,7 @@ export default function Home() {
   const [objectives, setObjectives] = useState<Array<{id:string;name:string;status:string}>>([]);
   const [products, setProducts] = useState<Array<{id:string;name:string;code:string}>>([]);
   const [workflows, setWorkflows] = useState<Array<{id:string;status:string;currentStep:string}>>([]);
+  const [modelBudget, setModelBudget] = useState<{enabled:boolean;limitMicros?:string;spentMicros?:string;reservedMicros?:string}|null>(null);
   const [agentOperations, setAgentOperations] = useState<{total:number;byStatus:Record<string,number>;recent:Array<{id:string;agentId:string;status:string}>}|null>(null);
   const [agentDetail, setAgentDetail] = useState<unknown>(null);
   const [agentHistory, setAgentHistory] = useState<Array<{id:string;agentId:string;status:string}>>([]);
@@ -118,7 +119,14 @@ export default function Home() {
       <div style={{ marginTop: 18, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
         <h3>Agent operations and policy trace</h3>
         <p style={{ color: "#64748b", fontSize: 13 }}>Restricted to marketing audit-authorized roles. Trace output is advisory and may contain sensitive operational metadata.</p>
-        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setAgentOperations(await call("agents/operations") as typeof agentOperations))}>Load agent operations</button>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => {
+          const [operations, budget] = await Promise.all([call("agents/operations"), call("agents/budget")]);
+          setAgentOperations(operations as typeof agentOperations);
+          setModelBudget(budget as typeof modelBudget);
+        })}>Load agent operations</button>
+        {modelBudget && <p><strong>Model budget:</strong> {modelBudget.enabled
+          ? "Limit " + (Number(modelBudget.limitMicros) / 1000000).toFixed(2) + " · Spent " + (Number(modelBudget.spentMicros) / 1000000).toFixed(2) + " · Reserved " + (Number(modelBudget.reservedMicros) / 1000000).toFixed(2) + " (provider currency units)"
+          : "Disabled — no tenant budget provisioned"}</p>}
         {agentOperations && <><p>Total executions: {agentOperations.total} · {Object.entries(agentOperations.byStatus).map(([k,v]) => k + ": " + v).join(" · ")}</p>
           <ul>{agentOperations.recent.map(a => <li key={a.id}>{a.agentId} — {a.status} <button disabled={busy} onClick={() => perform(async () => setAgentDetail(await call("agents/executions/" + encodeURIComponent(a.id))))}>Inspect trace</button></li>)}</ul>
         </>}
