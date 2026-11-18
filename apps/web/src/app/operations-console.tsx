@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useState} from "react";
+import PerformanceConsole from "./performance-console";
 
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Snapshot={
@@ -180,6 +181,7 @@ export default function OperationsConsole({identity,onRunSelected}:{identity:Ide
     </div>
    </div>
   </div>}
+  <PerformanceConsole enabled={manageable}/>
   {error&&<p role="alert" style={{color:"#a11919",background:"#fff0f0",padding:12,borderRadius:8}}>{error}</p>}
   {notice&&<p role="status" style={{color:"#115e43",padding:12}}>{notice}</p>}
  </section>;
