@@ -27,7 +27,7 @@ describe('agent engine completeness and evaluation',()=>{
 describe('durable brain run authority',()=>{
  it('creates 13 ordered steps and deduplicates by tenant command key',async()=>{
   const db:any={brainRun:{
-   findUnique:vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({id:'existing',organizationId:'tenant'}),
+   findUnique:vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({id:'existing',organizationId:'tenant',input:{organizationId:'tenant',correlationId:'corr',requestedOutcome:'Launch'}}),
    create:vi.fn().mockImplementation(async ({data}:any)=>data)
   }};
   const ledger=new BrainRunLedgerService(db);
