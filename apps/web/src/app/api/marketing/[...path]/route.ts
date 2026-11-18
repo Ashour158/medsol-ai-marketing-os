@@ -22,7 +22,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length === 3 && request.method === "POST" && action === "resume" && !!id)
       ))) return NextResponse.json({ error: "Route not supported" }, { status: 404 });
   const session = await unseal<Session>(request.cookies.get(SESSION_COOKIE)?.value);
-  if (!session || !session.accessToken || !session.organizationId || session.expiresAt <= Date.now()) {
+  if (!session || !session.accessToken || !session.organizationId || !session.sessionId || session.expiresAt <= Date.now()) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   if (request.method !== "GET" && !sameOrigin(request)) return NextResponse.json({ error: "Origin validation failed" }, { status: 403 });
@@ -31,7 +31,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   try {
     const response = await fetch(new URL("/marketing/" + path.map(encodeURIComponent).join("/"), apiBase), {
       method: request.method,
-      headers: { authorization, "x-organization-id": organizationId, ...(request.method === "POST" ? { "content-type": "application/json" } : {}) },
+      headers: { authorization, "x-organization-id": organizationId, "x-marketing-session-id": session.sessionId, ...(request.method === "POST" ? { "content-type": "application/json" } : {}) },
       ...(request.method === "POST" ? { body: await request.text() } : {}),
       cache: "no-store",
       signal: AbortSignal.timeout(15000)
