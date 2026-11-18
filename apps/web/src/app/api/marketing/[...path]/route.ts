@@ -27,7 +27,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
        (path.length===1&&(request.method==="GET"||request.method==="POST")) ||
        (path.length===2&&!!id&&request.method==="GET") ||
        (path.length===3&&!!id&&request.method==="GET"&&
-          (action==="preflight"||action==="performance")) ||
+          (action==="preflight"||action==="performance"||action==="reconciliation")) ||
        (path.length===3&&!!id&&request.method==="POST"&&
           (action==="simulate"||action==="cancel"))
       )) ||
