@@ -56,9 +56,11 @@ export class MarketingCommandCenterService {
   const warning=critical||staleCount>0||overview.failedAgentExecutions>0||delivery.retrying>0||
     (budget.enabled&&budget.requiresExternalBillingReconciliation===true);
   const workerFleet=this.workerHealth?await this.workerHealth.summary():null;
+  const workerAttention=!!workerFleet&&(workerFleet.stale>0||
+    (workerFleet.workerConfiguredHere&&workerFleet.active===0));
   return {
     workerFleet,
-    asOf:new Date().toISOString(),organizationId,health:critical?'ACTION_REQUIRED':warning?'ATTENTION':'NO_DETECTED_INCIDENTS',
+    asOf:new Date().toISOString(),organizationId,health:critical?'ACTION_REQUIRED':warning||workerAttention?'ATTENTION':'NO_DETECTED_INCIDENTS',
     healthIsSlaGuarantee:false,
     totals:{...overview,brainRuns:brainRunCount,pendingApprovals:approvals,pendingSkillDecisions:skills,
       staleBrainRuns:staleCount,interventionBrainRuns:interventionCount,deadLetterEvents:delivery.deadLetters},
