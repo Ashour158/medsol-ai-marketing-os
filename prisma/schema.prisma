@@ -73,6 +73,7 @@ model Organization {
   brandMasterRevisions BrandMasterRevision[]
   marketingMetricObservations MarketingMetricObservation[]
   incidentResponses IncidentResponse[]
+  tenantRoles TenantRoleDefinition[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -84,6 +85,8 @@ model User {
   name String
   role String
   oidcSubject String?
+  tenantRoleDefinitionId String?
+  tenantRole TenantRoleDefinition? @relation(fields:[organizationId,tenantRoleDefinitionId],references:[organizationId,id],onDelete:Restrict)
   disabledAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
@@ -538,4 +541,27 @@ model AgencyGrant {
   @@unique([clientOrganizationId,agencyOrganizationId,brandId],map:"AgencyGrant_scope_key")
   @@index([clientOrganizationId,status,expiresAt])
   @@index([agencyOrganizationId,status,expiresAt])
+}
+
+/**
+ * Restrictive tenant-owned permission profile layered on existing User.role.
+ * Its permissions can never widen the built-in role's authority. This is not
+ * a duplicate identity/membership store. SQL migration enforces FORCE RLS.
+ */
+model TenantRoleDefinition {
+  id String @id @default(cuid())
+  organizationId String
+  key String
+  name String
+  permissions Json
+  status String @default("ACTIVE")
+  version Int @default(1)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  users User[]
+  @@unique([organizationId,key])
+  @@unique([organizationId,id])
+  @@index([organizationId,status])
 }
