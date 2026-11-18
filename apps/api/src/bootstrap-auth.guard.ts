@@ -30,6 +30,13 @@ export class BootstrapAuthGuard implements CanActivate {
         jwksUrl: process.env.MARKETING_OIDC_JWKS_URL ?? ''
       }, async (email, tenant) => this.db.user.findFirst({ where: { email, organizationId: tenant }, select: { id: true, email: true, role: true, oidcSubject: true, disabledAt: true } }));
       req.identity = identity;
+      const route = req.url?.split('?')[0];
+      if (route !== '/marketing/sessions' || req.method !== 'POST') {
+        const sessionId = req.headers['x-marketing-session-id'];
+        if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new UnauthorizedException('Active server session required');
+        const session = await this.db.authSession.findFirst({ where: { id: sessionId, organizationId, userId: identity.userId, revokedAt: null, expiresAt: { gt: new Date() } } });
+        if (!session) throw new UnauthorizedException('Session expired or revoked');
+      }
     } else if (mode === 'bootstrap') {
       const token = process.env.MARKETING_BOOTSTRAP_TOKEN;
       if (!token) throw new Error('MARKETING_BOOTSTRAP_TOKEN must be configured');
