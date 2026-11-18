@@ -5,10 +5,15 @@ export const SESSION_COOKIE = "__Host-medsol_session";
 export const FLOW_COOKIE = "__Host-medsol_oidc_flow";
 export type Session = { accessToken: string; organizationId: string; expiresAt: number; sessionId: string };
 
-function secret() {
-  const value = process.env.MARKETING_SESSION_SECRET;
-  if (!value || Buffer.from(value, "base64url").length < 32) throw new Error("MARKETING_SESSION_SECRET must be at least 32 random bytes encoded as base64url");
-  return new Uint8Array(Buffer.from(value, "base64url"));
+function secrets() {
+  const configured = process.env.MARKETING_SESSION_SECRETS?.split(",").map(s => s.trim()).filter(Boolean) ??
+    (process.env.MARKETING_SESSION_SECRET ? [process.env.MARKETING_SESSION_SECRET] : []);
+  if (!configured.length || configured.length > 3) throw new Error("Configure one to three session keys");
+  return configured.map(value => {
+    const bytes = Buffer.from(value, "base64url");
+    if (bytes.length !== 32 || bytes.toString("base64url") !== value) throw new Error("MARKETING_SESSION_SECRET must be at least 32 random bytes encoded as base64url");
+    return new Uint8Array(bytes);
+  });
 }
 export function randomToken() { return randomBytes(32).toString("base64url"); }
 export function challenge(verifier: string) { return createHash("sha256").update(verifier).digest("base64url"); }
@@ -23,12 +28,15 @@ export function authConfig() {
   return { issuer, clientId, origin: url.origin, organizationId };
 }
 export async function seal(payload: Record<string, unknown>, ttlSeconds: number) {
-  return new EncryptJWT(payload).setProtectedHeader({ alg: "dir", enc: "A256GCM" }).setIssuedAt().setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds).encrypt(secret());
+  return new EncryptJWT(payload).setProtectedHeader({ alg: "dir", enc: "A256GCM" }).setIssuedAt().setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds).encrypt(secrets()[0]);
 }
 export async function unseal<T>(token: string | undefined): Promise<T | null> {
   if (!token) return null;
-  try { const { payload } = await jwtDecrypt(token, secret(), { keyManagementAlgorithms: ["dir"], contentEncryptionAlgorithms: ["A256GCM"] }); return payload as T; }
-  catch { return null; }
+  for (const key of secrets()) {
+    try { const { payload } = await jwtDecrypt(token, key, { keyManagementAlgorithms: ["dir"], contentEncryptionAlgorithms: ["A256GCM"] }); return payload as T; }
+    catch { /* Try the next configured rotation key. */ }
+  }
+  return null;
 }
 export function secureCookie(maxAge: number) { return { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/", maxAge }; }
 export function sameOrigin(request: Request) {
