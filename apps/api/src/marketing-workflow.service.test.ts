@@ -15,7 +15,7 @@ function fixture(status: string, overrides: Record<string, unknown> = {}) {
       updateMany: vi.fn().mockResolvedValue({ count: 1 })
     }
   };
-  const service = new MarketingWorkflowService(db as any, {} as any, {} as any);
+  const service = new MarketingWorkflowService(db as any, {} as any, {} as any, {} as any);
   return { service, db, workflow };
 }
 
