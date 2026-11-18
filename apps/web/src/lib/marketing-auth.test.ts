@@ -12,6 +12,18 @@ describe("marketing session cryptography and OIDC request protection", () => {
     expect(await unseal<{ organizationId: string }>(token)).toMatchObject({ organizationId: "tenant" });
     expect(await unseal(token.slice(0, -4) + "xxxx")).toBeNull();
   });
+  it("decrypts existing sessions during a safe key rotation", async () => {
+    const oldKey = randomBytes(32).toString("base64url"), nextKey = randomBytes(32).toString("base64url");
+    delete process.env.MARKETING_SESSION_SECRETS;
+    process.env.MARKETING_SESSION_SECRET = oldKey;
+    const previous = await seal({ user: "verified" }, 60);
+    process.env.MARKETING_SESSION_SECRETS = nextKey + "," + oldKey;
+    expect(await unseal(previous)).toMatchObject({ user: "verified" });
+    const rotated = await seal({ user: "new" }, 60);
+    process.env.MARKETING_SESSION_SECRETS = nextKey;
+    expect(await unseal(previous)).toBeNull();
+    expect(await unseal(rotated)).toMatchObject({ user: "new" });
+  });
   it("requires high entropy encryption key", async () => {
     process.env.MARKETING_SESSION_SECRET = "short";
     await expect(seal({ x: 1 }, 60)).rejects.toThrow("32 random bytes");
