@@ -28,7 +28,7 @@ export function authConfig() {
   return { issuer, clientId, origin: url.origin, organizationId };
 }
 export async function seal(payload: Record<string, unknown>, ttlSeconds: number) {
-  return new EncryptJWT(payload).setProtectedHeader({ alg: "dir", enc: "A256GCM" }).setIssuedAt().setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds).encrypt(secrets()[0]);
+  return new EncryptJWT(payload).setProtectedHeader({ alg: "dir", enc: "A256GCM" }).setIssuedAt().setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds).encrypt(secrets()[0]!);
 }
 export async function unseal<T>(token: string | undefined): Promise<T | null> {
   if (!token) return null;
