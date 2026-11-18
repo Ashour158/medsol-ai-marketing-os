@@ -272,10 +272,16 @@ export class CampaignPublicationService{
    // Reuse the canonical human/brand/rights/creative policy preflight;
    // correlation must never become an alternate approval decision engine.
    const existingGate=await this.check(tx,organizationId,pub);
-   const heldFence=await tx.publicationAttempt.findFirst({where:{
-    organizationId,publicationId,mode:'RELEASE_FENCE'
-   },select:{id:true,createdAt:true}});
+   const [heldFence,preauthorization]=await Promise.all([
+    tx.publicationAttempt.findFirst({where:{
+     organizationId,publicationId,mode:'RELEASE_FENCE'
+    },select:{id:true,createdAt:true}}),
+    tx.publicationAttempt.findFirst({where:{
+     organizationId,publicationId,mode:'DISPATCH_RESERVATION'
+    },select:{id:true,createdAt:true,reservationExpiresAt:true}})
+   ]);
    const reasons:string[]=[...existingGate.reasons];
+   if(preauthorization)reasons.push('preauthorization_reservation_is_not_a_remote_send');
    if(heldFence)reasons.push('operator_dispatch_hold_permanently_active');
    if(!exactScope)reasons.push('exact_publication_approval_scope_invalid');
    if(!connection)reasons.push('registered_provider_destination_not_found');
@@ -300,6 +306,8 @@ export class CampaignPublicationService{
     authorizedRemoteAttempts:remoteAttempts,
     releaseFenceActive:!!heldFence,
     releaseFenceRecordedAt:heldFence?.createdAt??null,
+    preauthorizationReservationPresent:!!preauthorization,
+    preauthorizationExpiresAt:preauthorization?.reservationExpiresAt??null,
     verifiedRemoteReceipts:0,
     providerReceiptVerified:false as const,
     customerDestinationBound:false as const,
