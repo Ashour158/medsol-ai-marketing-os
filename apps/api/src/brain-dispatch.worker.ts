@@ -14,6 +14,7 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
  private readonly log = new Logger(BrainDispatchWorker.name);
  private poller: ReturnType<typeof setInterval>|undefined;
  private busy = false;
+ private stopping = false;
  constructor(private readonly db:PrismaService, private readonly executor:BrainRunExecutorService,
   @Optional() private readonly outbox?:OutboxPublisherService,
   @Optional() private readonly handoffs?:BrainHandoffConsumer){}
@@ -29,8 +30,9 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
   this.poller.unref?.();
   this.log.log('Governed brain dispatcher enabled; non-idempotent and uncertain executions are never auto-replayed');
  }
- onModuleDestroy():void {if(this.poller)clearInterval(this.poller);}
+ onModuleDestroy():void {this.stopping=true;if(this.poller)clearInterval(this.poller);}
  async tick():Promise<{claimed:boolean;runId?:string;status:string}>{
+  if(this.stopping)return {claimed:false,status:'STOPPING'};
   if(this.busy)return {claimed:false,status:'BUSY'};
   this.busy=true;
   try{

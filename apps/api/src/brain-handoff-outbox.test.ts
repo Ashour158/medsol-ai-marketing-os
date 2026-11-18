@@ -2,14 +2,14 @@ import {describe,it,expect,vi} from 'vitest';
 import {BrainRunLedgerService} from './brain-run-ledger.service.js';
 function fixture(last:boolean){
  const steps=last?[
-  {id:'s0',agentId:'MKT-CMO-001',stage:'STRATEGY',ordinal:0,status:'COMPLETED'},
+  {id:'s0',agentId:'MKT-CMO-001',stage:'STRATEGY',ordinal:0,status:'COMPLETED',executionId:'prior-ex'},
   {id:'s1',agentId:'MKT-SCI-001',stage:'GOVERNANCE',ordinal:1,status:'PENDING'}
  ]:[
   {id:'s0',agentId:'MKT-CMO-001',stage:'STRATEGY',ordinal:0,status:'PENDING'},
   {id:'s1',agentId:'MKT-SCI-001',stage:'GOVERNANCE',ordinal:1,status:'PENDING'}
  ];
  const tx:any={
-  brainRun:{findFirst:vi.fn().mockResolvedValue({id:'run',organizationId:'tenant',correlationId:'corr',status:'RUNNING',steps}),update:vi.fn().mockResolvedValue({})},
+  brainRun:{findFirst:vi.fn().mockResolvedValue({id:'run',organizationId:'tenant',correlationId:'corr',status:'RUNNING',steps}),updateMany:vi.fn().mockResolvedValue({count:1})},
   brainRunStep:{updateMany:vi.fn().mockResolvedValue({count:1})},
   agentExecution:{findFirst:vi.fn().mockResolvedValue({id:'ex',startedAt:new Date()})},
   outboxEvent:{create:vi.fn().mockResolvedValue({})}

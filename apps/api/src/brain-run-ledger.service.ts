@@ -78,13 +78,30 @@ export class BrainRunLedgerService {
    if(run.status!=='RUNNING')throw new ConflictException('Brain run not eligible for checkpoint');
    const next=run.steps.find(s=>s.status!=='COMPLETED');
    if(!next||next.agentId!==agentId)throw new ConflictException('Out-of-order agent checkpoint');
-   const execution=await tx.agentExecution.findFirst({where:{id:executionId,organizationId,agentId,correlationId:run.correlationId,status:'COMPLETED'}});
+   const prior=next.ordinal===0?null:run.steps.find(s=>s.ordinal===next.ordinal-1);
+   if(next.ordinal>0&&(!prior||prior.status!=='COMPLETED'||!prior.executionId))
+    throw new ConflictException('Previous brain checkpoint proof is incomplete');
+   // A matching correlation alone is insufficient: a completed agent execution must
+   // explicitly belong to this run and to the preceding step's causation chain.
+   const execution=await tx.agentExecution.findFirst({where:{
+     id:executionId,organizationId,agentId,correlationId:run.correlationId,status:'COMPLETED',
+     causationId:prior?.executionId??null,
+     input:{path:['brainRunId'],equals:runId}
+   }});
    if(!execution)throw new ConflictException('No completed matching agent execution');
-   const changed=await tx.brainRunStep.updateMany({where:{id:next.id,organizationId,status:'PENDING'},data:{status:'COMPLETED',executionId,startedAt:execution.startedAt,completedAt:new Date()}});
-   if(changed.count!==1)throw new ConflictException('Checkpoint already claimed');
    const completed=run.steps.every(s=>s.id===next.id||s.status==='COMPLETED');
    const nextAgentId=completed?null:run.steps[next.ordinal+1]?.agentId??null;
-   await tx.brainRun.update({where:{id:run.id},data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:nextAgentId,...(completed?{completedAt:new Date()}:{})}});
+   // Fence a concurrent quarantine or checkpoint BEFORE emitting any event.
+   // The same database transaction rolls back the run update if the step/proof fails.
+   const runChanged=await tx.brainRun.updateMany({
+     where:{id:runId,organizationId,status:'RUNNING',updatedAt:run.updatedAt},
+     data:{status:completed?'REVIEW_REQUIRED':'RUNNING',currentAgentId:nextAgentId,
+       ...(completed?{completedAt:new Date()}:{})}
+   });
+   if(runChanged.count!==1)throw new ConflictException('Brain checkpoint lost concurrency fence');
+   const changed=await tx.brainRunStep.updateMany({where:{id:next.id,organizationId,runId,status:'PENDING'},
+     data:{status:'COMPLETED',executionId,startedAt:execution.startedAt,completedAt:new Date()}});
+   if(changed.count!==1)throw new ConflictException('Checkpoint already claimed');
    await tx.outboxEvent.create({data:{
     organizationId, eventId:'brain:'+run.id+':step:'+next.ordinal,
     eventType:'BRAIN_AGENT_STEP_COMPLETED',aggregateType:'BrainRun',aggregateId:run.id,version:1,
@@ -99,5 +116,61 @@ export class BrainRunLedgerService {
    }});
    return{runId,agentId,executionId,completed,requiresHumanReview:true};
   });
+ }
+
+ /**
+  * Read-only crash-window evidence for an authenticated audit operator.
+  * Never replays an AgentExecution, changes BrainRun state, releases reserved
+  * model funds or infers a provider invoice from an internal success flag.
+  */
+ async recoveryEvidence(organizationId:string,runId:string){
+  const run=await this.get(organizationId,runId);
+  const next=run.steps.find(s=>s.status!=='COMPLETED');
+  const base={runId:run.id,runStatus:run.status,correlationId:run.correlationId,
+   lastProgressAt:run.updatedAt,completedSteps:run.steps.filter(s=>s.status==='COMPLETED').length,
+   totalSteps:run.steps.length,automaticReplayAllowed:false as const,
+   automaticCheckpointAllowed:false as const,externalPublishingAuthorized:false as const};
+  if(!next)return {...base,nextStep:null,evidenceStatus:'NO_PENDING_STEP',
+   candidateExecutions:[],modelReconciliation:{reserved:0,unverifiedSettled:0},
+   operatorAction:'Review authoritative run and prior human decisions; no recovery execution required'};
+  const previous=next.ordinal===0?null:run.steps.find(s=>s.ordinal===next.ordinal-1);
+  const expectedCausation=previous?.executionId??null;
+  const rows=await this.db.agentExecution.findMany({where:{
+   organizationId,agentId:next.agentId,correlationId:run.correlationId,
+   input:{path:['brainRunId'],equals:runId}
+  },select:{id:true,status:true,causationId:true,startedAt:true,completedAt:true},
+   orderBy:[{startedAt:'desc'},{id:'desc'}],take:101});
+  const overflow=rows.length>100;
+  const bounded=rows.slice(0,100);
+  const requests=bounded.map(r=>r.id+':draft');
+  const usages=requests.length?await this.db.modelUsage.findMany({
+   where:{organizationId,requestId:{in:requests}},
+   select:{requestId:true,status:true,billingStatus:true}
+  }):[];
+  const byRequest=new Map(usages.map(u=>[u.requestId,u]));
+  const candidateExecutions=bounded.map(e=>({
+   executionId:e.id,status:e.status,
+   causationMatches:e.causationId===expectedCausation&&
+     (next.ordinal===0||previous?.status==='COMPLETED'),
+   modelReservation:byRequest.get(e.id+':draft')?.status??null,
+   modelInvoiceVerified:byRequest.get(e.id+':draft')?.billingStatus==='VERIFIED'
+  }));
+  const validCompleted=candidateExecutions.filter(e=>e.status==='COMPLETED'&&e.causationMatches);
+  const stale=run.updatedAt.getTime()<=Date.now()-15*60_000;
+  const evidenceStatus=overflow?'EXCESS_EXECUTION_EVIDENCE':
+    candidateExecutions.some(e=>!e.causationMatches)?'CONFLICTING_CAUSATION':
+    candidateExecutions.some(e=>e.status==='RUNNING'||e.status==='FAILED')?'AMBIGUOUS_AGENT_OUTCOME':
+    validCompleted.length===1&&candidateExecutions.length===1?'ONE_COMPLETED_UNCHECKPOINTED':
+    candidateExecutions.length>1?'MULTIPLE_EXECUTION_ATTEMPTS':
+    run.status==='RUNNING'&&!stale?'MAY_STILL_BE_ACTIVE':
+    'NO_COMPLETED_EXECUTION_PROOF';
+  return {...base,nextStep:{agentId:next.agentId,ordinal:next.ordinal,status:next.status},
+   staleByLastProgress:stale,evidenceStatus,candidateCountAtLeast:rows.length,
+   candidatesTruncated:overflow,candidateExecutions,
+   modelReconciliation:{
+    reserved:usages.filter(u=>u.status==='RESERVED').length,
+    unverifiedSettled:usages.filter(u=>u.status==='SETTLED'&&u.billingStatus!=='VERIFIED').length
+   },
+   operatorAction:'Compare execution and provider billing records, then investigate; no agent replay, checkpoint repair or release is authorized by this report'};
  }
 }

@@ -31,6 +31,7 @@ export default function Home() {
   const [brainRunId, setBrainRunId] = useState("");
   const [brainCampaignId, setBrainCampaignId] = useState("");
   const [brainRunDetail, setBrainRunDetail] = useState<unknown>(null);
+  const [brainRecovery, setBrainRecovery] = useState<unknown>(null);
   const [quarantineReason, setQuarantineReason] = useState("");
   const [learningSignals, setLearningSignals] = useState<unknown>(null);
   const [skillProposals, setSkillProposals] = useState<unknown>(null);
@@ -105,7 +106,7 @@ export default function Home() {
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
     <OperationsConsole identity={identity} onRunSelected={id => {
-      setBrainRunId(id);setBrainRunDetail(null);
+      setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
     }} />
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
@@ -213,18 +214,20 @@ export default function Home() {
         </div>
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRuns(await call("brain/runs") as typeof brainRuns))}>Load persisted brain runs</button>
         {brainRuns.length > 0 && <label style={{ display: "block", marginTop: 12 }}>Select brain run
-          <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);}}>
+          <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);setBrainRecovery(null);}}>
             <option value="">Select run</option>
             {brainRuns.map(r => <option value={r.id} key={r.id}>{r.id} · {r.status}</option>)}
           </select>
         </label>}
         {brainRunId && <div style={{ marginTop: 12 }}>
           <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRunDetail(await call("brain/runs/" + encodeURIComponent(brainRunId))))}>Inspect persisted checkpoints</button>
+          <button style={{...buttonStyle,marginLeft:10}} disabled={busy} onClick={() => perform(async () => setBrainRecovery(await call("brain/runs/" + encodeURIComponent(brainRunId) + "/recovery")))}>Inspect crash-recovery evidence (read-only)</button>
           {brainRuns.find(r=>r.id===brainRunId)?.status==="PENDING"&&<button style={{...buttonStyle,marginLeft:10}} disabled={busy} onClick={()=>perform(async()=>{
             setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(brainRunId)+"/execute",{}));
             setBrainRuns(await call("brain/runs") as typeof brainRuns);
           })}>Execute pending run (synchronous)</button>}
 
+          {brainRecovery !== null && <details open><summary>Recovery evidence — investigation only, no automatic replay</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(brainRecovery,null,2)}</pre></details>}
           {brainRunDetail !== null && <details open><summary>Run evidence</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainRunDetail,null,2)}</pre></details>}
           {brainRuns.find(r => r.id === brainRunId)?.status === "RUNNING" && <>
             <label style={{ display: "block", marginTop: 12 }}>Quarantine rationale
