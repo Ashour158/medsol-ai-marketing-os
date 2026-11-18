@@ -48,7 +48,7 @@ export class MarketingWorkflowService {
       await this.db.workflowExecution.update({ where: { id: workflowId }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } });
       return { workflowExecutionId: workflowId, status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', correlationId, output: { campaign: last, message: 'Campaign is waiting for human approval.' } };
     } catch (error) {
-      await this.db.workflowExecution.update({ where: { id: workflowId }, data: { status: 'FAILED', currentStep: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date(), version: { increment: 1 } });
+      await this.db.workflowExecution.update({ where: { id: workflowId }, data: { status: 'FAILED', currentStep: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date(), version: { increment: 1 } } });
       throw error;
     }
   }
