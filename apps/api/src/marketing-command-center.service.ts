@@ -20,7 +20,7 @@ export class MarketingCommandCenterService {
  async snapshot(organizationId:string){
   const staleBefore=new Date(Date.now()-15*60_000);
   const [overview,agentOperations,delivery,budget,trends,brand,
-    runningStale,intervention,approvals,skills,brainRuns] = await Promise.all([
+    runningStale,intervention,approvals,skills,brainRuns,brainRunCount] = await Promise.all([
     this.reads.overview(organizationId),this.reads.agentOperations(organizationId),
     this.delivery.summary(organizationId),this.budgets.summary(organizationId),
     this.learning.trendBrief(organizationId),this.brand.active(organizationId),
@@ -31,7 +31,8 @@ export class MarketingCommandCenterService {
     this.db.approval.count({where:{organizationId,decision:'PENDING'}}),
     this.db.agentSkillProposal.count({where:{organizationId,status:{in:['PROPOSED','EVALUATED']}}}),
     this.db.brainRun.findMany({where:{organizationId},take:20,orderBy:{createdAt:'desc'},
-      select:{id:true,status:true,currentAgentId:true,updatedAt:true,createdAt:true,commandKey:true}})
+      select:{id:true,status:true,currentAgentId:true,updatedAt:true,createdAt:true,commandKey:true}}),
+    this.db.brainRun.count({where:{organizationId}})
   ]);
   const incidents=[
     ...intervention.map(r=>({id:'brain-intervention:'+r.id,severity:'CRITICAL' as const,
@@ -50,7 +51,7 @@ export class MarketingCommandCenterService {
   return {
     asOf:new Date().toISOString(),organizationId,health:critical?'ACTION_REQUIRED':warning?'ATTENTION':'NO_DETECTED_INCIDENTS',
     healthIsSlaGuarantee:false,
-    totals:{...overview,brainRuns:brainRuns.length,pendingApprovals:approvals,pendingSkillDecisions:skills,
+    totals:{...overview,brainRuns:brainRunCount,pendingApprovals:approvals,pendingSkillDecisions:skills,
       staleBrainRuns:runningStale.length,interventionBrainRuns:intervention.length},
     incidents,brainRuns,delivery,
     agents:{total:agentOperations.total,byStatus:agentOperations.byStatus,recent:agentOperations.recent.slice(0,12)},
