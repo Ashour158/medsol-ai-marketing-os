@@ -2,6 +2,7 @@ import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { MarketingLearningService } from './marketing-learning.service.js';
 import { MarketingReadService } from './marketing-read.service.js';
 import { BrandMasterService } from './brand-master.service.js';
+import {MarketingPerformanceService} from './marketing-performance.service.js';
 import { PrismaService } from './prisma.service.js';
 import { AgentService } from './agent.service.js';
 import { BrainRunLedgerService } from './brain-run-ledger.service.js';
@@ -10,7 +11,7 @@ import { nextAgentCapability } from '@medsol/agent-runtime';
 /** Operator-triggered, single-claim brain execution. No automatic takeover of ambiguous effects. */
 @Injectable()
 export class BrainRunExecutorService {
- constructor(private readonly db:PrismaService,private readonly agents:AgentService,private readonly ledger:BrainRunLedgerService,@Optional() private readonly learning?:MarketingLearningService,@Optional() private readonly reads?:MarketingReadService,@Optional() private readonly brand?:BrandMasterService){}
+ constructor(private readonly db:PrismaService,private readonly agents:AgentService,private readonly ledger:BrainRunLedgerService,@Optional() private readonly learning?:MarketingLearningService,@Optional() private readonly reads?:MarketingReadService,@Optional() private readonly brand?:BrandMasterService,@Optional() private readonly performance?:MarketingPerformanceService){}
  async execute(organizationId:string,runId:string){
   const run=await this.ledger.get(organizationId,runId);
   if(run.status==='REVIEW_REQUIRED')return run;
@@ -25,6 +26,8 @@ export class BrainRunExecutorService {
    const command=run.input as Record<string,unknown>;
    if(command.brandMasterVersion && brandMaster && command.brandMasterVersion!=='v'+brandMaster.version)
      throw new ConflictException('Brand Master version mismatched authoritative approved record');
+   const performanceContext=this.performance&&typeof command.campaignId==='string'?
+     await this.performance.summary(organizationId,command.campaignId):null;
    const trustedInput={...command,brandMasterVersion:brandMaster?'v'+brandMaster.version:undefined,
      // A free-text consent reference is NOT proof of opt-in; no active CRM consent authority is integrated.
      consentReference:undefined};
@@ -36,7 +39,7 @@ export class BrainRunExecutorService {
     const result=await this.agents.execute(step.agentId,{
      organizationId,correlationId:run.correlationId,
      ...(causationId?{causationId}:{}),
-     input:{...trustedInput,upstreamExecutionId:causationId??null,brainRunId:runId,trendContext:{verified:false,source:'LEARNING_SIGNAL_REGISTRY',topics:citedTrends},authorityContext,brandContext:brandMaster?{version:brandMaster.version,rules:brandMaster.rules,sourceReference:brandMaster.sourceReference,status:'APPROVED'}:null},
+     input:{...trustedInput,upstreamExecutionId:causationId??null,brainRunId:runId,trendContext:{verified:false,source:'LEARNING_SIGNAL_REGISTRY',topics:citedTrends},authorityContext,performanceContext,brandContext:brandMaster?{version:brandMaster.version,rules:brandMaster.rules,sourceReference:brandMaster.sourceReference,status:'APPROVED'}:null},
      capabilities:[capability]
     });
     if(!result.decision.executionAllowed)throw new ConflictException('Agent decision denied');
