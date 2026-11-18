@@ -4,12 +4,13 @@ import type { VerifiedIdentity } from './oidc-identity.js';
 const managers = new Set(['SUPER_ADMIN', 'ADMIN', 'MARKETING_DIRECTOR', 'CMO']);
 const operators = new Set([...managers, 'MARKETING_MANAGER', 'MARKETING_SPECIALIST']);
 const viewers = new Set([...operators, 'USER', 'VIEWER', 'ANALYST']);
-export type MarketingPermission = 'READ_PORTFOLIO' | 'READ_APPROVALS' | 'READ_AUDIT' | 'ASSESS' | 'SUBMIT_EVIDENCE' | 'EXECUTE_WORKFLOW' | 'RESUME_WORKFLOW' | 'MANAGE_CAMPAIGN' | 'MANAGE_OBJECTIVE' | 'DECIDE_APPROVAL';
+export type MarketingPermission = 'READ_TENANCY' | 'MANAGE_TENANT' | 'READ_PORTFOLIO' | 'READ_APPROVALS' | 'READ_AUDIT' | 'ASSESS' | 'SUBMIT_EVIDENCE' | 'EXECUTE_WORKFLOW' | 'RESUME_WORKFLOW' | 'MANAGE_CAMPAIGN' | 'MANAGE_OBJECTIVE' | 'DECIDE_APPROVAL';
 
 export function hasMarketingPermission(identity: VerifiedIdentity | undefined, permission: MarketingPermission): boolean {
   if (!identity) return false;
   const role = identity.role.toUpperCase();
   switch (permission) {
+    case 'READ_TENANCY': case 'MANAGE_TENANT': return role==='ADMIN'||role==='SUPER_ADMIN';
     case 'READ_PORTFOLIO': return viewers.has(role);
     case 'READ_APPROVALS': case 'READ_AUDIT': return managers.has(role);
     case 'ASSESS': case 'SUBMIT_EVIDENCE': return operators.has(role);
@@ -24,6 +25,12 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 }
 
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
+  if(method==='GET'&&(path==='/marketing/tenancy/brands'||path==='/marketing/tenancy/agency-grants'))
+   return 'READ_TENANCY';
+  if(method==='POST'&&(path==='/marketing/tenancy/brands'||
+      path==='/marketing/tenancy/agency-grants'||
+      /^\/marketing\/tenancy\/agency-grants\/[^/]+\/revoke$/.test(path)))
+   return 'MANAGE_TENANT';
   if(method==='GET'&&(path==='/marketing/performance/observations'||/^\/marketing\/performance\/campaigns\/[^/]+$/.test(path)))return 'READ_AUDIT';
   if(method==='POST'&&path==='/marketing/performance/ingest')return 'SUBMIT_EVIDENCE';
   if(method==='POST'&&path==='/marketing/performance/review')return 'DECIDE_APPROVAL';
