@@ -92,7 +92,10 @@ describe.skipIf(!enabled)('R1B PostgreSQL tenant role authority and scoped RLS',
   }finally{
    await db.tenantRoleDefinition.deleteMany({where:{organizationId:{in:[a,b]}}});
    await db.organization.deleteMany({where:{id:{in:[a,b]}}});
-   if(roleCreated)await db.$executeRawUnsafe('DROP ROLE IF EXISTS "'+name+'"');
+   if(roleCreated){
+    await db.$executeRawUnsafe('REVOKE SELECT ON "TenantRoleDefinition" FROM "'+name+'"');
+    await db.$executeRawUnsafe('DROP ROLE IF EXISTS "'+name+'"');
+   }
    await db.$disconnect();
   }
  },60000);
