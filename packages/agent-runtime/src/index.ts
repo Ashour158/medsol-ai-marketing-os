@@ -14,3 +14,5 @@ export * from './agent-security.js';
 export * from './model-gateway.js';
 
 export * from './domain-engines.js';
+
+export * from './marketing-brain.js';
