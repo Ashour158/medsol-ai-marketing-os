@@ -117,4 +117,60 @@ export class BrainRunLedgerService {
    return{runId,agentId,executionId,completed,requiresHumanReview:true};
   });
  }
+
+ /**
+  * Read-only crash-window evidence for an authenticated audit operator.
+  * Never replays an AgentExecution, changes BrainRun state, releases reserved
+  * model funds or infers a provider invoice from an internal success flag.
+  */
+ async recoveryEvidence(organizationId:string,runId:string){
+  const run=await this.get(organizationId,runId);
+  const next=run.steps.find(s=>s.status!=='COMPLETED');
+  const base={runId:run.id,runStatus:run.status,correlationId:run.correlationId,
+   lastProgressAt:run.updatedAt,completedSteps:run.steps.filter(s=>s.status==='COMPLETED').length,
+   totalSteps:run.steps.length,automaticReplayAllowed:false as const,
+   automaticCheckpointAllowed:false as const,externalPublishingAuthorized:false as const};
+  if(!next)return {...base,nextStep:null,evidenceStatus:'NO_PENDING_STEP',
+   candidateExecutions:[],modelReconciliation:{reserved:0,unverifiedSettled:0},
+   operatorAction:'Review authoritative run and prior human decisions; no recovery execution required'};
+  const previous=next.ordinal===0?null:run.steps.find(s=>s.ordinal===next.ordinal-1);
+  const expectedCausation=previous?.executionId??null;
+  const rows=await this.db.agentExecution.findMany({where:{
+   organizationId,agentId:next.agentId,correlationId:run.correlationId,
+   input:{path:['brainRunId'],equals:runId}
+  },select:{id:true,status:true,causationId:true,startedAt:true,completedAt:true},
+   orderBy:[{startedAt:'desc'},{id:'desc'}],take:101});
+  const overflow=rows.length>100;
+  const bounded=rows.slice(0,100);
+  const requests=bounded.map(r=>r.id+':draft');
+  const usages=requests.length?await this.db.modelUsage.findMany({
+   where:{organizationId,requestId:{in:requests}},
+   select:{requestId:true,status:true,billingStatus:true}
+  }):[];
+  const byRequest=new Map(usages.map(u=>[u.requestId,u]));
+  const candidateExecutions=bounded.map(e=>({
+   executionId:e.id,status:e.status,
+   causationMatches:e.causationId===expectedCausation&&
+     (next.ordinal===0||previous?.status==='COMPLETED'),
+   modelReservation:byRequest.get(e.id+':draft')?.status??null,
+   modelInvoiceVerified:byRequest.get(e.id+':draft')?.billingStatus==='VERIFIED'
+  }));
+  const validCompleted=candidateExecutions.filter(e=>e.status==='COMPLETED'&&e.causationMatches);
+  const stale=run.updatedAt.getTime()<=Date.now()-15*60_000;
+  const evidenceStatus=overflow?'EXCESS_EXECUTION_EVIDENCE':
+    candidateExecutions.some(e=>!e.causationMatches)?'CONFLICTING_CAUSATION':
+    candidateExecutions.some(e=>e.status==='RUNNING'||e.status==='FAILED')?'AMBIGUOUS_AGENT_OUTCOME':
+    validCompleted.length===1&&candidateExecutions.length===1?'ONE_COMPLETED_UNCHECKPOINTED':
+    candidateExecutions.length>1?'MULTIPLE_EXECUTION_ATTEMPTS':
+    run.status==='RUNNING'&&!stale?'MAY_STILL_BE_ACTIVE':
+    'NO_COMPLETED_EXECUTION_PROOF';
+  return {...base,nextStep:{agentId:next.agentId,ordinal:next.ordinal,status:next.status},
+   staleByLastProgress:stale,evidenceStatus,candidateCountAtLeast:rows.length,
+   candidatesTruncated:overflow,candidateExecutions,
+   modelReconciliation:{
+    reserved:usages.filter(u=>u.status==='RESERVED').length,
+    unverifiedSettled:usages.filter(u=>u.status==='SETTLED'&&u.billingStatus!=='VERIFIED').length
+   },
+   operatorAction:'Compare execution and provider billing records, then investigate; no agent replay, checkpoint repair or release is authorized by this report'};
+ }
 }
