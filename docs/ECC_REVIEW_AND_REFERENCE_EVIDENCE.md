@@ -35,3 +35,17 @@ The ECC GitHub App cannot publish Check Runs from these comments alone. An app o
 
 ## Not cleared
 Live production identity/Entra configuration, independently attested research claims, model invoice authentication, true content evaluation against expert rubrics, multi-provider harness compatibility, and staged distributed crash injection remain unverified. Evidence files do not authorize external publication, paid ads, customer contact or self-modifying agent skills.
+
+## Actual SBOM and dependency advisory findings (2026-11-18)
+The security-evidence job in [run 44320547067](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/44320547067) successfully generated an SPDX SBOM with Syft and captured an audit artifact. `pnpm audit --json` returned **exit code 1** with **2 critical, 2 high and 3 moderate** advisories against the first scanned dependency resolution; the scan was **not clean**.
+
+| Package path | Initial severity | Finding / mitigation status |
+| --- | --- | --- |
+| `vitest > tinypool@1.1.1` | Critical (2 advisories) | Upgrade workspace Vitest declarations to ^4.1.12 and confirm fresh audit + tests |
+| `vitest > picomatch@4.0.7` | High | Advisory reports no safe patched version in the scanned metadata; manually investigate exposure and a supported upstream fix |
+| `prisma > @prisma/config > deepmerge-ts@7.1.5` | High | Add pnpm override to 8.0.0 and run full Prisma generate/migrate rehearsal; do not claim compatibility before CI |
+| `vitest` and `@vitest/mocker` | Moderate (3 advisories) | Upgrade workspace Vitest declarations to ^4.1.12; rescan |
+
+An audit process return code can also indicate tool/network failure; here the artifact contained explicit advisory records and a vulnerability severity summary. Treat it as a genuine **unresolved security finding** until a follow-up scan and dependency path review prove otherwise. The standalone job intentionally collects evidence without blocking feature CI; **deployment approval must separately require reviewing and clearing or explicitly risk-accepting unresolved applicable findings**.
+
+Run 44320547067 also failed the application typecheck because the new tests used `import.meta` in a CommonJS-compiled package (TS1470); golden fixtures now resolve from the package working directory. Neither advisory presence nor test errors should be masked by a green standalone scanner-job indicator.
