@@ -833,6 +833,10 @@ model ProviderWebhookObservation {
   signatureDigest String
   rawSizeBytes Int
   eventClass String
+  // Provider-claimed event references; never a verified outbound receipt.
+  candidateAccountDigest String?
+  candidatePostDigest String?
+  candidateEventAt DateTime?
   status String @default("QUARANTINED")
   verifiedAt DateTime @default(now())
   verifiedBy String
