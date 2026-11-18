@@ -33,8 +33,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -48,43 +46,14 @@ jobs:
         run: pnpm install --no-frozen-lockfile
       - name: Generate Prisma client
         run: pnpm exec prisma generate --schema prisma/schema.prisma
-      - name: Inspect historical baseline SQL (temporary migration repair probe)
-        run: |
-          git show ee4d6513422bea8ffd0e7e3e1ebf070fc502f971:prisma/schema.prisma > /tmp/marketing-baseline-compact.prisma
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-          source=Path('/tmp/marketing-baseline-compact.prisma').read_text()
-          out=[]
-          for line in source.splitlines():
-              if line.startswith('generator '):
-                  out.append('generator client {\n  provider = "prisma-client-js"\n}')
-              elif line.startswith('datasource '):
-                  out.append('datasource db {\n  provider = "postgresql"\n  url = env("DATABASE_URL")\n}')
-              elif line.startswith('enum '):
-                  match=re.fullmatch(r'enum (\w+) \{ (.*) \}',line)
-                  if not match: raise RuntimeError('Unexpected enum schema')
-                  name,values=match.groups()
-                  out.append('enum '+name+' {\n  '+'\n  '.join(values.split())+'\n}')
-              elif line.startswith('model '):
-                  match=re.fullmatch(r'model (\w+) \{ (.*) \}',line)
-                  if not match: raise RuntimeError('Unexpected model schema')
-                  name,fields=match.groups()
-                  if name=='Organization': fields += '; agentExecutions AgentExecution[]'
-                  out.append('model '+name+' {\n  '+'\n  '.join(value.strip() for value in fields.split(';') if value.strip())+'\n}')
-              else: raise RuntimeError('Unknown historical schema syntax')
-          Path('/tmp/marketing-baseline.prisma').write_text('\n\n'.join(out)+'\n')
-          PY
-          pnpm exec prisma migrate diff --from-empty --to-schema-datamodel /tmp/marketing-baseline.prisma --script > /tmp/marketing-baseline.sql
-          echo 'BEGIN_MARKETING_BASELINE_SQL'
-          cat /tmp/marketing-baseline.sql
-          echo 'END_MARKETING_BASELINE_SQL'
       - name: Build workspace libraries
         run: pnpm --filter './packages/**' build
       - name: Typecheck
         run: pnpm typecheck
-      - name: Prepare isolated PostgreSQL integration schema
-        run: pnpm exec prisma db push --schema prisma/schema.prisma --skip-generate
+      - name: Apply actual PostgreSQL migrations to clean integration database
+        run: pnpm exec prisma migrate deploy --schema prisma/schema.prisma
+      - name: Verify migrated database matches Prisma schema
+        run: pnpm exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Test
         run: pnpm test
       - name: Build
