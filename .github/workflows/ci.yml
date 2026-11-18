@@ -54,6 +54,17 @@ jobs:
         run: pnpm exec prisma migrate deploy --schema prisma/schema.prisma
       - name: Verify migrated database matches Prisma schema
         run: pnpm exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Rehearse non-destructive upgrade from historical database baseline
+        run: |
+          export PGPASSWORD=marketing_test_password
+          createdb -h localhost -p 5432 -U marketing_test marketing_upgrade_test
+          psql -v ON_ERROR_STOP=1 -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -f prisma/migrations/20261117000000_initial_marketing_schema/migration.sql
+          psql -v ON_ERROR_STOP=1 -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -c "INSERT INTO \"Organization\" (\"id\",\"name\",\"createdAt\",\"updatedAt\") VALUES ('upgrade-tenant','Historical tenant',now(),now());"
+          export DATABASE_URL="postgresql://marketing_test:marketing_test_password@localhost:5432/marketing_upgrade_test?schema=public"
+          pnpm exec prisma migrate resolve --applied 20261117000000_initial_marketing_schema --schema prisma/schema.prisma
+          pnpm exec prisma migrate deploy --schema prisma/schema.prisma
+          pnpm exec prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+          test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
       - name: Build
