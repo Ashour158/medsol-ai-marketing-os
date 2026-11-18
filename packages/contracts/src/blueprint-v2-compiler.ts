@@ -19,8 +19,8 @@ export type BlueprintDraft={id:string;version:number;nodes:BlueprintNode[];
 export type BlueprintIssue={code:string;nodeId?:string;detail:string};
 export type BlueprintLintResult={validDraft:boolean;deployAuthorized:false;
  executable:false;issues:BlueprintIssue[];nodeCount:number;edgeCount:number};
-const knownEngines=new Set(TARGET_ENGINES.map(x=>x.id));
-const knownWorkflows=new Set(TARGET_WORKFLOWS.map(x=>x.id));
+const knownEngines:ReadonlySet<string>=new Set<string>(TARGET_ENGINES.map(x=>x.id));
+const knownWorkflows:ReadonlySet<string>=new Set<string>(TARGET_WORKFLOWS.map(x=>x.id));
 const knownAgents=new Set(['MKT-CMO-001','MKT-OPS-001','MKT-STR-001',
  'MKT-ANA-001','MKT-PM-001','MKT-GROWTH-001','MKT-CRM-001','MKT-CONT-001',
  'MKT-SOC-001','MKT-CREATIVE-001','MKT-BRAND-001','MKT-EVENT-001','MKT-SCI-001']);
