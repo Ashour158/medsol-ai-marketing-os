@@ -1,4 +1,4 @@
-import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {PrismaService} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
@@ -13,12 +13,16 @@ import {MarketingWorkflowService} from './marketing-workflow.service.js';
    const a=await tx.approval.findFirst({where:{id:cmd.approvalId,organizationId:cmd.organizationId}});if(!a)throw new NotFoundException('Approval not found in tenant');
    if(a.decision!=='PENDING')throw new BadRequestException('Approval is already decided');
    if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
-   const next=await tx.approval.update({where:{id:a.id},data:{decision:cmd.decision,decidedBy:cmd.approverUserId,rationale:cmd.rationale,decidedAt:new Date()}});
+   const claimed=await tx.approval.updateMany({where:{id:a.id,organizationId:cmd.organizationId,decision:'PENDING'},data:{decision:cmd.decision,decidedBy:cmd.approverUserId,rationale:cmd.rationale,decidedAt:new Date()}});
+   if(claimed.count!==1)throw new ConflictException('Approval was decided concurrently');
+   const next=await tx.approval.findUniqueOrThrow({where:{id:a.id}});
    if(next.decision==='APPROVED' || next.decision==='APPROVED_WITH_CONDITIONS'){
     if(next.objectType==='Campaign'){
      const c=await tx.campaign.findFirst({where:{id:next.objectId,organizationId:cmd.organizationId}});if(!c)throw new NotFoundException('Approval target campaign not found');
      assertCampaignTransition(c.status,'APPROVED');
-     const updated=await tx.campaign.update({where:{id:c.id},data:{status:'APPROVED',version:{increment:1}}});
+     const changed=await tx.campaign.updateMany({where:{id:c.id,organizationId:cmd.organizationId,status:c.status,version:c.version},data:{status:'APPROVED',version:{increment:1}}});
+     if(changed.count!==1)throw new ConflictException('Campaign changed concurrently');
+     const updated=await tx.campaign.findUniqueOrThrow({where:{id:c.id}});
      await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:'HUMAN',actorId:cmd.approverUserId,action:'CAMPAIGN_APPROVED',objectType:'Campaign',objectId:c.id,before:{status:c.status,version:c.version},after:{status:updated.status,version:updated.version},correlationId:cmd.correlationId}});
      await tx.outboxEvent.create({data:{organizationId:cmd.organizationId,eventId:randomUUID(),eventType:'CampaignApproved',aggregateType:'Campaign',aggregateId:c.id,payload:{campaignId:c.id,status:updated.status,approvalId:a.id},correlationId:cmd.correlationId,version:updated.version}});
     }
