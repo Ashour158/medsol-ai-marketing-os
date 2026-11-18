@@ -4,6 +4,8 @@ import {
  GetObjectCommand,PutObjectCommand,S3Client
 } from '@aws-sdk/client-s3';
 import {identify,type VersionedMediaReader} from './verified-media-evidence.service.js';
+import type {VerifiedMediaEvidenceService} from './verified-media-evidence.service.js';
+import type {CreativeAssetService} from './creative-asset.service.js';
 
 const MAX_MEDIA_BYTES=24*1024*1024;
 const SOURCE_PREFIX='internal:creative-source/';
@@ -161,4 +163,45 @@ export class S3VersionedMediaStore implements VersionedMediaReader {
   const malwareScan=await this.clean(bytes);
   return{sourceRef:input.sourceRef,objectVersion:obj.VersionId,bytes,malwareScan};
  }
+}
+
+/** Trusted server-only coordinator; it invokes the canonical DAM revision and
+ * verified proof owners rather than creating another asset or evidence ledger.
+ * If DB registration fails after S3 PUT, the locked object is an orphan; do not
+ * silently retry under a new revision. An operator retention/GC runbook handles
+ * orphan reconciliation after the legal Object Lock retention window.
+ */
+export async function registerScannedMediaInDam(
+ input:{
+  organizationId:string;actorId:string;verifierId:string;assetId:string;
+  bytes:Uint8Array;contentType:string;sourceKind:'EDITABLE_SOURCE'|'FLATTENED_EXPORT';
+  rightsExpiresAt:string;expectedVersion:number;
+ },
+ deps:{
+  store:S3VersionedMediaStore;creativeAssets:CreativeAssetService;
+  verifiedMedia:VerifiedMediaEvidenceService;
+ }
+){
+ if(!deps?.store||!deps.creativeAssets||!deps.verifiedMedia)
+  throw new BadRequestException('Canonical DAM and verifier owners required');
+ const source=await deps.store.storeCleanVersion({
+  organizationId:input.organizationId,bytes:input.bytes,contentType:input.contentType
+ });
+ const revision=await deps.creativeAssets.addRevision(
+  input.organizationId,input.actorId,input.assetId,{
+   sourceKind:input.sourceKind,sourceRef:source.sourceRef,
+   renditionDigest:source.renditionDigest,
+   rightsExpiresAt:input.rightsExpiresAt,
+   expectedVersion:input.expectedVersion
+  }
+ );
+ const proof=await deps.verifiedMedia.verifyReadback(
+  input.organizationId,input.verifierId,revision.revisionId,deps.store
+ );
+ if(proof.status!=='VERIFIED_READBACK'||proof.malwareScanStatus!=='CLEAN')
+  throw new ConflictException('Canonical DAM revision requires clean readback evidence');
+ return{revisionId:revision.revisionId,evidenceId:proof.evidenceId,
+  renditionDigest:source.renditionDigest,sourceRef:source.sourceRef,
+  objectVersion:source.objectVersion,malwareScanStatus:'CLEAN' as const,
+  rightsVerified:false,externalEffectsAuthorized:false};
 }
