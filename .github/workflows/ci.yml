@@ -103,8 +103,8 @@ jobs:
           set +e
           pnpm audit --json > dependency-audit.json 2> dependency-audit.stderr
           status=$?
-          printf '%s\\n' "$status" > dependency-audit.exitcode
-          printf 'Dependency audit exit code: %s\\n' "$status"
+          printf '%s\n' "$status" > dependency-audit.exitcode
+          printf 'Dependency audit exit code: %s\n' "$status"
           exit 0
       - name: Upload scanner evidence for independent review
         if: always()
