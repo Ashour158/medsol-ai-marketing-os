@@ -93,6 +93,11 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
    expect((await events())).toHaveLength(1);
    expect((await events())[0]?.payload).toMatchObject({kind:'BRAIN_NEEDS_INTERVENTION',level:0,
     externalPublishingAuthorized:false});
+   const firstAlert=(await events())[0]!;
+   const eventEnvelope={eventId:firstAlert.eventId,organizationId:org,eventType:INCIDENT_ALERT_EVENT,
+    aggregateType:firstAlert.aggregateType,aggregateId:firstAlert.aggregateId,version:1,
+    correlationId:firstAlert.correlationId,payload:firstAlert.payload};
+   expect(await service.shouldDeliver(eventEnvelope)).toBe(true);
    await service.scan(100);
    expect((await events())).toHaveLength(1);
    const response=await db.incidentResponse.findUnique({where:{organizationId_kind_sourceId:{
@@ -114,6 +119,8 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
    await db.incidentResponse.update({where:{id:response!.id},data:{nextEscalationAt:new Date(Date.now()-60_000)}});
    await service.scan(100);
    expect((await events())).toHaveLength(2);
+   // Queued webhook events may still exist; acknowledgement suppresses them on delivery.
+   expect(await service.shouldDeliver(eventEnvelope)).toBe(false);
    expect(await db.auditEvent.count({where:{organizationId:org,action:'MARKETING_INCIDENT_ACKNOWLEDGED'}})).toBe(1);
    expect((await db.brainRun.findUnique({where:{id:runId}}))?.status).toBe('NEEDS_INTERVENTION');
    const visible=await service.batch(org,'BRAIN_NEEDS_INTERVENTION',[runId]);
