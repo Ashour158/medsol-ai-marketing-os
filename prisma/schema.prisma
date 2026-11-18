@@ -177,6 +177,7 @@ model Campaign {
   @@unique([organizationId,code])
   @@unique([organizationId,id])
   @@index([organizationId,status])
+  @@index([organizationId,brandId])
   metricObservations MarketingMetricObservation[]
 }
 model Approval {
