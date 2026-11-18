@@ -753,7 +753,7 @@ model OAuthAuthorizationAttempt {
   claimedAt DateTime?
   completedAt DateTime?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict)
+  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"OAuthAttempt_org_connection_fk")
   @@unique([organizationId,stateDigest])
   @@unique([organizationId,id])
   @@index([organizationId,integrationConnectionId,status,expiresAt])
@@ -779,7 +779,7 @@ model ProviderCredential {
   revokedAt DateTime?
   revokedBy String?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict)
+  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"ProviderCredential_org_connection_fk")
   @@unique([organizationId,id])
   @@unique([organizationId,integrationConnectionId])
   @@index([organizationId,providerKey,status])
