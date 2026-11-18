@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { verifyBootstrapRequest } from './bootstrap-auth.js';
 import { verifyOidcIdentity, type VerifiedIdentity } from './oidc-identity.js';
+import { assertMarketingPermission, permissionForMarketingRoute } from './marketing-permissions.js';
 import { PrismaService } from './prisma.service.js';
 
 export type AuthenticatedRequest = {
@@ -37,6 +38,8 @@ export class BootstrapAuthGuard implements CanActivate {
     } else {
       throw new UnauthorizedException('Unsupported authentication mode');
     }
+    const permission = permissionForMarketingRoute(req.method ?? '', req.url?.split('?')[0] ?? '');
+    if (permission) assertMarketingPermission(req.identity, permission);
     if (req.body && 'organizationId' in req.body) req.body.organizationId = organizationId;
     req.headers['x-organization-id'] = organizationId;
     return true;
