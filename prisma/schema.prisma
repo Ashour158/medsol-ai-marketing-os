@@ -204,7 +204,6 @@ model Approval {
   workflow WorkflowExecution? @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
   creativeAssetRevision CreativeAssetRevision? @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
   publications CampaignPublication[]
-  mediaEvidence VerifiedMediaEvidence[]
   @@unique([organizationId,id])
   @@index([organizationId,objectType,objectId])
   @@index([organizationId,decision])
@@ -629,6 +628,7 @@ model CreativeAssetRevision {
   asset CreativeAsset @relation(fields:[organizationId,assetId],references:[organizationId,id],onDelete:Restrict)
   approvals Approval[]
   publications CampaignPublication[]
+  mediaEvidence VerifiedMediaEvidence[]
   @@unique([organizationId,id])
   @@unique([assetId,version])
   @@index([organizationId,assetId,version])
