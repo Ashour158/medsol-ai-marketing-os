@@ -27,7 +27,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if(method==='GET'&&(path==='/marketing/performance/observations'||/^\/marketing\/performance\/campaigns\/[^/]+$/.test(path)))return 'READ_AUDIT';
   if(method==='POST'&&path==='/marketing/performance/ingest')return 'SUBMIT_EVIDENCE';
   if(method==='POST'&&path==='/marketing/performance/review')return 'DECIDE_APPROVAL';
-  if(method==='GET'&&path==='/marketing/command-center')return 'READ_AUDIT';
+  if(method==='GET'&&(path==='/marketing/command-center'||/^\/marketing\/command-center\/incidents\/(BRAIN_NEEDS_INTERVENTION|BRAIN_STALE|OUTBOX_DEAD_LETTER)$/.test(path)))return 'READ_AUDIT';
   if(method==='GET'&&(path==='/marketing/brand/active'||path==='/marketing/brand/revisions'))return 'READ_AUDIT';
   if(method==='POST'&&(path==='/marketing/brand/propose'||path==='/marketing/brand/decide'))return 'DECIDE_APPROVAL';
   if (method === 'GET' && path === '/marketing/me') return null;
