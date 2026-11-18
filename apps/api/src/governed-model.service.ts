@@ -1,12 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult } from '@medsol/agent-runtime';
+import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
 
 @Injectable()
 export class GovernedModelService {
   private readonly gateway: BoundedModelGateway;
   constructor(private readonly budgets: ModelBudgetService) {
-    this.gateway = new BoundedModelGateway(new DisabledModelAdapter());
+    const provider = process.env.MARKETING_MODEL_PROVIDER ?? 'disabled';
+    let adapter: ModelAdapter;
+    if (provider === 'disabled') {
+      adapter = new DisabledModelAdapter();
+    } else if (provider === 'openai') {
+      const key = process.env.OPENAI_API_KEY ?? '';
+      const model = process.env.MARKETING_OPENAI_MODEL ?? '';
+      const inputRate = Number(process.env.MARKETING_MODEL_INPUT_RATE_MICROS_PER_MILLION);
+      const outputRate = Number(process.env.MARKETING_MODEL_OUTPUT_RATE_MICROS_PER_MILLION);
+      if (!process.env.MARKETING_MODEL_INPUT_RATE_MICROS_PER_MILLION || !process.env.MARKETING_MODEL_OUTPUT_RATE_MICROS_PER_MILLION) {
+        throw new Error('Explicit reviewed model price table required');
+      }
+      adapter = new OpenAIResponsesAdapter({apiKey:key,model,inputRateMicrosPerMillion:inputRate,outputRateMicrosPerMillion:outputRate});
+    } else {
+      throw new Error('Unknown marketing model provider (fail closed)');
+    }
+    this.gateway = new BoundedModelGateway(adapter);
   }
   // Adapter injection is restricted to server-side composition; no agent may select arbitrary network destinations.
   async complete(requestId: string, raw: unknown): Promise<ModelResult> {
