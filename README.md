@@ -65,3 +65,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R2E-C signed post claims and read-only delivery reconciliation
 
 [Read the R2E-C reuse map, source evidence controls and release gates](docs/blueprint-v2/R2E_C_SOURCE_RECONCILIATION.md). Narrow, signed Meta Page post-add events yield only tenant/connection-scoped hashed candidate references in existing immutable quarantined webhook evidence. The publication Studio exposes read-only reconciliation with the canonical approval, rights, brand and scope controls and zero fabricated remote receipts. SANDBOX-only attempts, lack of customer destination binding and unfinished provider staging keep all live publishing disabled.
+
+### R2F-A default-deny governed publication release gate
+
+[R2F-A release barrier Reuse Map, policy and outstanding production gates](docs/blueprint-v2/R2F_GOVERNED_PUBLISHING_RELEASE_BARRIER.md). Twenty-three individual, fail-closed social release requirements are evaluated in the existing @medsol/policy authority. The verified-OIDC CampaignPublicationService exposes immutable media/brand/rights/credential checks and authenticated, read-only release readiness in the existing Publication Studio. The current live prerequisites are deliberately unavailable and cannot be bypassed through a browser or agent; no external publisher, POST send endpoint or PUBLISHED database state is introduced. All unverified provider outcomes require independent source readback and are OUTCOME_UNKNOWN, never auto retried.
