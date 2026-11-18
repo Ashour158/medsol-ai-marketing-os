@@ -324,7 +324,11 @@ model ModelUsage {
   requestId String
   agentId String
   reservedMicros BigInt
-  actualMicros BigInt?
+  actualMicros BigInt? // Usage-price estimate used for policy budgeting, not independently billed cost
+  billingStatus String @default("UNVERIFIED")
+  verifiedBilledMicros BigInt?
+  billedEvidenceReference String?
+  billedVerifiedAt DateTime?
   providerRequestId String?
   evidenceReference String?
   status String
