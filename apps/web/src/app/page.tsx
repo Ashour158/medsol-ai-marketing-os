@@ -24,6 +24,10 @@ export default function Home() {
   const [modelBudget, setModelBudget] = useState<{enabled:boolean;limitMicros?:string;spentMicros?:string;reservedMicros?:string}|null>(null);
   const [agentOperations, setAgentOperations] = useState<{total:number;byStatus:Record<string,number>;recent:Array<{id:string;agentId:string;status:string}>}|null>(null);
   const [agentDetail, setAgentDetail] = useState<unknown>(null);
+  const [brainPlan, setBrainPlan] = useState<unknown>(null);
+  const [brainAssessment, setBrainAssessment] = useState<unknown>(null);
+  const [learningSignals, setLearningSignals] = useState<unknown>(null);
+  const [skillProposals, setSkillProposals] = useState<unknown>(null);
   const [agentHistory, setAgentHistory] = useState<Array<{id:string;agentId:string;status:string}>>([]);
   const [campaignDetail, setCampaignDetail] = useState<unknown>(null);
   const [error, setError] = useState("");
@@ -169,6 +173,19 @@ export default function Home() {
         </div>
       </div>}
       {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
+    </section>
+    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+      <h2 style={{ marginTop: 0 }}>Marketing Brain & Learning Intelligence</h2>
+      <p style={{ color: "#64748b" }}>Review all agent stages, evidence quarantine and proposed skills. No automatic skill activation or external publishing.</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainPlan(await call("brain/plan")))}>Load brain map</button>
+        <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => setBrainAssessment(await call("brain/assess", {requestedOutcome:goal,correlationId:crypto.randomUUID()})))}>Run 13-agent review</button>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { const [signals,proposals]=await Promise.all([call("learning/signals"),call("learning/proposals")]);setLearningSignals(signals);setSkillProposals(proposals); })}>Refresh learning intelligence</button>
+      </div>
+      {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}
+      {brainAssessment !== null && <details open><summary>13-agent review trace</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainAssessment,null,2)}</pre></details>}
+      {learningSignals !== null && <details><summary>Learning evidence and quarantine</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(learningSignals,null,2)}</pre></details>}
+      {skillProposals !== null && <details><summary>Governed agent skill proposals</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(skillProposals,null,2)}</pre></details>}
     </section>
     {error && <p role="alert" style={{ color: "#a11919", padding: 16, background: "#fff1f1", borderRadius: 8 }}>{error}</p>}
     <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions require a verified OIDC identity and an authorized database role.</p>
