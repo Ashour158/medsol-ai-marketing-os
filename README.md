@@ -35,3 +35,8 @@ Authorized auditors can inspect this target-state inventory from `GET /marketing
 R0 reliability and security evidence → R1 commercial tenant/agency/brand/IAM/approval/DAM → R2 real creative/social/email and consent-governed customer campaign → R3 multi-provider, MCP/A2A, Agent/Workflow/Blueprint Studios and knowledge → R4 market/product/pricing/loyalty/conversion → R5 paid media/messaging/commercial ecosystem.
 
 Every engine and workflow has an explicit current status. Names in a target register do **not** mean APIs, agents, integrations, data models, or production security are implemented. No model or agent may authorize its own publication, email send, pricing push, reward, spend, or privilege change. **One business concept has one authoritative owner.**
+
+
+## R1 first executable tenant/brand slice (not commercial acceptance)
+
+[See R1 tenant Brand and AgencyGrant implementation, security invariants and tests](docs/blueprint-v2/R1_TENANT_BRAND_AGENCY_IMPLEMENTATION.md). Admin-only brand registration and revocable, non-publishing agency scope metadata are now persisted and audited. Current marketing business records and SSO remain tenant-pilot scoped; customer-configurable IAM, PostgreSQL RLS, per-brand approvals, agency user access to business resources and onboarding remain unimplemented release gates.
