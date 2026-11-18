@@ -156,7 +156,9 @@ export class MarketingIncidentResponseService{
    throw error;
   }
  }
- async scan(limitPerKind=25){
+ async scan(limitPerKind=25,organizationId?:string){
+  // Optional scope is internal-only for isolated integration acceptance. The
+  // production worker omits it and scans all visible tenant incidents.
   if(!Number.isInteger(limitPerKind)||limitPerKind<1||limitPerKind>100)
    throw new BadRequestException('Invalid incident scan batch');
   const now=new Date(),cutoff=new Date(now.getTime()-15*60_000);
@@ -170,7 +172,7 @@ export class MarketingIncidentResponseService{
   let inspected=0,queued=0,conflicts=0;
   for(const [kind,base] of definitions){
    const cursor=this.cursors[kind];
-   const where={...base,...(cursor?{id:{gt:cursor}}:{})};
+   const where={...base,...(organizationId?{organizationId}:{}),...(cursor?{id:{gt:cursor}}:{})};
    const rows=kind==='OUTBOX_DEAD_LETTER'?
     await this.db.outboxEvent.findMany({where:where as Prisma.OutboxEventWhereInput,
      orderBy:{id:'asc'},take:limitPerKind,

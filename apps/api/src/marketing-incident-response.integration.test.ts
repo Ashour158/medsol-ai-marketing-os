@@ -88,7 +88,7 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
    await db.brainRun.create({data:{id:runId,organizationId:org,commandKey:'ops-'+randomUUID(),
     correlationId:'corr-'+randomUUID(),input:{test:'incident'},status:'NEEDS_INTERVENTION'}});
    const service=new MarketingIncidentResponseService(db as any);
-   await service.scan(100);
+   await service.scan(100,org);
    const events=()=>db.outboxEvent.findMany({where:{organizationId:org,eventType:INCIDENT_ALERT_EVENT},orderBy:{occurredAt:'asc'}});
    expect((await events())).toHaveLength(1);
    expect((await events())[0]?.payload).toMatchObject({kind:'BRAIN_NEEDS_INTERVENTION',level:0,
@@ -98,7 +98,7 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
     aggregateType:firstAlert.aggregateType,aggregateId:firstAlert.aggregateId,version:1,
     correlationId:firstAlert.correlationId,payload:firstAlert.payload};
    expect(await service.shouldDeliver(eventEnvelope)).toBe(true);
-   await service.scan(100);
+   await service.scan(100,org);
    expect((await events())).toHaveLength(1);
    const response=await db.incidentResponse.findUnique({where:{organizationId_kind_sourceId:{
     organizationId:org,kind:'BRAIN_NEEDS_INTERVENTION',sourceId:runId
@@ -106,7 +106,7 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
    expect(response).not.toBeNull();
    await db.incidentResponse.update({where:{id:response!.id},
     data:{nextEscalationAt:new Date(Date.now()-60_000)}});
-   await service.scan(100);
+   await service.scan(100,org);
    expect((await events())).toHaveLength(2);
    expect((await events())[1]?.payload).toMatchObject({level:1});
    await expect(service.acknowledge('foreign-tenant','BRAIN_NEEDS_INTERVENTION',runId,'manager','Investigating alert with operator evidence'))
@@ -117,7 +117,7 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
    expect(await service.acknowledge(org,'BRAIN_NEEDS_INTERVENTION',runId,'manager',
     'Investigating crash evidence and provider billing')).toMatchObject({replay:true});
    await db.incidentResponse.update({where:{id:response!.id},data:{nextEscalationAt:new Date(Date.now()-60_000)}});
-   await service.scan(100);
+   await service.scan(100,org);
    expect((await events())).toHaveLength(2);
    // Queued webhook events may still exist; acknowledgement suppresses them on delivery.
    expect(await service.shouldDeliver(eventEnvelope)).toBe(false);
@@ -163,7 +163,7 @@ describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and
     eventType:INCIDENT_ALERT_EVENT,aggregateType:'IncidentResponse',aggregateId:'not-a-source',
     correlationId:'corr',payload:{},attempts:8,deadLetteredAt:new Date()}});
    const service=new MarketingIncidentResponseService(db as any);
-   await service.scan(100);
+   await service.scan(100,org);
    expect(await db.incidentResponse.count({where:{organizationId:org}})).toBe(0);
   }finally{
    await db.outboxEvent.deleteMany({where:{organizationId:org}});

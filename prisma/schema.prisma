@@ -73,6 +73,9 @@ model Organization {
   brandMasterRevisions BrandMasterRevision[]
   marketingMetricObservations MarketingMetricObservation[]
   incidentResponses IncidentResponse[]
+  brands Brand[]
+  clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
+  delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
 }
 model User {
   id String @id @default(cuid())
@@ -488,4 +491,51 @@ model MarketingWorkerHeartbeat {
   lastTickAt DateTime?
   lastTickStatus String?
   @@index([workerType,lastSeenAt])
+}
+
+/**
+ * R1 authoritative tenant-owned brand identity. BrandMasterRevision remains the
+ * approved rules authority until its brand-scoped migration is accepted.
+ */
+model Brand {
+  id String @id @default(cuid())
+  organizationId String
+  slug String
+  name String
+  status String @default("ACTIVE")
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  agencyGrants AgencyGrant[]
+  @@unique([organizationId,slug])
+  @@unique([organizationId,id])
+  @@index([organizationId,status])
+}
+
+/**
+ * Revocable agency-to-client scoped grant. This row alone DOES NOT authorize an
+ * agency user; human identity, role and brand access must also be checked.
+ * No external effect or unrestricted client tenant access is derived from it.
+ */
+model AgencyGrant {
+  id String @id @default(cuid())
+  clientOrganizationId String
+  agencyOrganizationId String
+  brandId String
+  actions Json
+  status String @default("ACTIVE")
+  expiresAt DateTime
+  createdBy String
+  revokedBy String?
+  revokedAt DateTime?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clientOrganization Organization @relation("AgencyClientGrants",fields:[clientOrganizationId],references:[id],onDelete:Restrict)
+  agencyOrganization Organization @relation("AgencyDelegateGrants",fields:[agencyOrganizationId],references:[id],onDelete:Restrict)
+  brand Brand @relation(fields:[clientOrganizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([clientOrganizationId,agencyOrganizationId,brandId],map:"AgencyGrant_scope_key")
+  @@index([clientOrganizationId,status,expiresAt])
+  @@index([agencyOrganizationId,status,expiresAt])
 }
