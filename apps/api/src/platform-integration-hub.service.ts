@@ -26,12 +26,23 @@ function label(value:unknown):string{
 export class PlatformIntegrationHubService{
  constructor(private readonly db:PrismaService){}
  catalog(){return PLATFORM_CATALOG;}
- private scoped<T>(organizationId:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>):Promise<T>{
+ private async scoped<T>(organizationId:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>):Promise<T>{
   id(organizationId,'tenant');
-  return this.db.$transaction(async tx=>{
-   await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",organizationId);
-   return fn(tx);
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  // All callers perform database-only, rollback-atomic operations. It is safe
+  // to retry a PostgreSQL serialization abort here; NEVER put OAuth code
+  // exchange, provider sends or external HTTP calls inside this helper.
+  for(let attempt=0;attempt<4;attempt++){
+   try{
+    return await this.db.$transaction(async tx=>{
+     await tx.$queryRawUnsafe("SELECT set_config('app.marketing_tenant_id', $1, true)",organizationId);
+     return fn(tx);
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+   }catch(e){
+    if((e as {code?:string})?.code!=='P2034'||attempt===3)throw e;
+    await new Promise(resolve=>setTimeout(resolve,10*(attempt+1)));
+   }
+  }
+  throw new Error('Transaction retry budget exhausted');
  }
  private present(item:{id:string;brandId:string;providerKey:string;destinationLabel:string;
   destinationRef:string;status:string;version:number;createdAt:Date}){
