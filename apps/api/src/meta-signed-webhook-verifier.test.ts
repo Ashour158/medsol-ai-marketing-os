@@ -18,7 +18,7 @@ describe('R2E-A Meta raw-byte signature conformance reference cases',()=>{
  });
  it('rejects every changed byte, missing/wrong header, wrong secret and unsupported digest',()=>{
   const changed=Buffer.from(raw);changed[15]=changed[15]!^1;
-  await expect(()=>verifySignedMetaWebhook(changed,sign(raw),secret)).toThrow();
+  expect(()=>verifySignedMetaWebhook(changed,sign(raw),secret)).toThrow();
   for(const bad of [undefined,'','sha1=aaaa','sha256=deadbeef','sha256='+'A'.repeat(64)])
    expect(()=>verifySignedMetaWebhook(raw,bad,secret)).toThrow();
   expect(()=>verifySignedMetaWebhook(raw,sign(raw),Buffer.alloc(32,1))).toThrow('signature');
