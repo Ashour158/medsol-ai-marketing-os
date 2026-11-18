@@ -166,6 +166,10 @@ export class CreativeAssetService{
     id:asset.brandId,organizationId,status:'ACTIVE'}});
    if(!asset||!brand||asset.version!==revision.version)
     throw new ConflictException('Current active brand/asset revision required');
+   const brandMaster=await tx.brandMasterRevision.findFirst({where:{
+    organizationId,status:'APPROVED'},orderBy:{version:'desc'},select:{version:true}});
+   if(!brandMaster||policyVersion!=='v'+brandMaster.version)
+    throw new ConflictException('Current approved Brand Master version required');
    if(!revision.rightsReviewedAt||revision.rightsExpiresAt<=scheduledAt)
     throw new ConflictException('Reviewed rights must cover the scheduled campaign');
    const scope:ExactCreativeScope={
@@ -209,7 +213,12 @@ export class CreativeAssetService{
    const asset=revision&&await tx.creativeAsset.findFirst({where:{
     id:revision.assetId,organizationId,status:'ACTIVE'}});
    const scope=approval.scope;
-   const current=!!revision&&!!asset&&isExactCreativeScope(scope)&&
+   const brandMaster=await tx.brandMasterRevision.findFirst({where:{
+    organizationId,status:'APPROVED'},orderBy:{version:'desc'},select:{version:true}});
+   const brand=asset&&await tx.brand.findFirst({where:{
+    id:asset.brandId,organizationId,status:'ACTIVE'},select:{id:true}});
+   const current=!!revision&&!!asset&&!!brand&&!!brandMaster&&isExactCreativeScope(scope)&&
+    scope.policyVersion==='v'+brandMaster.version&&
     asset.version===revision.version&&revision.rightsReviewedAt!==null&&
     revision.rightsExpiresAt>new Date()&&approval.scopeExpiresAt!==null&&
     approval.scopeExpiresAt>new Date()&&
