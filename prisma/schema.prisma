@@ -71,6 +71,7 @@ model Organization {
   brainRuns BrainRun[]
   brainRunSteps BrainRunStep[]
   brandMasterRevisions BrandMasterRevision[]
+  marketingMetricObservations MarketingMetricObservation[]
 }
 model User {
   id String @id @default(cuid())
@@ -160,6 +161,7 @@ model Campaign {
   product MarketingProduct? @relation(fields:[productId],references:[id],onDelete:Restrict)
   @@unique([organizationId,code])
   @@index([organizationId,status])
+  metricObservations MarketingMetricObservation[]
 }
 model Approval {
   id String @id @default(cuid())
@@ -429,4 +431,25 @@ model BrandMasterRevision {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([organizationId,version])
   @@index([organizationId,status,version])
+}
+
+model MarketingMetricObservation {
+  id String @id @default(cuid())
+  organizationId String
+  campaignId String
+  sourceSystem String
+  sourceRecordId String
+  metricKey String
+  value BigInt
+  observedAt DateTime
+  sourceReference String
+  status String @default("QUARANTINED")
+  submittedBy String
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  campaign Campaign @relation(fields:[campaignId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,sourceSystem,sourceRecordId,metricKey])
+  @@index([organizationId,campaignId,status,observedAt])
 }
