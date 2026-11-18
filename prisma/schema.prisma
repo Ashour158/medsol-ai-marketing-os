@@ -83,6 +83,7 @@ model Organization {
   oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
   providerCredentials ProviderCredential[]
   providerAccountObservations ProviderAccountObservation[]
+  providerWebhookObservations ProviderWebhookObservation[]
   brands Brand[]
   clientAgencyGrants AgencyGrant[] @relation("AgencyClientGrants")
   delegatedAgencyGrants AgencyGrant[] @relation("AgencyDelegateGrants")
@@ -709,6 +710,7 @@ model IntegrationConnection {
   oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
   providerCredential ProviderCredential?
   providerAccountObservations ProviderAccountObservation[]
+  providerWebhookObservations ProviderWebhookObservation[]
   @@index([organizationId,brandId,status])
 }
 
@@ -816,4 +818,27 @@ model ProviderAccountObservation {
   @@unique([organizationId,id])
   @@unique([organizationId,providerCredentialId],map:"ProviderAccountObs_org_credential_key")
   @@index([organizationId,integrationConnectionId,status,expiresAt],map:"ProviderAccountObs_org_conn_state_exp_idx")
+}
+
+/** R2E signed provider webhook observation, deliberately quarantined until
+ * an independently authorized outbound delivery can be correlated. Not a
+ * publication attempt, provider account verification or a second inbox.
+ */
+model ProviderWebhookObservation {
+  id String @id @default(cuid())
+  organizationId String
+  integrationConnectionId String
+  providerKey String
+  payloadDigest String
+  signatureDigest String
+  rawSizeBytes Int
+  eventClass String
+  status String @default("QUARANTINED")
+  verifiedAt DateTime @default(now())
+  verifiedBy String
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  connection IntegrationConnection @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"ProviderWebhookObs_org_conn_fk")
+  @@unique([organizationId,id])
+  @@unique([organizationId,integrationConnectionId,payloadDigest],map:"ProviderWebhookObs_org_conn_payload_key")
+  @@index([organizationId,integrationConnectionId,status,verifiedAt],map:"ProviderWebhookObs_org_conn_state_time_idx")
 }
