@@ -21,6 +21,8 @@ export default function Home() {
   const [objectives, setObjectives] = useState<Array<{id:string;name:string;status:string}>>([]);
   const [products, setProducts] = useState<Array<{id:string;name:string;code:string}>>([]);
   const [workflows, setWorkflows] = useState<Array<{id:string;status:string;currentStep:string}>>([]);
+  const [agentOperations, setAgentOperations] = useState<{total:number;byStatus:Record<string,number>;recent:Array<{id:string;agentId:string;status:string}>}|null>(null);
+  const [agentDetail, setAgentDetail] = useState<unknown>(null);
   const [agentHistory, setAgentHistory] = useState<Array<{id:string;agentId:string;status:string}>>([]);
   const [campaignDetail, setCampaignDetail] = useState<unknown>(null);
   const [error, setError] = useState("");
@@ -113,6 +115,15 @@ export default function Home() {
       <details style={{ marginTop: 12 }}><summary>Products ({products.length})</summary><ul>{products.map(p => <li key={p.id}>{p.code} — {p.name}</li>)}</ul></details>
       <details style={{ marginTop: 12 }}><summary>Recent workflows ({workflows.length})</summary><ul>{workflows.map(w => <li key={w.id}><button onClick={() => { setWorkflowId(w.id); setWorkflow({ id: w.id, status: w.status, currentStep: w.currentStep }); }}>{w.id}</button> — {w.status} / {w.currentStep}</li>)}</ul></details>
       <details style={{ marginTop: 12 }}><summary>Agent execution history ({agentHistory.length})</summary><ul>{agentHistory.map(a => <li key={a.id}>{a.agentId} — {a.status}</li>)}</ul></details>
+      <div style={{ marginTop: 18, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
+        <h3>Agent operations and policy trace</h3>
+        <p style={{ color: "#64748b", fontSize: 13 }}>Restricted to marketing audit-authorized roles. Trace output is advisory and may contain sensitive operational metadata.</p>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setAgentOperations(await call("agents/operations") as typeof agentOperations))}>Load agent operations</button>
+        {agentOperations && <><p>Total executions: {agentOperations.total} · {Object.entries(agentOperations.byStatus).map(([k,v]) => k + ": " + v).join(" · ")}</p>
+          <ul>{agentOperations.recent.map(a => <li key={a.id}>{a.agentId} — {a.status} <button disabled={busy} onClick={() => perform(async () => setAgentDetail(await call("agents/executions/" + encodeURIComponent(a.id))))}>Inspect trace</button></li>)}</ul>
+        </>}
+        {agentDetail !== null && <details open><summary>Selected execution audit trace</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agentDetail, null, 2)}</pre></details>}
+      </div>
     </section>
     <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>3. Assess and initiate a campaign</h2>
