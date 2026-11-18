@@ -35,7 +35,8 @@ describe("marketing session cryptography and OIDC request protection", () => {
   });
   it("rejects cross-origin POSTs", () => {
     process.env.MARKETING_PUBLIC_ORIGIN = "https://marketing.medsol.example";
-    process.env.MARKETING_OIDC_ISSUER = "https://identity.example";
+    process.env.MARKETING_ENTRA_TENANT_ID = "11111111-1111-4111-8111-111111111111";
+    process.env.MARKETING_OIDC_ISSUER = "https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0";
     process.env.MARKETING_OIDC_CLIENT_ID = "medsol-web";
     process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID = "tenant";
     expect(sameOrigin(new Request("https://marketing.medsol.example/api", { method: "POST", headers: { origin: "https://attacker.example" } }))).toBe(false);
