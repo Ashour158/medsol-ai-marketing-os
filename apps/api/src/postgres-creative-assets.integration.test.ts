@@ -41,7 +41,7 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    expect(rev).toMatchObject({version:1,rightsVerified:false});
    const request={channel:'SOCIAL',destinationRef:'internal:connected-destination/account-a',
     audienceRef:'internal:audience-snapshot/audience-a',policyVersion:'v1',
-    scheduledAt:plusDays(7),expiresAt:plusDays(5)};
+    scheduledAt:plusDays(7),expiresAt:plusDays(9)};
    await expect(assets.submitForApproval(org,creator,rev.revisionId,request))
     .rejects.toThrow('Reviewed rights');
    await expect(assets.reviewRights(org,creator,rev.revisionId,'This source has authorized usage'))
@@ -50,6 +50,9 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
     'Verified author rights and usage conditions')).toMatchObject({rightsReviewed:true});
    expect(await assets.reviewRights(org,reviewer,rev.revisionId,
     'Verified author rights and usage conditions')).toMatchObject({alreadyReviewed:true});
+   await expect(assets.submitForApproval(org,creator,rev.revisionId,{
+    ...request,expiresAt:plusDays(5)
+   })).rejects.toThrow('Approval expiry must extend');
    const submitted=await assets.submitForApproval(org,creator,rev.revisionId,request);
    expect(submitted).toMatchObject({replay:false,externalEffectsAuthorized:false});
    expect((await assets.submitForApproval(org,creator,rev.revisionId,request)).replay).toBe(true);
