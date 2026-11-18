@@ -35,7 +35,7 @@ export class BrainHandoffConsumer implements EventTransport {
       correlationId:event.correlationId,
       ...(event.causationId?{causationId:event.causationId}:{}),
       after:{eventId:event.eventId,eventType:event.eventType,version:event.version,
-       payload:event.payload as object,externalEffectsAuthorized:false}
+       externalEffectsAuthorized:false}
     }});
   });
  }
