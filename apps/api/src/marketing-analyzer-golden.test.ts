@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {describe,expect,it} from 'vitest';
 import {AGENT_ROSTER,assessDomain,assertDomainReleaseAllowed,type DomainAgentInput} from '@medsol/agent-runtime';
 
@@ -7,7 +8,7 @@ type Case={
  brandMasterVersion?:string;consentReference?:string;expectedGate?:string;expectedReasons?:string[];
  expectedConfidence?:string;expectedEvidenceIds?:string[];expectedError?:string;
 };
-const corpus=JSON.parse(readFileSync(new URL('./fixtures/marketing-analyzer-golden.json',import.meta.url),'utf8')) as
+const corpus=JSON.parse(readFileSync(resolve(process.cwd(),'src/fixtures/marketing-analyzer-golden.json'),'utf8')) as
  {schemaVersion:number;cases:Case[]};
 function input(c:Case):DomainAgentInput{
  const evidence=c.evidenceKind?[{
