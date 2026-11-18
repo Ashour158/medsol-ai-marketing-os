@@ -4,6 +4,24 @@ import { MarketingLearningService } from './marketing-learning.service.js';
 type LiteratureRecord={id?:string;source?:string;title?:string;authorString?:string;firstPublicationDate?:string;abstractText?:string;journalTitle?:string};
 const ENDPOINT='https://www.ebi.ac.uk/europepmc/webservices/rest/search';
 const ACCEPTED_SECTORS=new Set(['genomics','sequencing','molecular diagnostics','proteomics','cell therapy','precision medicine','biotechnology','digital pathology','pathology','clinical research','biobanking']);
+
+/**
+ * Explicitly bounded lexical ordering of already retrieved Europe PMC metadata.
+ * This is NOT RAG, semantic relevance, study-quality scoring, or evidence verification.
+ * Stable ties preserve the provider order; nobody can inject a new destination.
+ */
+export function rankLiteratureMetadata<T extends {title?:string;abstractText?:string}>(query:string,rows:readonly T[]):T[] {
+ const terms=[...new Set(query.normalize('NFKC').toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter(t=>t.length>=3))].slice(0,20);
+ const words=(value:unknown):Set<string>=>new Set(typeof value==='string'?
+  value.normalize('NFKC').toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter(Boolean):[]);
+ const scored=rows.map((row,index)=>{
+  const title=words(row.title),abstract=words(row.abstractText);
+  const score=terms.reduce((total,term)=>total+(title.has(term)?5:0)+(abstract.has(term)?1:0),0);
+  return{row,index,score};
+ });
+ return scored.sort((a,b)=>b.score-a.score||a.index-b.index).map(x=>x.row);
+}
+
 /**
  * One deliberately narrow connector: Europe PMC read-only public metadata.
  * No supplied URL is fetched, no external instructions are executed, and the unverified
@@ -35,7 +53,7 @@ export class ScientificLiteratureConnector {
   const results=(parsed as {resultList?:{result?:LiteratureRecord[]}})?.resultList?.result;
   if(!Array.isArray(results))throw new ServiceUnavailableException('Literature results unavailable');
   const saved:{id:string;replayed:boolean;title:string}[]=[];
-  for(const article of results.slice(0,limit)){
+  for(const article of rankLiteratureMetadata(query,results.slice(0,limit))){
    const id=typeof article.id==='string'&&/^[A-Za-z0-9_-]{1,40}$/.test(article.id)?article.id:null;
    const title=typeof article.title==='string'?article.title.trim().slice(0,300):'';
    const source=article.source==='PMC'?'PMC':article.source==='MED'?'MED':null;
