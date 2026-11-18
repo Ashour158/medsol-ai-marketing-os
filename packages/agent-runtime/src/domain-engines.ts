@@ -1,4 +1,5 @@
 import type { Agent, AgentContext, AgentDecision } from './index.js';
+import { assessDomain } from './domain-intelligence.js';
 import { AGENT_ROSTER, type AgentManifest } from './roster.js';
 
 type StructuredInput = Record<string, unknown>;
@@ -49,6 +50,7 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
   if (manifest.id === 'MKT-CRM-001' && !input.consentReference) missing.push('consent_reference');
   if (external) missing.push('approved_external_connector_and_execution_authority');
   const state: EngineState = scientific && refs.length === 0 ? 'INSUFFICIENT_EVIDENCE' : missing.length ? 'REVIEW_REQUIRED' : 'DRAFT';
+  const assessment = assessDomain(manifest.id, { organizationId: context.organizationId, objective: String(input.objective ?? input.requestedOutcome ?? 'Unspecified objective'), market: String(input.market ?? 'Unspecified market'), audience: String(input.targetAudience ?? 'Unspecified audience'), productId: typeof input.productId === 'string' ? input.productId : null, evidence: [], brandMasterVersion: typeof input.brandMasterVersion === 'string' ? input.brandMasterVersion : null, consentReference: typeof input.consentReference === 'string' ? input.consentReference : null });
   const output: EngineOutput = {
     engine: manifest.id, state,
     proposal: {
@@ -66,7 +68,7 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
     riskLevel: scientific ? 'R3' : highRisk || external ? 'R2' : 'R1',
     rationale: manifest.mission + ' Output is a deterministic proposal, not an authoritative write or verified external fact.',
     approvalRequired: output.controls.humanApproval,
-    payload: output
+    payload: {...output, domainAssessment: assessment}
   };
 }
 export class MarketingDomainAgent implements Agent {
