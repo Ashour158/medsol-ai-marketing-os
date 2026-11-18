@@ -94,8 +94,9 @@ BEGIN
         OLD."providerKey",OLD."destinationLabel",OLD."destinationRef",
         OLD."createdBy",OLD."createdAt")
  THEN RAISE EXCEPTION 'Connection registration identity is immutable' USING ERRCODE='23514'; END IF;
- IF OLD."status"='REVOKED' AND NEW."status"<>'REVOKED'
- THEN RAISE EXCEPTION 'Revoked connection cannot be restored' USING ERRCODE='23514'; END IF;
+ IF OLD."status"='REVOKED' AND ROW(NEW."status",NEW."revokedAt",NEW."revokedBy")
+  IS DISTINCT FROM ROW(OLD."status",OLD."revokedAt",OLD."revokedBy")
+ THEN RAISE EXCEPTION 'Revoked connection is immutable' USING ERRCODE='23514'; END IF;
  IF OLD."status"='SUSPENDED' AND NEW."status"='PENDING_VERIFICATION'
  THEN RAISE EXCEPTION 'Suspended connection cannot be silently restored' USING ERRCODE='23514'; END IF;
  RETURN NEW;
@@ -114,8 +115,9 @@ BEGIN
         OLD."sourceRef",OLD."objectVersion",OLD."sha256Digest",
         OLD."sizeBytes",OLD."detectedMime",OLD."verifiedAt",OLD."verifiedBy")
  THEN RAISE EXCEPTION 'Verified media proof is immutable' USING ERRCODE='23514'; END IF;
- IF OLD."status"='REVOKED' AND NEW."status"<>'REVOKED'
- THEN RAISE EXCEPTION 'Revoked media proof cannot be restored' USING ERRCODE='23514'; END IF;
+ IF OLD."status"='REVOKED' AND ROW(NEW."status",NEW."revokedAt",NEW."revokedBy")
+  IS DISTINCT FROM ROW(OLD."status",OLD."revokedAt",OLD."revokedBy")
+ THEN RAISE EXCEPTION 'Revoked media evidence is immutable' USING ERRCODE='23514'; END IF;
  RETURN NEW;
 END; $$ LANGUAGE plpgsql;
 CREATE TRIGGER "VerifiedMediaEvidence_protect_evidence"
