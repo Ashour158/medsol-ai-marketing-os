@@ -3,6 +3,7 @@ import 'reflect-metadata'; import {PlatformIntegrationHubService} from './platfo
  @Get('marketing/integrations/catalog') integrationProviderCatalog(){return this.integrationHub.catalog()}
  @Get('marketing/integrations') integrationConnections(@Req() req:any){return this.integrationHub.list(req.identity.organizationId,req.query?.brandId)}
  @Post('marketing/integrations') registerIntegration(@Req() req:any,@Body() b:any){return this.integrationHub.register(req.identity.organizationId,req.identity.userId,b)}
+ @Get('marketing/integrations/:id/health') integrationHealth(@Req() req:any,@Param('id') id:string){return this.integrationHub.connectionHealth(req.identity.organizationId,id)}
  @Get('marketing/integrations/:id') integrationConnection(@Req() req:any,@Param('id') id:string){return this.integrationHub.get(req.identity.organizationId,id)}
  @Post('marketing/integrations/:id/suspend') suspendIntegration(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.integrationHub.change(req.identity.organizationId,req.identity.userId,id,b?.expectedVersion,'SUSPEND',b?.reason)}
  @Post('marketing/integrations/:id/revoke') revokeIntegration(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.integrationHub.change(req.identity.organizationId,req.identity.userId,id,b?.expectedVersion,'REVOKE',b?.reason)}
