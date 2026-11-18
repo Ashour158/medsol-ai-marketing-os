@@ -119,16 +119,23 @@ export class PlatformIntegrationHubService{
   return this.scoped(organizationId,async tx=>{
    const conn=await tx.integrationConnection.findFirst({where:{organizationId,id:connectionId}});
    if(!conn)throw new NotFoundException('Destination not found in tenant');
-   const [cred,handshakes]=await Promise.all([
+   const [cred,handshakes,observation]=await Promise.all([
     tx.providerCredential.findUnique({where:{organizationId_integrationConnectionId:{
      organizationId,integrationConnectionId:connectionId}},
      select:{status:true,tokenExpiresAt:true,version:true}}),
     tx.oAuthAuthorizationAttempt.findMany({where:{
      organizationId,integrationConnectionId:connectionId},take:3,
      orderBy:{createdAt:'desc'},
-     select:{status:true,expiresAt:true,createdAt:true}})
+     select:{status:true,expiresAt:true,createdAt:true}}),
+    tx.providerAccountObservation.findFirst({where:{
+     organizationId,integrationConnectionId:connectionId},
+     select:{status:true,observedAt:true,expiresAt:true,providerCredentialId:true}})
    ]);
    const lifetime=assessProviderTokenLifetime(cred?.status,cred?.tokenExpiresAt);
+   const accountReadbackFresh=conn.status==='PENDING_VERIFICATION'&&
+    cred?.status==='PENDING_ATTESTATION'&&!!observation&&
+    observation.status==='OBSERVED'&&observation.expiresAt>new Date()&&
+    cred.tokenExpiresAt>new Date();
    return{connectionId,brandId:conn.brandId,providerKey:conn.providerKey,
     connectionStatus:conn.status,
     tokenReceived:cred?.status==='PENDING_ATTESTATION',
@@ -136,6 +143,10 @@ export class PlatformIntegrationHubService{
     tokenExpiresAt:cred?.tokenExpiresAt??null,
     ...lifetime,
     handshakeHistory:handshakes,
+    accountReadbackObserved:!!observation,
+    accountReadbackFresh,
+    accountObservationExpiresAt:observation?.expiresAt??null,
+    customerDestinationBound:false,
     accountOwnershipVerified:false,providerCapabilityVerified:false,
     externalEffectsAuthorized:false};
   });
