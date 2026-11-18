@@ -70,6 +70,7 @@ jobs:
                   match=re.fullmatch(r'model (\w+) \{ (.*) \}',line)
                   if not match: raise RuntimeError('Unexpected model schema')
                   name,fields=match.groups()
+                  if name=='Organization': fields += '; agentExecutions AgentExecution[]'
                   out.append('model '+name+' {\n  '+'\n  '.join(value.strip() for value in fields.split(';') if value.strip())+'\n}')
               else: raise RuntimeError('Unknown historical schema syntax')
           Path('/tmp/marketing-baseline.prisma').write_text('\n\n'.join(out)+'\n')
