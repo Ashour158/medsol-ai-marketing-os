@@ -2,6 +2,7 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {PrismaService} from './prisma.service.js';
+import type {PublishedEvent} from './outbox-publisher.service.js';
 
 export const INCIDENT_KINDS=['BRAIN_STALE','BRAIN_NEEDS_INTERVENTION','OUTBOX_DEAD_LETTER'] as const;
 export type IncidentKind=typeof INCIDENT_KINDS[number];
@@ -128,6 +129,32 @@ export class MarketingIncidentResponseService{
    }});
    return true;
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+ }
+ /**
+  * Read-only delivery fence: suppress a queued notification if its source was
+  * resolved, its episode superseded, or a manager acknowledged it meanwhile.
+  * It may still race with an acknowledgement after this check; receivers must
+  * use stable event IDs and provide their own incident on-call audit.
+  */
+ async shouldDeliver(event:PublishedEvent):Promise<boolean>{
+  if(event.eventType!==INCIDENT_ALERT_EVENT||event.aggregateType!=='IncidentResponse')return false;
+  const payload=event.payload as Record<string,unknown>|null;
+  if(!payload||typeof payload.kind!=='string'||
+     !INCIDENT_KINDS.includes(payload.kind as IncidentKind)||
+     typeof payload.sourceId!=='string'||typeof payload.occurrenceAt!=='string')return false;
+  const kind=payload.kind as IncidentKind,sourceId=payload.sourceId;
+  const response=await this.db.incidentResponse.findUnique({where:{organizationId_kind_sourceId:{
+   organizationId:event.organizationId,kind,sourceId
+  }},select:{acknowledgedAt:true,occurrenceAt:true}});
+  if(!response||response.acknowledgedAt||response.occurrenceAt.toISOString()!==payload.occurrenceAt)
+   return false;
+  try{
+   const source=await this.db.$transaction(tx=>this.active(tx,event.organizationId,kind,sourceId));
+   return source.occurrenceAt.toISOString()===payload.occurrenceAt;
+  }catch(error){
+   if(error instanceof ConflictException)return false;
+   throw error;
+  }
  }
  async scan(limitPerKind=25){
   if(!Number.isInteger(limitPerKind)||limitPerKind<1||limitPerKind>100)
