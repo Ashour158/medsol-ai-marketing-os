@@ -12,6 +12,12 @@ type Gate={internalReady:boolean;externalReady:false;reasons:string[];
  limitations:string[];externalEffectsAuthorized:false};
 type Detail=Publication&{scopeDigest:string;preflight:Gate;attempts:Array<{
  id:string;mode:string;outcome:string;evidenceRef:string;recordedAt:string}>};
+type ReleaseReadiness={publicationId:string;releaseBlocked:true;
+  externalReady:false;externalEffectsAuthorized:false;outgoingProviderCallsMade:0;
+  releasePrerequisitesMet:boolean;commercialPolicyEligible:boolean;
+  candidateEncryptedTokenPresent:boolean;trustedAccountObservationFresh:boolean;
+  mediaReadbackClean:boolean;mediaObjectVersionVerified:boolean;
+  checks:Record<string,boolean>;blockers:string[]};
 type Reconciliation={correlationState:string;publicationStatus:string;
  signedWebhookObservations:number;signedPostAddCandidates:number;
  postClaimsMatchingObservedAccount:number;authorizedRemoteAttempts:number;
@@ -32,6 +38,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
  const [detail,setDetail]=useState<Detail|null>(null);
  const [report,setReport]=useState<unknown>(null);
  const [reconciliation,setReconciliation]=useState<Reconciliation|null>(null);
+ const [release,setRelease]=useState<ReleaseReadiness|null>(null);
  const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
  async function call(path:string,body?:unknown):Promise<any>{
   const response=await fetch("/api/marketing/"+path,{method:body===undefined?"GET":"POST",
@@ -47,11 +54,12 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   setCampaigns(c as Campaign[]);setPublications(p as Publication[]);
  }
  async function detailFor(id:string){
-  const [d,recon]=await Promise.all([
+  const [d,recon,releaseGate]=await Promise.all([
    call("publications/"+encodeURIComponent(id)) as Promise<Detail>,
-   call("publications/"+encodeURIComponent(id)+"/reconciliation") as Promise<Reconciliation>
+   call("publications/"+encodeURIComponent(id)+"/reconciliation") as Promise<Reconciliation>,
+   call("publications/"+encodeURIComponent(id)+"/release-readiness") as Promise<ReleaseReadiness>
   ]);
-  setSelectedId(id);setDetail(d);setReconciliation(recon);setReport(null);
+  setSelectedId(id);setDetail(d);setReconciliation(recon);setRelease(releaseGate);setReport(null);
  }
  async function run(fn:()=>Promise<void>){
   setBusy(true);setError("");setNotice("");
@@ -59,7 +67,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   finally{setBusy(false);}
  }
  useEffect(()=>{
-  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);
+  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);
   if(!identity)return;
   void inventory().catch(e=>setError(e instanceof Error?e.message:"Unable to load publications"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +121,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
     <h3 style={{marginTop:0}}>2. Inspect controls and dry-run</h3>
     <label>Publication plan
      <select style={field} value={selectedId} onChange={e=>void run(async()=>{
-      if(!e.target.value){setSelectedId("");setDetail(null);setReconciliation(null);return;}
+      if(!e.target.value){setSelectedId("");setDetail(null);setReconciliation(null);setRelease(null);return;}
       await detailFor(e.target.value);
      })}>
       <option value="">Select existing publication intent</option>
@@ -176,6 +184,23 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
       <button style={{...btn,background:"#475569"}} disabled={busy}
        onClick={()=>void run(()=>detailFor(detail.id))}>
        Recheck source correlation</button>
+     </section>
+     <section aria-label="R2F official social release decision" style={{marginTop:16,padding:14,
+      border:"1px solid #cbd5e1",borderRadius:8,background:"#f8fafc"}}>
+      <h4 style={{marginTop:0}}>R2F · Governed live-release assessment</h4>
+      <p style={{fontSize:13}}>Publishing state: <strong>DISABLED</strong> ·
+       External API calls made: <strong>{release?.outgoingProviderCallsMade??0}</strong> ·
+       Operator egress: <strong>LOCKED</strong>.</p>
+      <p style={{color:"#475569",fontSize:12}}>
+       This report compares the active campaign and independent creative approval,
+       tenant and provider authority, media integrity and operational safety controls.
+       No result here permits publishing.</p>
+      <details><summary>Required release evidence ({release?.blockers.length??0} blockers)</summary>
+       <ul>{(release?.blockers??[]).map(reason=>
+        <li key={reason}>{reason.replaceAll("_"," ")}</li>)}</ul>
+      </details>
+      <button style={{...btn,background:"#475569",marginTop:10}} disabled={busy}
+       onClick={()=>void run(()=>detailFor(detail.id))}>Refresh governed-release evidence</button>
      </section>
      <h4>Sandbox attempt evidence</h4>
      {detail.attempts.length===0?<p>No simulation attempt recorded.</p>:

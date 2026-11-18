@@ -15,6 +15,7 @@ import 'reflect-metadata'; import {PlatformIntegrationHubService} from './platfo
  @Get('marketing/publications/:id') getPublicationIntent(@Req() req:any,@Param('id') id:string){return this.publications.detail(req.identity.organizationId,id)}
  @Get('marketing/publications/:id/preflight') getPublicationPreflight(@Req() req:any,@Param('id') id:string){return this.publications.preflight(req.identity.organizationId,id)}
  @Get('marketing/publications/:id/reconciliation') getPublicationReconciliation(@Req() req:any,@Param('id') id:string){return this.publications.reconcileProviderDelivery(req.identity.organizationId,id)}
+ @Get('marketing/publications/:id/release-readiness') getPublicationReleaseReadiness(@Req() req:any,@Param('id') id:string){return this.publications.releaseReadiness(req.identity.organizationId,req.identity,id)}
  @Post('marketing/publications/:id/simulate') simulatePublication(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.simulate(req.identity.organizationId,req.identity.userId,id,b?.expectedVersion)}
  @Post('marketing/publications/:id/cancel') cancelPublication(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.cancel(req.identity.organizationId,req.identity.userId,id,b?.expectedVersion,b?.reason)}
  @Get('marketing/publications/:id/performance') async publicationPerformance(@Req() req:any,@Param('id') id:string){

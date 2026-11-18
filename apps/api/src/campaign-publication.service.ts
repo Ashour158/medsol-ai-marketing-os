@@ -4,6 +4,11 @@ import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
 import {exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
 import {providerClaimDigest} from './provider-claim-digest.js';
+import {
+ authorizeCommercialScope,evaluateSocialPublishingRelease
+} from '@medsol/policy';
+import {hasMarketingPermission} from './marketing-permissions.js';
+import type {VerifiedIdentity} from './oidc-identity.js';
 
 /**
  * R2 publication intent is the owner of the *desired* campaign channel action.
@@ -297,6 +302,172 @@ export class CampaignPublicationService{
     reasons
    };
   });
+ }
+
+ /**
+  * R2F-A: non-mutating release eligibility; strictly server-side evidence.
+  * The R2 PublicationAttempt schema still allows SANDBOX only, so a positive
+  * checklist in an isolated test can NEVER authorize a provider API call.
+  * No agent, browser or caller-provided grant can promote these fields.
+  */
+ async releaseReadiness(organizationId:string,identity:VerifiedIdentity,
+  publicationIdInput:unknown){
+  const publicationId=id(publicationIdInput,'publication');
+  if(!identity||identity.organizationId!==organizationId||
+     !identity.userId||!identity.subject)
+   throw new BadRequestException('Verified tenant-scoped human required');
+  return this.scoped(organizationId,async tx=>{
+   const pub=await tx.campaignPublication.findFirst({where:{
+    organizationId,id:publicationId
+   }});
+   if(!pub)throw new NotFoundException('Publication not found in tenant');
+   const [user,tenant,approval,existingRemoteAttempts]=await Promise.all([
+    tx.user.findFirst({where:{
+     id:identity.userId,organizationId,
+     oidcSubject:identity.subject,disabledAt:null
+    },select:{id:true,role:true,tenantRoleDefinitionId:true}}),
+    tx.organization.findUnique({where:{id:organizationId},select:{id:true}}),
+    tx.approval.findFirst({where:{organizationId,id:pub.approvalId}}),
+    tx.publicationAttempt.count({where:{
+     organizationId,publicationId,mode:{not:'SANDBOX'}
+    }})
+   ]);
+   const scope=approval?.scope;
+   const exactScope=isExactCreativeScope(scope)&&approval?.scopeDigest===pub.scopeDigest&&
+    exactCreativeScopeHash(scope)===pub.scopeDigest;
+   const [connection,media,revision,accountObs,credentials,brand]=await (async()=>{
+    const conn=exactScope?await tx.integrationConnection.findFirst({where:{
+     organizationId,brandId:scope.brandId,destinationRef:scope.destinationRef
+    }}):null;
+    const [m,r,o,cred,b]=await Promise.all([
+     tx.verifiedMediaEvidence.findUnique({where:{
+      organizationId_creativeAssetRevisionId:{
+       organizationId,creativeAssetRevisionId:pub.creativeAssetRevisionId
+      }
+     }}),
+     tx.creativeAssetRevision.findFirst({where:{
+      organizationId,id:pub.creativeAssetRevisionId
+     }}),
+     conn?tx.providerAccountObservation.findFirst({where:{
+      organizationId,integrationConnectionId:conn.id,status:'OBSERVED'
+     }}):Promise.resolve(null),
+     conn?tx.providerCredential.findUnique({where:{
+      organizationId_integrationConnectionId:{
+       organizationId,integrationConnectionId:conn.id
+      }
+     }}):Promise.resolve(null),
+     exactScope?tx.brand.findFirst({where:{
+      organizationId,id:scope.brandId,status:'ACTIVE'
+     }}):Promise.resolve(null)
+    ]);
+    return[conn,m,r,o,cred,b] as const;
+   })();
+   const preflight=await this.check(tx,organizationId,pub);
+   const canAct=!!user&&user.role.toUpperCase()===identity.role.toUpperCase()&&
+    hasMarketingPermission(identity,'MANAGE_CAMPAIGN');
+   const now=Date.now();
+   const cleanMedia=!!media&&!!revision&&!!exactScope&&
+    media.status==='VERIFIED_READBACK'&&
+    media.malwareScanStatus==='CLEAN'&&
+    media.sourceRef===revision.sourceRef&&
+    media.sha256Digest===revision.renditionDigest&&
+    scope.renditionDigest===revision.renditionDigest;
+   const knownVersion=cleanMedia&&typeof media.objectVersion==='string'&&
+    media.objectVersion.length>3;
+   const pendingProviderCredential=!!credentials&&!!connection&&
+    credentials.integrationConnectionId===connection.id&&
+    credentials.providerKey===connection.providerKey&&
+    credentials.status==='PENDING_ATTESTATION'&&
+    credentials.tokenExpiresAt.getTime()>now+60000;
+   const isObserved=!!accountObs&&accountObs.expiresAt.getTime()>now&&
+    accountObs.status==='OBSERVED'&&
+    accountObs.providerCredentialId===credentials?.id;
+   // Existing current R2C metadata cannot constitute provider approval.
+   // No account-owner binding, reviewed app, live scope/readback or
+   // commercial entitlement authority has been installed yet.
+   const evidence={
+    authenticatedHuman:!!user&&identity.organizationId===organizationId,
+    activeMemberAndRole:canAct,
+    tenantSubscriptionEntitled:false,
+    delegatedAgencyScopeValid:identity.organizationId===organizationId,
+    tenantAndBrandActive:!!tenant&&!!brand,
+    independentExactApprovalCurrent:preflight.internalReady&&
+     exactScope&&!!approval?.decidedBy&&
+     !!approval.requestedBy&&approval.decidedBy!==approval.requestedBy,
+    currentCampaignAndCreative:preflight.internalReady&&pub.status==='PREPARED',
+    verifiedUnexpiredRights:preflight.internalReady&&!!revision&&
+     !!revision.rightsReviewedAt&&revision.rightsExpiresAt.getTime()>now,
+    sameApprovedDestination:exactScope&&!!connection&&
+     connection.brandId===scope.brandId&&
+     connection.destinationRef===scope.destinationRef&&
+     connection.status==='VERIFIED',
+    cleanImmutableMediaReadback:cleanMedia,
+    mediaVersionStillCurrent:!!knownVersion,
+    providerAppReviewed:false,
+    providerCredentialFresh:pendingProviderCredential,
+    providerScopesAndCapabilitiesVerified:false,
+    accountOwnershipVerified:false,
+    customerDestinationBound:false,
+    providerRegionAndPurposePermitted:false,
+    audiencePolicyAndConsentResolved:false,
+    // Approval must remain valid AT the scheduled release time. Current
+    // sandbox scopes may expire earlier; such plans are never live-ready.
+    scheduleWithinApprovedWindow:exactScope&&
+     Number.isFinite(Date.parse(scope.scheduledAt))&&
+     Date.parse(scope.scheduledAt)<=Date.parse(scope.expiresAt)&&
+     Date.parse(scope.expiresAt)>now,
+    noTenantOrBrandEmergencyHold:false,
+    operatorEgressUnlocked:false,
+    noPriorRemoteAttemptOrUnknownOutcome:existingRemoteAttempts===0&&
+     pub.status==='PREPARED',
+    noProviderKillSwitch:false
+   };
+   const gate=evaluateSocialPublishingRelease(evidence);
+   // R1 canonical commercial policy is additional AND authorization. Its
+   // subscription and provider context are deliberately absent here.
+   const commercial=authorizeCommercialScope({
+    action:'APPROVED_PUBLISH',
+    identity:{humanId:identity.userId,homeTenantId:identity.organizationId,
+     verified:true,grantedActions:canAct?['APPROVED_PUBLISH']:[]},
+    resource:{tenantId:organizationId,
+     brandId:exactScope?scope.brandId:null,classification:'INTERNAL'},
+    tenant:{active:!!tenant,entitledActions:[],emergencyHold:true},
+    brand:exactScope?{brandId:scope.brandId,authorized:!!brand,policyHold:true}:null,
+    dataUse:{permitted:false,regionAllowed:false},
+    external:{providerCapabilityVerified:false,destinationAuthorized:false,
+     exactApproval:null}
+   });
+   const blockers=[...new Set([
+    ...preflight.reasons,...gate.missing,...commercial.reasons,
+    ...(isObserved?[]:['trusted_provider_observation_not_current']),
+    'real_provider_dispatch_and_receipt_adapter_not_activated'
+   ])];
+   return{
+    publicationId,publicationStatus:pub.status,
+    scopeDigest:pub.scopeDigest,connectionId:connection?.id??null,
+    providerKey:connection?.providerKey??null,
+    candidateEncryptedTokenPresent:pendingProviderCredential,
+    trustedAccountObservationFresh:isObserved,
+    mediaReadbackClean:cleanMedia,mediaObjectVersionVerified:!!knownVersion,
+    releasePrerequisitesMet:gate.eligible,
+    commercialPolicyEligible:commercial.allowed,
+    externalReady:false as const,externalEffectsAuthorized:false as const,
+    outgoingProviderCallsMade:0 as const,
+    existingAuthorizedRemoteAttempts:existingRemoteAttempts,
+    releaseBlocked:true as const,
+    checks:gate.evidenceChecks,blockers
+   };
+  });
+ }
+ /**
+  * Absolute R2F-A barrier: network dispatch is absent. Do not add a public
+  * POST route until the provider-specific approved worker + durable attempt
+  * fence, global IAM, verified customer ownership and staged adapter exist.
+  */
+ async assertExternalDispatchBlocked(organizationId:string,identity:VerifiedIdentity,
+  publicationIdInput:unknown){
+  const result=await this.releaseReadiness(organizationId,identity,publicationIdInput);
+  throw new ConflictException('External publication disabled: '+result.blockers.join(', '));
  }
  async preflight(organizationId:string,publicationIdInput:unknown){
   const publicationId=id(publicationIdInput,'publication');
