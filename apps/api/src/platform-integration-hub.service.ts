@@ -82,6 +82,30 @@ export class PlatformIntegrationHubService{
    return items.map(x=>this.present(x));
   });
  }
+ async connectionHealth(organizationId:string,connectionIdInput:unknown){
+  const connectionId=id(connectionIdInput,'connection');
+  return this.scoped(organizationId,async tx=>{
+   const conn=await tx.integrationConnection.findFirst({where:{organizationId,id:connectionId}});
+   if(!conn)throw new NotFoundException('Destination not found in tenant');
+   const [cred,handshakes]=await Promise.all([
+    tx.providerCredential.findUnique({where:{organizationId_integrationConnectionId:{
+     organizationId,integrationConnectionId:connectionId}},
+     select:{status:true,tokenExpiresAt:true,version:true}}),
+    tx.oAuthAuthorizationAttempt.findMany({where:{
+     organizationId,integrationConnectionId:connectionId},take:3,
+     orderBy:{createdAt:'desc'},
+     select:{status:true,expiresAt:true,createdAt:true}})
+   ]);
+   return{connectionId,brandId:conn.brandId,providerKey:conn.providerKey,
+    connectionStatus:conn.status,
+    tokenReceived:cred?.status==='PENDING_ATTESTATION',
+    tokenStatus:cred?.status??'NOT_RECEIVED',
+    tokenExpiresAt:cred?.tokenExpiresAt??null,
+    handshakeHistory:handshakes,
+    accountOwnershipVerified:false,providerCapabilityVerified:false,
+    externalEffectsAuthorized:false};
+  });
+ }
  async get(organizationId:string,connectionIdInput:unknown){
   const connectionId=id(connectionIdInput,'connection');
   return this.scoped(organizationId,async tx=>{
@@ -114,6 +138,16 @@ export class PlatformIntegrationHubService{
      ...(action==='REVOKE'?{revokedAt:new Date(),revokedBy:actorId}:
        {suspendedAt:new Date(),suspendedBy:actorId})}});
    if(changed.count!==1)throw new ConflictException('Concurrent connection policy change');
+   if(action==='REVOKE'){
+    const credential=await tx.providerCredential.findUnique({where:{
+     organizationId_integrationConnectionId:{organizationId,integrationConnectionId:connectionId}
+    }});
+    if(credential?.status==='PENDING_ATTESTATION'){
+     await tx.providerCredential.updateMany({where:{organizationId,
+      integrationConnectionId:connectionId,status:'PENDING_ATTESTATION'},
+      data:{status:'REVOKED',version:{increment:1},revokedAt:new Date(),revokedBy:actorId}});
+    }
+   }
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,
     action:'INTEGRATION_CONNECTION_'+next,objectType:'IntegrationConnection',
     objectId:connectionId,correlationId:connectionId,
