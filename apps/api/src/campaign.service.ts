@@ -14,7 +14,7 @@ import {randomUUID} from 'node:crypto';
    if(cmd.productId){const p=await tx.marketingProduct.findFirst({where:{id:cmd.productId,organizationId:cmd.organizationId}});if(!p)throw new NotFoundException('Product not found in tenant')}
    if(cmd.brandId){const b=await tx.brand.findFirst({where:{organizationId:cmd.organizationId,id:cmd.brandId,status:'ACTIVE'}});if(!b)throw new NotFoundException('Active campaign brand not found in tenant')}
    const dup=await tx.campaign.findUnique({where:{organizationId_code:{organizationId:cmd.organizationId,code:cmd.code}}});if(dup)throw new ConflictException('Campaign code already exists');
-   const c=await tx.campaign.create({data:{organizationId:cmd.organizationId,code:cmd.code,name:cmd.name,objectiveId:cmd.objectiveId,...(cmd.productId ? {productId:cmd.productId} : {}),riskLevel:cmd.riskLevel,status:'IDEA'}});
+   const c=await tx.campaign.create({data:{organizationId:cmd.organizationId,code:cmd.code,name:cmd.name,objectiveId:cmd.objectiveId,...(cmd.brandId ? {brandId:cmd.brandId}:{}),...(cmd.productId ? {productId:cmd.productId} : {}),riskLevel:cmd.riskLevel,status:'IDEA'}});
    const response={campaignId:c.id,status:c.status,version:c.version};
    await tx.commandReceipt.create({data:{organizationId:cmd.organizationId,commandId:cmd.commandId,commandType:'CreateCampaign',correlationId:cmd.correlationId,status:'COMPLETED',response}});
    await tx.auditEvent.create({data:{organizationId:cmd.organizationId,actorType:actorId?'HUMAN':'AGENT',actorId:actorId??'MKT-OPS-001',action:'CAMPAIGN_CREATED',objectType:'Campaign',objectId:c.id,after:c as any,correlationId:cmd.correlationId,...(cmd.causationId ? {causationId:cmd.causationId} : {})}});
