@@ -7,6 +7,8 @@ export default function Home() {
   const [token, setToken] = useState("");
   const [goal, setGoal] = useState("");
   const [objectiveId, setObjectiveId] = useState("");
+  const [newObjectiveName, setNewObjectiveName] = useState("");
+  const [newObjectiveDescription, setNewObjectiveDescription] = useState("");
   const [workflowId, setWorkflowId] = useState("");
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [agents, setAgents] = useState<unknown>(null);
@@ -93,6 +95,14 @@ export default function Home() {
       <h3>Campaign portfolio</h3>
       {campaigns.length === 0 ? <p style={{ color: "#64748b" }}>No campaigns loaded.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr><th>Campaign</th><th>Status</th><th>Risk</th><th>Action</th></tr></thead><tbody>{campaigns.map(c => <tr key={c.id}><td style={{ padding: 10, borderTop: "1px solid #e2e8f0" }}><strong>{c.name}</strong><div style={{ fontSize: 12 }}>{c.code}</div></td><td>{c.status}</td><td>{c.riskLevel}</td><td><button disabled={busy} onClick={() => perform(async () => { setCampaignDetail(await call("campaigns/" + encodeURIComponent(c.id))); })}>Inspect</button></td></tr>)}</tbody></table></div>}
       {campaignDetail !== null && <details open style={{ marginTop: 12 }}><summary>Campaign detail, approval records and audit history</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(campaignDetail, null, 2)}</pre></details>}
+      {identity && <div style={{ border: "1px solid #dbe4ed", padding: 14, borderRadius: 10, marginBottom: 12 }}>
+        <label>New objective name<input style={fieldStyle} value={newObjectiveName} onChange={e => setNewObjectiveName(e.target.value)} /></label>
+        <label style={{ display: "block", marginTop: 10 }}>Description<textarea style={fieldStyle} value={newObjectiveDescription} onChange={e => setNewObjectiveDescription(e.target.value)} /></label>
+        <button style={{ ...buttonStyle, marginTop: 12 }} disabled={busy || newObjectiveName.trim().length < 3 || !newObjectiveDescription.trim()} onClick={() => perform(async () => {
+          const created = await call("objectives", { name: newObjectiveName.trim(), description: newObjectiveDescription.trim() }) as {id:string};
+          setObjectiveId(created.id); setNewObjectiveName(""); setNewObjectiveDescription(""); await loadDashboard();
+        })}>Create governed objective</button>
+      </div>}
       <h3>Active marketing objectives</h3>
       <label>Choose objective<select style={fieldStyle} value={objectiveId} onChange={e => setObjectiveId(e.target.value)}><option value="">Choose an existing objective</option>{objectives.map(o => <option key={o.id} value={o.id}>{o.name} ({o.status})</option>)}</select></label>
       <details style={{ marginTop: 12 }}><summary>Products ({products.length})</summary><ul>{products.map(p => <li key={p.id}>{p.code} — {p.name}</li>)}</ul></details>
