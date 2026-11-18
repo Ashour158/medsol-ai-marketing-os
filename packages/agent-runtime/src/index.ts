@@ -24,3 +24,4 @@ export * from './domain-intelligence.js';
 export * from './domain-work-packages.js';
 
 export * from './openai-responses-adapter.js';
+export * from './social-discussion.js';
