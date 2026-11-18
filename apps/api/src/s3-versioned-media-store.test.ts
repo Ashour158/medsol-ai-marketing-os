@@ -25,12 +25,14 @@ function fakeS3(overrides:{
    calls.push({command:command.constructor.name,input:command.input});
    if(command instanceof PutObjectCommand){
     if(overrides.onPut)return overrides.onPut(command.input);
+    if(typeof command.input.Key!=='string'||!(command.input.Body instanceof Uint8Array))
+     throw new Error('Invalid S3 test PUT');
     versions.set(command.input.Key,Buffer.from(command.input.Body));
     return{VersionId:'s3VersionA+12/='};
    }
    if(command instanceof GetObjectCommand){
     if(overrides.onGet)return overrides.onGet(command.input);
-    const bytes=versions.get(command.input.Key);
+    const bytes=versions.get(String(command.input.Key));
     if(!bytes)throw new Error('Object not found');
     return{VersionId:'s3VersionA+12/=',ContentLength:bytes.length,
      ServerSideEncryption:'aws:kms',SSEKMSKeyId:kms,
