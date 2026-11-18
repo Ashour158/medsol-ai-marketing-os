@@ -90,7 +90,7 @@ export default function Home() {
     try { await action(); } catch (e) { setError(e instanceof Error ? e.message : "Unexpected error"); }
     finally { setBusy(false); }
   }
-  const request = { organizationId: organizationId.trim(), requestedOutcome: goal.trim(), ...(objectiveId.trim() ? { objectiveId: objectiveId.trim() } : {}) };
+  const request = { organizationId: organizationId.trim(), requestedOutcome: goal.trim(), ...(objectiveId.trim() ? { objectiveId: objectiveId.trim() } : {}), ...(campaignBrandId.trim()?{brandId:campaignBrandId.trim()}: {}) };
   const buttonStyle = { padding: "11px 16px", background: "#124d83", color: "white", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 700 as const };
   const fieldStyle = { width: "100%", boxSizing: "border-box" as const, padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, marginTop: 6 };
   return <main style={{ maxWidth: 1080, margin: "0 auto", padding: "42px 24px", fontFamily: "Arial,sans-serif" }}>
