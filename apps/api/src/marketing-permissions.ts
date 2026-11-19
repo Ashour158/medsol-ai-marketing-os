@@ -103,6 +103,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/execute$/.test(path)) return 'EXECUTE_WORKFLOW';
   if (method === 'POST' && path === '/marketing/brain/runs') return 'EXECUTE_WORKFLOW';
   if (method === 'GET' && path === '/marketing/architecture/blueprint') return 'READ_AUDIT';
+  if (method === 'POST' && path === '/marketing/architecture/blueprint/simulate') return 'EXECUTE_WORKFLOW';
   if (method === 'GET' && path === '/marketing/brain/plan') return 'READ_AUDIT';
   if (method === 'POST' && path === '/marketing/brain/assess') return 'EXECUTE_WORKFLOW';
   if (method === 'GET' && path === '/marketing/approvals/pending') return 'READ_APPROVALS';
