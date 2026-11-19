@@ -1045,7 +1045,7 @@ model KnowledgeDocument {
  learningSignals LearningSignal[]
  @@unique([organizationId,id])
  @@unique([organizationId,sourceKey])
- @@index([organizationId,status,accessMode,expiresAt])
+ @@index([organizationId,status,accessMode,expiresAt],map:"KnowledgeDocument_org_status_access_exp_idx")
 }
 model KnowledgeChunk {
  id String @id @default(cuid())
@@ -1062,4 +1062,5 @@ model KnowledgeChunk {
  @@unique([organizationId,id])
  @@unique([organizationId,documentId,ordinal])
  @@index([organizationId,documentId])
+ @@index([terms],type:Gin,map:"KnowledgeChunk_terms_gin_idx")
 }
