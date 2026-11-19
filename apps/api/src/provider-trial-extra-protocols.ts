@@ -158,7 +158,7 @@ function obj(value:unknown):JsonRecord{
   throw new Error('Provider response object required');
  return value as JsonRecord;
 }
-const match=(actual:unknown,expected:string,label:string)=>{
+const match=(actual:unknown,expected:string|number|boolean,label:string)=>{
  if(actual!==expected)throw new Error(label+' did not match expected fixture binding');
 };
 const positive=(value:unknown,label:string)=>{
@@ -218,7 +218,7 @@ export function verifyExtraTrialStage(provider:ExtraTrialProvider,
     match(response.headers.location,
      'https://upload.example.invalid/youtube/trial-session',
      'YouTube fake upload session');
-    match(body.resumable,true as unknown as string,'YouTube resumable flag');
+    match(body.resumable,true,'YouTube resumable flag');
    }else if(phase==='resumable_chunk'){
     match(body.id,EXTRA_FIXTURE_IDS.youtubeVideo,'YouTube video ID');
     match(obj(body.status).privacyStatus,'private','YouTube privacy mode');
@@ -237,8 +237,8 @@ export function verifyExtraTrialStage(provider:ExtraTrialProvider,
    if(phase==='media_init')
     match(obj(body.data).id,EXTRA_FIXTURE_IDS.xMedia,'X upload session');
    else if(phase==='media_append'){
-    match(body.segment_index,0 as unknown as string,'X upload chunk');
-    match(body.received_bytes,videoBytes as unknown as string,'X bytes');
+    match(body.segment_index,0,'X upload chunk');
+    match(body.received_bytes,videoBytes,'X bytes');
    }else if(phase==='media_finalize')
     match(obj(body.data).id,EXTRA_FIXTURE_IDS.xMedia,'X finalize media');
    else if(phase==='media_status'){
