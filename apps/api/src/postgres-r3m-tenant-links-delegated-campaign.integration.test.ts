@@ -141,4 +141,30 @@ describe.skipIf(!enabled)('R3-M real Postgres tenant and agency cross-engine acc
    expect(await db.modelUsage.count({where:{organizationId:client}})).toBe(0);
   }finally{await db.$disconnect();}
  },90000);
+ it('T01-009 binds every authenticated session to a real user in the exact same tenant',async()=>{
+  const db=new PrismaClient();
+  const a='r3m-session-a-'+randomUUID(),b='r3m-session-b-'+randomUUID();
+  try{
+   await db.$connect();
+   await db.organization.createMany({data:[{id:a,name:'Session tenant A'},
+    {id:b,name:'Session tenant B'}]});
+   const user=await db.user.create({data:{organizationId:a,
+    email:'r3m-'+randomUUID()+'@example.invalid',
+    name:'Provisioned OIDC user',role:'ADMIN',oidcSubject:'r3m-'+randomUUID()}});
+   await expect(db.authSession.create({data:{id:randomUUID(),organizationId:b,
+    userId:user.id,expiresAt:new Date(Date.now()+600000)}})).rejects.toThrow();
+   await expect(db.authSession.create({data:{id:randomUUID(),organizationId:a,
+    userId:'missing-'+randomUUID(),expiresAt:new Date(Date.now()+600000)}}))
+    .rejects.toThrow();
+   const valid=await db.authSession.create({data:{id:randomUUID(),
+    organizationId:a,userId:user.id,
+    expiresAt:new Date(Date.now()+600000)}});
+   expect(valid.organizationId).toBe(a);
+   await expect(db.authSession.update({where:{id:valid.id},
+    data:{organizationId:b}})).rejects.toThrow();
+   expect(await db.authSession.count({where:{organizationId:b}})).toBe(0);
+   expect(await db.authSession.count({where:{organizationId:a,userId:user.id}})).toBe(1);
+  }finally{await db.$disconnect();}
+ },90000);
+
 });
