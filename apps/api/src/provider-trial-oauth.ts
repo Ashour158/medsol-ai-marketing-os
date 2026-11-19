@@ -6,7 +6,7 @@ import type {ApprovedSocialProvider}
 /**
  * Fixed official OAuth authorization endpoint SHAPES for an in-process
  * provider handshake trial. These configs are never deployed as a live
- * broker: fake client IDs, example.invalid callback and no code exchange.
+ * broker: fake client IDs, example.org callback and no code exchange.
  * Scope entitlement/app review cannot be proven without the provider.
  */
 export const TRIAL_OAUTH_CALLBACK='https://marketing.example.org/oauth/callback';
