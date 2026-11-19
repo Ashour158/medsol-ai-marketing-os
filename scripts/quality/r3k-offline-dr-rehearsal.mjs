@@ -54,16 +54,16 @@ function seed(){
   const a=index===0?'a':'b',wf=org+'-workflow',agent='MKT-SCI-001';
   statements.push('BEGIN;',
    "SELECT set_config('app.marketing_tenant_id',"+quote(org)+',true);',
-   'INSERT INTO "Organization" ("id","name") VALUES ('+quote(org)+','+quote('Synthetic tenant '+a)+');',
+   'INSERT INTO "Organization" ("id","name","updatedAt") VALUES ('+quote(org)+','+quote('Synthetic tenant '+a)+',CURRENT_TIMESTAMP);',
    'INSERT INTO "User" ("id","organizationId","email","name","role","oidcSubject") VALUES ('+
     quote(org+'-admin')+','+quote(org)+','+quote('synthetic-'+a+'@example.invalid')+
     ','+quote('Synthetic reviewer '+a)+",'ADMIN',"+quote(org+'-oidc')+');',
-   'INSERT INTO "Agent" ("id","organizationId","name","capabilities") VALUES ('+
-    quote(agent)+','+quote(org)+",'Synthetic science reviewer','[\"CHECK_EVIDENCE\"]'::jsonb);",
-   'INSERT INTO "WorkflowExecution" ("id","organizationId","workflowType","status","currentStep","correlationId","input","leaseOwner","leaseExpiresAt","leaseGeneration") VALUES ('+
+   'INSERT INTO "Agent" ("id","organizationId","name","capabilities","updatedAt") VALUES ('+
+    quote(agent)+','+quote(org)+",'Synthetic science reviewer','[\"CHECK_EVIDENCE\"]'::jsonb,CURRENT_TIMESTAMP);",
+   'INSERT INTO "WorkflowExecution" ("id","organizationId","workflowType","status","currentStep","correlationId","input","leaseOwner","leaseExpiresAt","leaseGeneration","updatedAt") VALUES ('+
     quote(wf)+','+quote(org)+",'BLUEPRINT_OFFLINE_DAG','BLOCKED','UNCERTAIN_AGENT_STEP',"+
     quote(org+'-corr')+",'{\"offlineOnly\":true,\"externalEffectsAuthorized\":false}'::jsonb,"+
-    quote('crashed-worker')+",CURRENT_TIMESTAMP-INTERVAL '2 hours',2);",
+    quote('crashed-worker')+",CURRENT_TIMESTAMP-INTERVAL '2 hours',2,CURRENT_TIMESTAMP);",
    'INSERT INTO "WorkflowStepExecution" ("id","organizationId","workflowExecutionId","stepKey","status","input","error") VALUES ('+
     quote(org+'-step')+','+quote(org)+','+quote(wf)+
     ",'science','OUTCOME_UNKNOWN','{\"offlineOnly\":true}'::jsonb,"+
@@ -72,10 +72,10 @@ function seed(){
     quote(org+'-agent-execution')+','+quote(org)+','+quote(agent)+','+quote(org+'-corr')+
     ','+quote(wf)+
     ",'{\"brainRunId\":null}'::jsonb,'{\"releaseEvidence\":{\"externalEffectsAuthorized\":false}}'::jsonb,'COMPLETED',CURRENT_TIMESTAMP);",
-   'INSERT INTO "KnowledgeDocument" ("id","organizationId","sourceKey","title","contentDigest","createdBy") VALUES ('+
+   'INSERT INTO "KnowledgeDocument" ("id","organizationId","sourceKey","title","contentDigest","createdBy","updatedAt") VALUES ('+
     quote(org+'-doc')+','+quote(org)+','+quote(org+'-source-key')+','+
     quote('Synthetic quarantined evidence '+a)+','+quote('sha256:'+'a'.repeat(64))+','+
-    quote(org+'-admin')+');',
+    quote(org+'-admin')+',CURRENT_TIMESTAMP);',
    'INSERT INTO "AuditEvent" ("id","organizationId","actorType","actorId","action","objectType","objectId","correlationId","after") VALUES ('+
     quote(org+'-audit')+','+quote(org)+",'SYSTEM','r3k-disposable-fixture','DR_OFFLINE_SEED','WorkflowExecution',"+
     quote(wf)+','+quote(org+'-corr')+
@@ -88,10 +88,10 @@ function seed(){
    'INSERT INTO "InboxEvent" ("id","organizationId","eventId","consumerName","status","processedAt") VALUES ('+
     quote(org+'-inbox')+','+quote(org)+','+quote(org+'-event')+
     ",'synthetic-dr-consumer','PROCESSED',CURRENT_TIMESTAMP);",
-   'INSERT INTO "CommandReceipt" ("id","organizationId","commandId","commandType","correlationId","status","response") VALUES ('+
+   'INSERT INTO "CommandReceipt" ("id","organizationId","commandId","commandType","correlationId","status","response","updatedAt") VALUES ('+
     quote(org+'-receipt')+','+quote(org)+','+quote(org+'-command')+
     ",'OfflineTest',"+quote(org+'-corr')+
-    ",'COMPLETED','{\"replayed\":false,\"externalEffectsAuthorized\":false}'::jsonb);",
+    ",'COMPLETED','{\"replayed\":false,\"externalEffectsAuthorized\":false}'::jsonb,CURRENT_TIMESTAMP);",
    'COMMIT;');
  }
  sqlFile(source,statements.join('\n'));
