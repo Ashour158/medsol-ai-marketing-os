@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {TenantRolePolicyService} from './tenant-role-policy.service.js';
+import {withMarketingTenant} from './prisma.service.js';
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('R1B PostgreSQL tenant role authority and scoped RLS',()=>{
  it('enforces two-tenant role assignment, live permission reduction, revoke and session invalidation',async()=>{
@@ -21,8 +22,9 @@ describe.skipIf(!enabled)('R1B PostgreSQL tenant role authority and scoped RLS',
     {id:userId,organizationId:a,email:'user@example.invalid',name:'Manager',
      role:'MARKETING_MANAGER',oidcSubject:operator.subject}
    ]});
-   await db.authSession.create({data:{id:randomUUID(),userId,organizationId:a,
-    expiresAt:new Date(Date.now()+600000)}});
+   await withMarketingTenant(db,a,tx=>tx.authSession.create({data:{
+    id:randomUUID(),userId,organizationId:a,
+    expiresAt:new Date(Date.now()+600000)}}));
    const roles=new TenantRolePolicyService(db as any);
    const r=await roles.create(admin,{key:'content_team',name:'Content Team',
     permissions:['READ_PORTFOLIO','ASSESS']});
@@ -32,7 +34,8 @@ describe.skipIf(!enabled)('R1B PostgreSQL tenant role authority and scoped RLS',
    await expect(roles.assign(admin,userId,'missing-from-tenant')).rejects.toThrow('not found');
    const assignment=await roles.assign(admin,userId,r.id);
    expect(assignment.sessionsRevoked).toBe(1);
-   expect(await db.authSession.count({where:{organizationId:a,userId,revokedAt:null}})).toBe(0);
+   expect(await withMarketingTenant(db,a,tx=>tx.authSession.count({
+    where:{organizationId:a,userId,revokedAt:null}}))).toBe(0);
    await expect(roles.assertActorPermission(operator,'READ_PORTFOLIO')).resolves.toBeUndefined();
    await expect(roles.assertActorPermission(operator,'EXECUTE_WORKFLOW')).rejects.toThrow('Tenant role policy denies');
    await expect(roles.assertActorPermission(operator,'DECIDE_APPROVAL')).rejects.toThrow('Marketing permission denied');
@@ -46,7 +49,8 @@ describe.skipIf(!enabled)('R1B PostgreSQL tenant role authority and scoped RLS',
     action:{in:['TENANT_ROLE_CREATED','TENANT_ROLE_ASSIGNED','TENANT_ROLE_DISABLED']}}})).toBe(3);
   }finally{
    await db.auditEvent.deleteMany({where:{organizationId:{in:[a,b]}}});
-   await db.authSession.deleteMany({where:{organizationId:{in:[a,b]}}});
+   await withMarketingTenant(db,a,tx=>tx.authSession.deleteMany({
+    where:{organizationId:a}}));
    await db.user.deleteMany({where:{organizationId:{in:[a,b]}}});
    await db.tenantRoleDefinition.deleteMany({where:{organizationId:{in:[a,b]}}});
    await db.organization.deleteMany({where:{id:{in:[a,b]}}});
