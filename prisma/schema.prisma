@@ -661,7 +661,7 @@ model MarketingSyntheticContact {
   brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict,map:"MarketingSyntheticContact_org_brand_fk")
   consentEvents MarketingSyntheticConsent[]
   @@unique([organizationId,id])
-  @@unique([organizationId,brandId,syntheticRecipientRef])
+  @@unique([organizationId,brandId,syntheticRecipientRef],map:"SyntheticContact_tenant_brand_ref_uq")
   @@index([organizationId,brandId,createdAt])
 }
 
@@ -678,7 +678,7 @@ model MarketingSyntheticConsent {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict,map:"MarketingSyntheticConsent_org_fk")
   contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict,map:"MarketingSyntheticConsent_org_contact_fk")
   @@unique([organizationId,id])
-  @@unique([organizationId,contactId,evidenceRef])
+  @@unique([organizationId,contactId,evidenceRef],map:"SyntheticConsent_tenant_contact_ref_uq")
   @@unique([organizationId,contactId,sequence])
   @@index([organizationId,contactId,createdAt])
 }
