@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthSessionService } from './auth-session.service.js';
 
 const fixture = () => {
-  const db: any = { authSession: { create: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
+  const db: any = { authSession: { create: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },$queryRaw:vi.fn().mockResolvedValue([]) };
+  db.$transaction=vi.fn(async (cb:any)=>cb(db));
   return { db, service: new AuthSessionService(db) };
 };
 describe('authoritative revocable session', () => {
