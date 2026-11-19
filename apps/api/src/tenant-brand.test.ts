@@ -1,5 +1,6 @@
 import {describe,expect,it,vi} from 'vitest';
 import {TenantBrandService} from './tenant-brand.service.js';
+import {ForbiddenException} from '@nestjs/common';
 import {permissionForMarketingRoute,hasMarketingPermission} from './marketing-permissions.js';
 const future=()=>new Date(Date.now()+7*86400_000).toISOString();
 function setup(){
@@ -89,11 +90,11 @@ describe('R1 authoritative brand and revocable agency scope',()=>{
     brandId:'brand-1',externalEffectsAuthorized:false});
   expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1','PUBLISH_SOCIAL')).toEqual({authorized:false});
   roles.assertActorPermission.mockRejectedValueOnce(
-   Object.assign(new Error('Marketing permission denied'),{name:'ForbiddenException'}));
+   new ForbiddenException('Marketing permission denied'));
   expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1',
    'CAMPAIGN_READ')).toEqual({authorized:false});
   roles.assertActorPermission.mockRejectedValueOnce(
-   Object.assign(new Error('OIDC user disabled'),{name:'ForbiddenException'}));
+   new ForbiddenException('OIDC user disabled'));
   expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1',
    'CAMPAIGN_READ')).toEqual({authorized:false});
   expect(await service.resolveAgencyReadScope(
