@@ -73,9 +73,12 @@ describe.skipIf(!enabled)('R3-L verified agency delegation, FORCE RLS and irreve
     new Date(Date.now()+10*86400000))).toEqual({authorized:false});
    // The optional tenant custom role is a restrictive ceiling enforced by
    // the same TenantRolePolicyService used by the HTTP auth guard.
-   const restrictive=await db.tenantRoleDefinition.create({data:{
-    organizationId:agency,key:'restricted_r3l',name:'Read-only agency',
-    permissions:['READ_PORTFOLIO'],createdBy:agencyAdmin}});
+   const restrictive=await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${agency}, true)`;
+    return tx.tenantRoleDefinition.create({data:{
+     organizationId:agency,key:'restricted_r3l',name:'Read-only agency',
+     permissions:['READ_PORTFOLIO'],createdBy:agencyAdmin}});
+   });
    await db.user.update({where:{id:agencyAdmin},
     data:{tenantRoleDefinitionId:restrictive.id}});
    expect((await svc.resolveAgencyReadScope(identity,client,brand.id,'CAMPAIGN_READ'))
@@ -83,8 +86,11 @@ describe.skipIf(!enabled)('R3-L verified agency delegation, FORCE RLS and irreve
    for(const action of ['ASSET_DRAFT','REVIEW_COMMENT','REPORT_READ'])
     expect(await svc.resolveAgencyReadScope(identity,client,brand.id,action))
      .toEqual({authorized:false});
-   await db.tenantRoleDefinition.update({where:{id:restrictive.id},
-    data:{status:'DISABLED'}});
+   await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${agency}, true)`;
+    await tx.tenantRoleDefinition.update({where:{id:restrictive.id},
+     data:{status:'DISABLED'}});
+   });
    expect(await svc.resolveAgencyReadScope(identity,client,brand.id,'CAMPAIGN_READ'))
     .toEqual({authorized:false});
    await db.user.update({where:{id:agencyAdmin},
