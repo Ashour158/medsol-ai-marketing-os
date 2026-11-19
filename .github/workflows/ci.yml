@@ -67,6 +67,18 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
+      - name: Disposable PostgreSQL backup and restore rehearsal (not production DR certification)
+        env:
+          MARKETING_DR_CI_ONLY: '1'
+        run: node scripts/quality/r3k-offline-dr-rehearsal.mjs
+      - name: Upload verified disposable DR evidence (never raw database backups)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-r3k-offline-dr-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: r3k-dr-evidence.json
       - name: Validate maintainer PR review reference policy
         run: node --test scripts/quality/pr-review-salvage-policy.test.mjs
       - name: Verify repository-wide ECC evidence manifest (not a GitHub App check)

@@ -1,3 +1,4 @@
+import {agentContentRisks,safeForAgentEvidence} from './agent-content-firewall.js';
 import {parseRetrievalCases,evaluationMetrics,feedbackDigest} from './knowledge-learning-evaluation.js';
 import {Prisma} from '@prisma/client';
 import {hasMarketingPermission} from './marketing-permissions.js';
@@ -194,6 +195,14 @@ export class MarketingLearningService {
     throw new ForbiddenException('Independent evidence reviewer required');
    if(decisionInput==='REVIEW'&&doc.expiresAt&&doc.expiresAt<=new Date())
     throw new ConflictException('Expired source cannot enter retrieval');
+   if(decisionInput==='REVIEW'&&doc.accessMode==='AGENT_SCOPED'){
+    // Never upgrade known instruction-attack data into agent-visible evidence.
+    const chunks=await tx.knowledgeChunk.findMany({
+     where:{organizationId:org,documentId:id},select:{content:true}});
+    if(chunks.some(chunk=>!safeForAgentEvidence(chunk.content)))
+     throw new ForbiddenException(
+      'Agent-scoped evidence contains instruction spoofing or exfiltration indicators; keep reviewer-only');
+   }
    const status=decisionInput==='REVIEW'?'REVIEWED':'REJECTED';
    const changed=await tx.knowledgeDocument.updateMany({where:{
     id,organizationId:org,status:'QUARANTINED'
@@ -307,7 +316,7 @@ export class MarketingLearningService {
      AND (c."terms" && ${terms}::text[] OR
       to_tsvector('english',c."content") @@ plainto_tsquery('english',${query}))
     ORDER BY "textRank" DESC,c."createdAt" DESC LIMIT 250`;
-   const scored=rows.map(row=>{
+   const scored=rows.filter(row=>!agentId||safeForAgentEvidence(row.content)).map(row=>{
     const cosine=knowledgeCosine(row.vector,queryVector);
     const score=evidenceScore({textRank:row.textRank,cosine,
      publishedAt:row.publishedAt});
@@ -368,7 +377,7 @@ export class MarketingLearningService {
      relationType:true,noteDigest:true,
      toDocument:{select:{title:true,contentDigest:true,sourceKey:true}}}
    }):[];
-   return{...base,memories:memories.map(m=>({
+   return{...base,memories:memories.filter(m=>safeForAgentEvidence(m.content)).map(m=>({
     memoryId:m.id,documentId:m.documentId,
     citationRef:'km:'+m.id+':'+m.contentDigest.slice(7,19),
     text:m.content,contentDigest:m.contentDigest,
@@ -412,6 +421,8 @@ export class MarketingLearningService {
    const chunk=await tx.knowledgeChunk.findFirst({where:{
     organizationId:org,documentId},orderBy:{ordinal:'asc'}});
    if(!chunk||!chunk.content)throw new ConflictException('Source evidence unavailable');
+   if(agentContentRisks(chunk.content).length)
+    throw new ForbiddenException('Risk-marked evidence cannot promote learning signals');
    const fingerprint=knowledgeSourceDigest(JSON.stringify([
     'knowledge-document-v1',org,documentId,doc.contentDigest])).slice(7);
    const signal=await tx.learningSignal.create({data:{
@@ -584,6 +595,8 @@ export class MarketingLearningService {
   if(memoryKey.length<12)throw new BadRequestException('Stable memory key needs 12+ characters');
   const content=required(raw?.content,'memory content',1200);
   if(content.length<40)throw new BadRequestException('Substantive memory content required');
+  if(!safeForAgentEvidence(content))
+   throw new ForbiddenException('Instructions or exfiltration attempts cannot become agent memory');
   const expiresAt=this.knowledgeDate(raw?.expiresAt,'memory expiry');
   if(!expiresAt||expiresAt<=new Date()||
      expiresAt.getTime()>Date.now()+30*86400000)
@@ -637,6 +650,8 @@ export class MarketingLearningService {
     throw new ForbiddenException('Independent agent memory reviewer required');
    const now=new Date();
    if(decision==='APPROVE'){
+    if(!safeForAgentEvidence(memory.content))
+     throw new ForbiddenException('Risk-marked memory cannot be approved');
     const doc=await tx.knowledgeDocument.findFirst({where:{
      organizationId:org,id:memory.documentId,status:'REVIEWED',
      accessMode:'AGENT_SCOPED',agentScope:{has:memory.agentId},

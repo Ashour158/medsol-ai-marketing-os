@@ -28,7 +28,9 @@ function assertOrigin(value:unknown):string|null{
   host.endsWith('.test')||host.endsWith('.example')||
   host.endsWith('.onion')||host.endsWith('.arpa')||
   /^\d+(?:\.\d+){0,3}$/.test(host)||host.includes('..')||
-  !host.includes('.')||host.startsWith('-')||host.endsWith('-'))
+  !host.includes('.')||host.startsWith('.')||host.endsWith('.')||
+  host.split('.').some(label=>!label||label.length>63||
+   label.startsWith('-')||label.endsWith('-')))
   throw new BadRequestException('Non-public or IP-based tool origins prohibited');
  // This is metadata validation, NOT SSRF-safe DNS validation. Remote egress
  // stays disabled; future adapter must pin/validate DNS and redirects.
