@@ -80,7 +80,7 @@ const databaseCases=[
  {id:'T04-003',testSource:'apps/api/src/postgres-blueprint-virtual.integration.test.ts'},
  {id:'T05-001',testSource:'apps/api/src/postgres-agent-multitenant.integration.test.ts'},
  {id:'T06-021',testSource:'apps/api/src/postgres-governed-tool-registry.integration.test.ts'},
- {id:'T07-001',testSource:'apps/api/src/postgres-r3i-memory-graph.integration.test.ts'},
+ {id:'T07-025',testSource:'apps/api/src/postgres-r3i-memory-graph.integration.test.ts'},
  {id:'T09-001',testSource:'apps/api/src/postgres-r2-publication.integration.test.ts'},
  {id:'T10-001',testSource:'apps/api/src/postgres-synthetic-audience-email.integration.test.ts'},
  {id:'T11-001',testSource:'apps/api/src/postgres-creative-assets.integration.test.ts'},
