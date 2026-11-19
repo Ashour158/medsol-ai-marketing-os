@@ -85,8 +85,18 @@ export function parseOfflineDagManifest(raw:unknown):OfflineDagManifest{
  for(const node of draft.nodes)if(node.type==='AGENT_TASK'&&bypass(node.id))
   throw new ForbiddenException('Every agent outcome path must pass independent human review');
  // The compiler permits multiple END nodes, but each branch must terminate.
- const nodes=[...draft.nodes].sort((a,b)=>a.id.localeCompare(b.id));
- const edges=[...draft.edges].sort((a,b)=>
+ // JSONB persists object keys in its own order. Reconstruct each object in
+ // a fixed field order so the trusted signature is stable before/after storage.
+ const nodes=draft.nodes.map(n=>({
+  id:n.id,type:n.type,
+  ...(n.engineId!==undefined?{engineId:n.engineId}:{}),
+  ...(n.agentId!==undefined?{agentId:n.agentId}:{}),
+  ...(n.workflowId!==undefined?{workflowId:n.workflowId}:{}),
+  ...(n.sideEffect!==undefined?{sideEffect:n.sideEffect}:{}),
+  ...(n.maxIterations!==undefined?{maxIterations:n.maxIterations}:{}),
+  ...(n.maxSeconds!==undefined?{maxSeconds:n.maxSeconds}:{})
+ })).sort((a,b)=>a.id.localeCompare(b.id));
+ const edges=draft.edges.map(e=>({from:e.from,to:e.to})).sort((a,b)=>
   (a.from+':'+a.to).localeCompare(b.from+':'+b.to));
  return{draft:{id:draft.id,version:draft.version,nodes,edges},
   canaryPercent:v.canaryPercent as number,maxSteps:v.maxSteps as number,
