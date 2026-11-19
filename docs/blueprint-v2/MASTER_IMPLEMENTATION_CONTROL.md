@@ -229,3 +229,7 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## R2/R3 independent internal release acceptance audit — 2026-11-19
 
 [Read the 25-gate evidence review, negative-control regression coverage, P0 blockers and explicit non-certification verdict](R2_R3_RELEASE_ACCEPTANCE_AUDIT_2026_11_19.md). Both releases remain PARTIAL. CI, virtual provider tests and signed MCP/A2A metadata do not prove production provider interoperability, 500-case E2E acceptance, general workflow deployment, hybrid RAG or legal consent. External effects remain locked pending independent customer/provider/security acceptance.
+
+## R2/R3 — offline official-provider wire and OAuth connection trials
+
+[Eight-provider official-shaped wire rehearsal, real model adapter parsing with injected fake HTTP, Meta/LinkedIn canonical PKCE exchange with fake broker, 11-scenario chaos, tenant OIDC/CommandReceipt/AuditEvent, admin trial studio](R2_R3_OFFICIAL_PROVIDER_OFFLINE_CONNECTION_TRIAL.md). This extends the **existing** Integration Hub, OAuth, model router and publishing authorities without a parallel sender or provider connection. Real provider HTTP, real accounts, customer delivery, model inference, MCP/A2A execution and verified receipts remain **zero**. The external staging and security acceptance gates in [the R2/R3 release audit](R2_R3_RELEASE_ACCEPTANCE_AUDIT_2026_11_19.md) are unchanged.
