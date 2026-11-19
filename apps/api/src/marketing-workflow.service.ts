@@ -533,7 +533,12 @@ export class MarketingWorkflowService {
            if(!capability)throw new ForbiddenException('Agent capability not in offline allowlist');
            const result=await this.agents.execute(action.agentId,{
             organizationId,correlationId:action.correlationId,
-            causationId:id,input:{objective:action.objective,market:action.market,
+            causationId:id,input:{objective:action.objective,
+             // Market is optional at DAG launch. The deterministic domain
+             // engine requires a nonempty context; an explicit unresolved
+             // marker is safer than inventing a geographic market or failing
+             // halfway through an agent task after its durable claim.
+             market:action.market.trim()||'Unspecified market; human review required',
              requestedOutcome:action.objective},capabilities:[capability]});
            await this.leases.assertActive(lease);
            await this.dagCheckpointAgentStep(lease,action.stepId,
