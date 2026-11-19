@@ -70,6 +70,20 @@ export function parseOfflineDagManifest(raw:unknown):OfflineDagManifest{
      (n.maxSeconds!==undefined&&n.maxSeconds>60)))
    throw new ForbiddenException('Only bounded canonical deterministic review agents permitted');
  }
+ // Agent assessments are never silently finalized: every path from an
+ // AGENT_TASK to END must encounter a HUMAN_TASK/APPROVAL, including fan-out.
+ const downstream=new Map(draft.nodes.map(n=>[n.id,[] as string[]]));
+ for(const edge of draft.edges)downstream.get(edge.from)!.push(edge.to);
+ const kinds=new Map(draft.nodes.map(n=>[n.id,n.type]));
+ const bypass=(id:string,seen=new Set<string>()):boolean=>{
+  if(seen.has(id))return false;
+  if(kinds.get(id)==='HUMAN_TASK'||kinds.get(id)==='APPROVAL')return false;
+  if(kinds.get(id)==='END')return true;
+  const visited=new Set(seen);visited.add(id);
+  return(downstream.get(id)??[]).some(next=>bypass(next,visited));
+ };
+ for(const node of draft.nodes)if(node.type==='AGENT_TASK'&&bypass(node.id))
+  throw new ForbiddenException('Every agent outcome path must pass independent human review');
  // The compiler permits multiple END nodes, but each branch must terminate.
  const nodes=[...draft.nodes].sort((a,b)=>a.id.localeCompare(b.id));
  const edges=[...draft.edges].sort((a,b)=>
