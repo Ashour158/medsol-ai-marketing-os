@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario } from '@medsol/agent-runtime';
+import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario, AnthropicMessagesAdapter, GeminiGenerateContentAdapter } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
 
 @Injectable()
@@ -38,6 +38,26 @@ export class GovernedModelService {
         throw new Error('Explicit reviewed model price table required');
       }
       adapter = new OpenAIResponsesAdapter({apiKey:key,model,inputRateMicrosPerMillion:inputRate,outputRateMicrosPerMillion:outputRate});
+    } else if (provider === 'anthropic' || provider === 'gemini') {
+      // Credentials are NOT configured or connected during software build.
+      // Enabling this branch later requires an explicit reviewed key, model
+      // and price table. Provider responses remain unverified until staging.
+      const inputPrice=process.env.MARKETING_MODEL_INPUT_RATE_MICROS_PER_MILLION;
+      const outputPrice=process.env.MARKETING_MODEL_OUTPUT_RATE_MICROS_PER_MILLION;
+      if (!inputPrice || !outputPrice)
+        throw new Error('Explicit reviewed model price table required');
+      const config={
+        apiKey:provider==='anthropic'?
+          process.env.MARKETING_ANTHROPIC_API_KEY??'':
+          process.env.MARKETING_GEMINI_API_KEY??'',
+        model:provider==='anthropic'?
+          process.env.MARKETING_ANTHROPIC_MODEL??'':
+          process.env.MARKETING_GEMINI_MODEL??'',
+        inputRateMicrosPerMillion:Number(inputPrice),
+        outputRateMicrosPerMillion:Number(outputPrice)
+      };
+      adapter=provider==='anthropic'?
+        new AnthropicMessagesAdapter(config):new GeminiGenerateContentAdapter(config);
     } else {
       throw new Error('Unknown marketing model provider (fail closed)');
     }
