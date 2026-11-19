@@ -22,7 +22,7 @@ const key=(v:unknown,label:string,max=160)=>{
  return v;
 };
 const refId=(v:unknown,label:string)=>{
- if(typeof v!=='string'||v.length<8||v.length>128||
+ if(typeof v!=='string'||v.length<1||v.length>128||
   !/^[a-zA-Z0-9_-]+$/.test(v))throw new BadRequestException('Invalid '+label);
  return v;
 };
