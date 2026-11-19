@@ -88,7 +88,7 @@ export function toolManifestDigest(manifest:ToolManifest):string{
 }
 export function verifyTrustedToolSignature(manifest:ToolManifest,
  signature:string,signerKeyId:string,config:{
- trustedPublicKeyPem?:string;trustedKeyId?:string
+ trustedPublicKeyPem?:string|undefined;trustedKeyId?:string|undefined
 }):boolean{
  if(!config.trustedPublicKeyPem||!config.trustedKeyId||
   signerKeyId!==config.trustedKeyId||typeof signature!=='string'||
