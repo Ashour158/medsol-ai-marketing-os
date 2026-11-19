@@ -19,6 +19,9 @@ import 'reflect-metadata'; import {PlatformIntegrationHubService} from './platfo
  @Post('marketing/publications/:id/simulate') simulatePublication(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.simulate(req.identity.organizationId,req.identity.userId,id,b?.expectedVersion)}
  @Post('marketing/publications/:id/cancel') cancelPublication(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.cancel(req.identity.organizationId,req.identity.userId,id,b?.expectedVersion,b?.reason)}
  @Post('marketing/publications/:id/dispatch-hold') holdPublicationEgress(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.placeDispatchHold(req.identity.organizationId,req.identity,id,b)}
+ @Post('marketing/publications/:id/dispatch-reservation') stagePublicationDispatch(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.reserveDispatchPreauthorization(req.identity.organizationId,req.identity,id,b)}
+ @Post('marketing/publications/:id/dispatch-reservation/expire') expirePublicationDispatch(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.publications.expireDispatchPreauthorization(req.identity.organizationId,req.identity,id,b?.expectedVersion)}
+ @Get('marketing/publications/:id/dispatch-reservation') readPublicationDispatch(@Req() req:any,@Param('id') id:string){return this.publications.dispatchReservationStatus(req.identity.organizationId,id)}
  @Get('marketing/publications/:id/performance') async publicationPerformance(@Req() req:any,@Param('id') id:string){
   const publication=await this.publications.detail(req.identity.organizationId,id);
   const evidence=await this.performance.summary(req.identity.organizationId,publication.campaignId);

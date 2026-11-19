@@ -272,10 +272,16 @@ export class CampaignPublicationService{
    // Reuse the canonical human/brand/rights/creative policy preflight;
    // correlation must never become an alternate approval decision engine.
    const existingGate=await this.check(tx,organizationId,pub);
-   const heldFence=await tx.publicationAttempt.findFirst({where:{
-    organizationId,publicationId,mode:'RELEASE_FENCE'
-   },select:{id:true,createdAt:true}});
+   const [heldFence,preauthorization]=await Promise.all([
+    tx.publicationAttempt.findFirst({where:{
+     organizationId,publicationId,mode:'RELEASE_FENCE'
+    },select:{id:true,createdAt:true}}),
+    tx.publicationAttempt.findFirst({where:{
+     organizationId,publicationId,mode:'DISPATCH_RESERVATION'
+    },select:{id:true,createdAt:true,reservationExpiresAt:true}})
+   ]);
    const reasons:string[]=[...existingGate.reasons];
+   if(preauthorization)reasons.push('preauthorization_reservation_is_not_a_remote_send');
    if(heldFence)reasons.push('operator_dispatch_hold_permanently_active');
    if(!exactScope)reasons.push('exact_publication_approval_scope_invalid');
    if(!connection)reasons.push('registered_provider_destination_not_found');
@@ -300,6 +306,8 @@ export class CampaignPublicationService{
     authorizedRemoteAttempts:remoteAttempts,
     releaseFenceActive:!!heldFence,
     releaseFenceRecordedAt:heldFence?.createdAt??null,
+    preauthorizationReservationPresent:!!preauthorization,
+    preauthorizationExpiresAt:preauthorization?.reservationExpiresAt??null,
     verifiedRemoteReceipts:0,
     providerReceiptVerified:false as const,
     customerDestinationBound:false as const,
@@ -476,6 +484,230 @@ export class CampaignPublicationService{
   * only permitted write is a non-dispatchable RELEASE_FENCE / BLOCKED evidence
   * row inside the canonical PublicationAttempt authority.
   */
+
+ /**
+  * R2F-D: one-use PRE-AUTHORIZATION escrow. This is NOT a REMOTE attempt,
+  * an approved send, a permission to call an adapter, or an implicit retry.
+  * The canonical publication and attempt ledger own the entire transition.
+  */
+ async reserveDispatchPreauthorization(organizationId:string,identity:VerifiedIdentity,
+  publicationIdInput:unknown,input:{
+   expectedVersion?:unknown;requestKey?:unknown;reason?:unknown
+  }){
+  const publicationId=id(publicationIdInput,'publication');
+  if(!identity||identity.organizationId!==organizationId||!identity.userId||
+     !identity.subject||!hasMarketingPermission(identity,'MANAGE_TENANT'))
+   throw new ForbiddenException('Tenant OIDC administrator required');
+  if(!Number.isSafeInteger(input?.expectedVersion)||(input.expectedVersion as number)<1)
+   throw new BadRequestException('Expected publication version required');
+  const expectedVersion=input.expectedVersion as number;
+  const requestKey=id(input?.requestKey,'preauthorization idempotency key',160);
+  if(requestKey.length<12)throw new BadRequestException('Preauthorization key must have 12+ characters');
+  const reason=typeof input?.reason==='string'?input.reason.trim():'';
+  if(reason.length<12||reason.length>500)
+   throw new BadRequestException('Specific preauthorization rationale (12–500 characters) required');
+  const work=async(tx:Tx)=>{
+   const actor=await tx.user.findFirst({where:{
+    organizationId,id:identity.userId,oidcSubject:identity.subject,disabledAt:null
+   },select:{role:true}});
+   if(!actor||actor.role.toUpperCase()!==identity.role.toUpperCase()||
+      !['ADMIN','SUPER_ADMIN'].includes(actor.role.toUpperCase()))
+    throw new ForbiddenException('Active matching OIDC tenant administrator required');
+   const pub=await tx.campaignPublication.findFirst({where:{
+    organizationId,id:publicationId
+   }});
+   if(!pub)throw new NotFoundException('Publication not found in tenant');
+   const previous=await tx.publicationAttempt.findFirst({where:{
+    organizationId,publicationId,mode:'DISPATCH_RESERVATION'
+   }});
+   if(previous){
+    const digest=createHash('sha256').update(JSON.stringify([
+     'medsol-r2f-d-reservation-v1',organizationId,publicationId,
+     previous.integrationConnectionId,requestKey
+    ])).digest('hex');
+    if(previous.evidenceRef!=='internal:dispatch-reservation/'+digest)
+     throw new ConflictException('Preauthorization reservation idempotency key differs');
+    if(!['AWAITING_AUTHORIZATION','BLOCKED'].includes(pub.status))
+     throw new ConflictException('Preauthorization reservation state inconsistent');
+    return{publicationId,status:pub.status,attemptId:previous.id,
+     expiresAt:previous.reservationExpiresAt,replayed:true,
+     authorizedRemoteAttempt:false,providerRequestsMade:0,
+     automaticRetryAllowed:false,externalEffectsAuthorized:false};
+   }
+   if(pub.status!=='PREPARED'||pub.version!==expectedVersion)
+    throw new ConflictException('Only current unexecuted publication may be reserved');
+   const prior=await tx.publicationAttempt.count({where:{organizationId,publicationId}});
+   if(prior!==0)throw new ConflictException('Preauthorization requires no prior attempt');
+   const approval=await tx.approval.findFirst({where:{
+    organizationId,id:pub.approvalId
+   }});
+   if(!approval||!isExactCreativeScope(approval.scope)||
+      approval.scopeDigest!==pub.scopeDigest||
+      exactCreativeScopeHash(approval.scope)!==pub.scopeDigest)
+    throw new ConflictException('Current exact approval scope required');
+   const scope=approval.scope;
+   const preflight=await this.check(tx,organizationId,pub);
+   if(!preflight.internalReady)
+    throw new ConflictException('Internal approval and rights preflight denied: '+
+     preflight.reasons.join(', '));
+   const connection=await tx.integrationConnection.findFirst({where:{
+    organizationId,brandId:scope.brandId,
+    destinationRef:scope.destinationRef,status:'PENDING_VERIFICATION'
+   },select:{id:true,providerKey:true}});
+   if(!connection)throw new ConflictException('Tenant provider connection unavailable');
+   const fingerprint=createHash('sha256').update(JSON.stringify([
+    'medsol-r2f-d-reservation-v1',organizationId,publicationId,
+    connection.id,requestKey
+   ])).digest('hex');
+   // 10 minute time-bounded *administrative reservation*, not a lease to send.
+   const reservationExpiresAt=new Date(Date.now()+10*60_000);
+   const attempt=await tx.publicationAttempt.create({data:{
+    id:randomUUID(),organizationId,publicationId,sequence:1,
+    mode:'DISPATCH_RESERVATION',outcome:'AWAITING_AUTHORIZATION',
+    evidenceRef:'internal:dispatch-reservation/'+fingerprint,
+    inputDigest:pub.scopeDigest,recordedBy:identity.userId,
+    integrationConnectionId:connection.id,providerKey:connection.providerKey,
+    reservationExpiresAt
+   }});
+   const updated=await tx.campaignPublication.updateMany({where:{
+    organizationId,id:publicationId,status:'PREPARED',version:pub.version
+   },data:{status:'AWAITING_AUTHORIZATION',version:{increment:1}}});
+   if(updated.count!==1)throw new ConflictException('Concurrent publication reservation claim');
+   await tx.auditEvent.create({data:{
+    organizationId,actorType:'HUMAN',actorId:identity.userId,
+    action:'CAMPAIGN_PUBLICATION_PREAUTHORIZATION_RESERVED',
+    objectType:'CampaignPublication',objectId:publicationId,
+    correlationId:attempt.id,
+    after:{reason,attemptId:attempt.id,scopeDigest:pub.scopeDigest,
+     connectionId:connection.id,providerKey:connection.providerKey,
+     expiresAt:reservationExpiresAt.toISOString(),remoteAttempt:false,
+     providerRequestsMade:0,externalEffectsAuthorized:false}
+   }});
+   await tx.outboxEvent.create({data:{
+    organizationId,eventId:randomUUID(),
+    eventType:'CampaignPublicationPreauthorizationReservedInternal',
+    aggregateType:'CampaignPublication',aggregateId:publicationId,
+    correlationId:attempt.id,version:pub.version+1,
+    payload:{publicationId,attemptId:attempt.id,expiresAt:reservationExpiresAt.toISOString(),
+     mode:'DISPATCH_RESERVATION',externalEffectsAuthorized:false}
+   }});
+   return{publicationId,status:'AWAITING_AUTHORIZATION' as const,
+    attemptId:attempt.id,expiresAt:reservationExpiresAt,replayed:false,
+    authorizedRemoteAttempt:false,providerRequestsMade:0,
+    automaticRetryAllowed:false,externalEffectsAuthorized:false};
+  };
+  try{return await this.scoped(organizationId,work);}
+  catch(error){
+   const code=(error as {code?:string})?.code;
+   if(code!=='P2002'&&code!=='P2034'&&!(error instanceof ConflictException))
+    throw error;
+   return this.scoped(organizationId,async tx=>{
+    const actor=await tx.user.findFirst({where:{
+     organizationId,id:identity.userId,oidcSubject:identity.subject,disabledAt:null
+    },select:{role:true}});
+    if(!actor||actor.role.toUpperCase()!==identity.role.toUpperCase()||
+       !['ADMIN','SUPER_ADMIN'].includes(actor.role.toUpperCase()))throw error;
+    const [pub,prior]=await Promise.all([
+     tx.campaignPublication.findFirst({where:{organizationId,id:publicationId}}),
+     tx.publicationAttempt.findFirst({where:{
+      organizationId,publicationId,mode:'DISPATCH_RESERVATION'
+     }})
+    ]);
+    if(!pub||!prior||!['AWAITING_AUTHORIZATION','BLOCKED'].includes(pub.status))
+     throw error;
+    const fingerprint=createHash('sha256').update(JSON.stringify([
+     'medsol-r2f-d-reservation-v1',organizationId,publicationId,
+     prior.integrationConnectionId,requestKey
+    ])).digest('hex');
+    if(prior.evidenceRef!=='internal:dispatch-reservation/'+fingerprint)
+     throw error;
+    return{publicationId,status:pub.status,attemptId:prior.id,
+     expiresAt:prior.reservationExpiresAt,replayed:true,
+     authorizedRemoteAttempt:false,providerRequestsMade:0,
+     automaticRetryAllowed:false,externalEffectsAuthorized:false};
+   });
+  }
+ }
+ /**
+  * Crash recovery: observation never retries egress. On expiry, a verified
+  * administrator can atomically close a stale authorization escrow as BLOCKED.
+  * An existing committed record is immutable; no hidden lease renewal.
+  */
+ async expireDispatchPreauthorization(organizationId:string,identity:VerifiedIdentity,
+  publicationIdInput:unknown,expectedVersionInput:unknown){
+  const publicationId=id(publicationIdInput,'publication');
+  if(!identity||identity.organizationId!==organizationId||!identity.userId||
+     !identity.subject||!hasMarketingPermission(identity,'MANAGE_TENANT'))
+   throw new ForbiddenException('Verified OIDC administrator required');
+  if(!Number.isSafeInteger(expectedVersionInput)||(expectedVersionInput as number)<1)
+   throw new BadRequestException('Expected reservation publication version required');
+  return this.scoped(organizationId,async tx=>{
+   const actor=await tx.user.findFirst({where:{
+    organizationId,id:identity.userId,oidcSubject:identity.subject,disabledAt:null
+   },select:{role:true}});
+   if(!actor||actor.role.toUpperCase()!==identity.role.toUpperCase()||
+      !['ADMIN','SUPER_ADMIN'].includes(actor.role.toUpperCase()))
+    throw new ForbiddenException('Current OIDC tenant administrator required');
+   const [pub,attempt]=await Promise.all([
+    tx.campaignPublication.findFirst({where:{organizationId,id:publicationId}}),
+    tx.publicationAttempt.findFirst({where:{
+     organizationId,publicationId,mode:'DISPATCH_RESERVATION'
+    }})
+   ]);
+   if(!pub||!attempt)throw new NotFoundException('Preauthorization reservation not found');
+   if(pub.status==='BLOCKED')
+    return{publicationId,status:'BLOCKED' as const,replayed:true,
+     authorizedRemoteAttempt:false,externalEffectsAuthorized:false};
+   if(pub.status!=='AWAITING_AUTHORIZATION'||pub.version!==expectedVersionInput)
+    throw new ConflictException('Preauthorization reservation version changed');
+   if(!attempt.reservationExpiresAt||
+      attempt.reservationExpiresAt.getTime()>Date.now())
+    throw new ConflictException('Preauthorization is not yet expired');
+   const changed=await tx.campaignPublication.updateMany({where:{
+    organizationId,id:publicationId,status:'AWAITING_AUTHORIZATION',version:pub.version
+   },data:{status:'BLOCKED',version:{increment:1}}});
+   if(changed.count!==1)throw new ConflictException('Concurrent reservation closure');
+   await tx.auditEvent.create({data:{
+    organizationId,actorType:'HUMAN',actorId:identity.userId,
+    action:'CAMPAIGN_PUBLICATION_PREAUTHORIZATION_EXPIRED',
+    objectType:'CampaignPublication',objectId:publicationId,
+    correlationId:attempt.id,
+    after:{attemptId:attempt.id,reason:'expired_not_dispatched',
+     remoteAttempt:false,externalEffectsAuthorized:false}
+   }});
+   await tx.outboxEvent.create({data:{
+    organizationId,eventId:randomUUID(),
+    eventType:'CampaignPublicationPreauthorizationExpiredInternal',
+    aggregateType:'CampaignPublication',aggregateId:publicationId,
+    correlationId:attempt.id,version:pub.version+1,
+    payload:{publicationId,attemptId:attempt.id,status:'BLOCKED',
+     reason:'expired_not_dispatched',externalEffectsAuthorized:false}
+   }});
+   return{publicationId,status:'BLOCKED' as const,replayed:false,
+    authorizedRemoteAttempt:false,externalEffectsAuthorized:false};
+  });
+ }
+ /** Read-only recovery projection: no refresh, retry, send or status update. */
+ async dispatchReservationStatus(organizationId:string,publicationIdInput:unknown){
+  const publicationId=id(publicationIdInput,'publication');
+  return this.scoped(organizationId,async tx=>{
+   const pub=await tx.campaignPublication.findFirst({where:{organizationId,id:publicationId}});
+   if(!pub)throw new NotFoundException('Publication not found in tenant');
+   const attempt=await tx.publicationAttempt.findFirst({where:{
+    organizationId,publicationId,mode:'DISPATCH_RESERVATION'
+   }});
+   return{publicationId,status:pub.status,
+    reservationPresent:!!attempt,
+    reservationExpiresAt:attempt?.reservationExpiresAt??null,
+    authorizationEscrowState:!attempt?'NO_RESERVATION':
+     pub.status==='BLOCKED'?'CLOSED_NOT_SENT':
+     (attempt.reservationExpiresAt&&attempt.reservationExpiresAt.getTime()<=Date.now())?
+      'EXPIRED_NOT_SENT':'WAITING_FOR_AUTHORIZATION',
+    requiresIndependentProviderAuthorization:true,
+    authorizedRemoteAttempt:false,providerRequestsMade:0,
+    safeToAutomaticallyRetry:false,externalEffectsAuthorized:false};
+  });
+ }
  async placeDispatchHold(organizationId:string,identity:VerifiedIdentity,
   publicationIdInput:unknown,input:{expectedVersion?:unknown;requestKey?:unknown;reason?:unknown}){
   const publicationId=id(publicationIdInput,'publication');

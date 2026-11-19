@@ -58,6 +58,10 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'MANAGE_CAMPAIGN';
   if(method==='POST'&&/^\/marketing\/publications\/[^/]+\/dispatch-hold$/.test(path))
    return 'MANAGE_TENANT';
+  if(method==='POST'&&/^\/marketing\/publications\/[^/]+\/dispatch-reservation(?:\/expire)?$/.test(path))
+   return 'MANAGE_TENANT';
+  if(method==='GET'&&/^\/marketing\/publications\/[^/]+\/dispatch-reservation$/.test(path))
+   return 'READ_AUDIT';
   if(method==='GET'&&(
     path==='/marketing/assets'||/^\/marketing\/assets\/[^/]+$/.test(path)))
    return 'READ_PORTFOLIO';

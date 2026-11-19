@@ -676,11 +676,17 @@ model PublicationAttempt {
   evidenceRef String
   inputDigest String
   recordedBy String
+  // R2F-D: PRE-AUTHORIZATION ONLY; never a remote send or delivery receipt.
+  integrationConnectionId String?
+  providerKey String?
+  reservationExpiresAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   publication CampaignPublication @relation(fields:[organizationId,publicationId],references:[organizationId,id],onDelete:Restrict)
+  connection IntegrationConnection? @relation(fields:[organizationId,integrationConnectionId],references:[organizationId,id],onDelete:Restrict,map:"PublicationAttempt_org_conn_fk")
   @@unique([organizationId,publicationId,sequence])
   @@index([organizationId,publicationId,createdAt])
+  @@index([organizationId,integrationConnectionId,createdAt],map:"PublicationAttempt_org_conn_time_idx")
 }
 
 /** R2B provider-neutral destination registration, NOT credential storage.
@@ -711,6 +717,7 @@ model IntegrationConnection {
   providerCredential ProviderCredential?
   providerAccountObservations ProviderAccountObservation[]
   providerWebhookObservations ProviderWebhookObservation[]
+  publicationAttempts PublicationAttempt[]
   @@index([organizationId,brandId,status])
 }
 
