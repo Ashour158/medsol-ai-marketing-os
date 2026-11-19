@@ -50,6 +50,7 @@ export class TenantBrandService{
   const name=str(raw?.name,'brand name',150);
   try{
    return await this.db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
     const brand=await tx.brand.create({data:{id:randomUUID(),organizationId,slug,name,
      createdBy:actorId}});
     await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,
@@ -63,8 +64,12 @@ export class TenantBrandService{
   }
  }
  listBrands(organizationId:string){
-  return this.db.brand.findMany({where:{organizationId},take:100,
-   orderBy:{createdAt:'desc'},select:{id:true,slug:true,name:true,status:true,createdAt:true}});
+  id(organizationId,'tenant');
+  return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+   return tx.brand.findMany({where:{organizationId},take:100,
+    orderBy:{createdAt:'desc'},select:{id:true,slug:true,name:true,status:true,createdAt:true}});
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
  async grantAgency(organizationId:string,actorId:string,raw:{
   agencyOrganizationId?:unknown;brandId?:unknown;actions?:unknown;expiresAt?:unknown;
@@ -129,6 +134,59 @@ export class TenantBrandService{
     before:{status:grant.status,version:grant.version},
     after:{status:'REVOKED',version:grant.version+1,reason,externalEffectsAuthorized:false}}});
    return{grantId,revoked:true,replay:false,authorityChanged:true};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+ }
+ /**
+  * The only resource-specific agency CAMPAIGN_READ surface. The agency
+  * identity/role and grant are canonical; the resource query happens IN
+  * the same serializable transaction as the locked grant check.
+  * Returns only bounded metadata, never publication/customer/PII/finance.
+  */
+ async delegatedCampaigns(actor:VerifiedIdentity,clientTenantId:string,
+  brandId:string,campaignId?:string){
+  if(!actor?.organizationId||!actor.userId||!actor.subject||!actor.email||
+     actor.organizationId===clientTenantId)
+   throw new ForbiddenException('Verified agency identity required');
+  id(actor.organizationId,'agency tenant');
+  id(clientTenantId,'client tenant');id(brandId,'brand');
+  if(campaignId!==undefined)id(campaignId,'campaign');
+  await this.roles.assertActorPermission(actor,'READ_PORTFOLIO');
+  return this.db.$transaction(async tx=>{
+   const org=actor.organizationId;
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+   // FOR SHARE freezes any revocation until the read transaction commits.
+   // A concurrent revoked-grant transaction will serialize before or after
+   // this read; no post-revocation grant can be accepted by a later read.
+   const grants=await tx.$queryRaw<Array<{id:string;version:number}>>`
+    SELECT g."id",g."version" FROM "AgencyGrant" g
+    WHERE g."agencyOrganizationId"=${org}
+      AND g."clientOrganizationId"=${clientTenantId}
+      AND g."brandId"=${brandId}
+      AND g."status"='ACTIVE'
+      AND g."expiresAt">CURRENT_TIMESTAMP
+      AND g."actions" ? 'CAMPAIGN_READ'
+    FOR SHARE
+   `;
+   const grant=grants[0];
+   if(!grant)throw new ForbiddenException('No active campaign-read delegation');
+   const brand=await tx.brand.findFirst({where:{
+    id:brandId,organizationId:clientTenantId,status:'ACTIVE'
+   },select:{id:true}});
+   if(!brand)throw new NotFoundException('Delegated brand unavailable');
+   const where={organizationId:clientTenantId,brandId,
+    ...(campaignId?{id:campaignId}:{})};
+   const rows=await tx.campaign.findMany({where,
+    orderBy:{updatedAt:'desc'},take:campaignId?1:50,
+    select:{id:true,code:true,name:true,brandId:true,status:true,
+     riskLevel:true,version:true,updatedAt:true}});
+   if(campaignId&&!rows.length)
+    throw new NotFoundException('Campaign not found in delegated brand');
+   return{
+    clientOrganizationId:clientTenantId,brandId,
+    delegatedAction:'CAMPAIGN_READ' as const,grantId:grant.id,
+    grantRevision:grant.version,readOnly:true as const,
+    externalEffectsAuthorized:false as const,records:rows
+   };
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
  /**
