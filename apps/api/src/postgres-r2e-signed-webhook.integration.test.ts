@@ -140,7 +140,7 @@ describe('R2E-A signed webhook ingress is server-only and fail closed',()=>{
     .rejects.toThrow('not found');
   }finally{await db.$disconnect();}
  },90000);
- it.skipIf(!enabled)('FORCE RLS partitions signed evidence under non-bypass tenant role',async()=>{
+ it.skipIf(!enabled)('T01-007 FORCE RLS partitions signed evidence under non-bypass tenant role',async()=>{
   const db=new PrismaClient(),org='r2e-rls-'+randomUUID();
   const role='r2e_reader_'+randomUUID().replaceAll('-','').slice(0,16);
   const actor='admin-'+randomUUID(),brandId=randomUUID();
