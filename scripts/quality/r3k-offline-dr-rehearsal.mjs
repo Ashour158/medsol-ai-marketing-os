@@ -170,7 +170,7 @@ try{
  const restoreSql=exec('pg_restore',['--no-owner','--no-acl',
   '--file=-',archive]);
  const restoreCompatible=restoreSql.replace(
-  /^SET transaction_timeout = 0;\\r?\\n/gm,'');
+  /^SET transaction_timeout = 0;\r?\n/gm,'');
  if(restoreSql.length!==restoreCompatible.length&&
     !restoreSql.includes('SET transaction_timeout = 0;'))
   throw new Error('Unrecognized restoration compatibility change');
