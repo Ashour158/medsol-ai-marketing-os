@@ -49,7 +49,7 @@ export class BrainRunExecutorService {
       ...result,...(process.env.MARKETING_AI_REASONING_ENABLED==='true'?{
        snippet:'[WITHHELD_FROM_MODEL_ENABLED_WORKFLOW]'}:{})
      })),
-     memories:knowledge.memories.map(memory=>({
+     memories:(knowledge.memories??[]).map(memory=>({
       ...memory,...(process.env.MARKETING_AI_REASONING_ENABLED==='true'?{
        text:'[WITHHELD_FROM_MODEL_ENABLED_WORKFLOW]'}:{})
      })),
