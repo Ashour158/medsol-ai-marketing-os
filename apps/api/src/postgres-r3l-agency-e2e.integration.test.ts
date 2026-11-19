@@ -12,7 +12,7 @@ const actor=(organizationId:string,userId:string,role='ADMIN'):VerifiedIdentity=
  email:userId+'@example.invalid'
 });
 describe.skipIf(!enabled)('R3-L verified agency delegation, FORCE RLS and irreversible grants',()=>{
- it('rejects impersonation, revoked identities, cross-tenant and cross-brand grants with no remote effects',async()=>{
+ it('T01-001 verified actor, brand, OIDC, role and revocation acceptance with no remote effects',async()=>{
   const db=new PrismaClient();
   const client='r3l-client-'+randomUUID();
   const another='r3l-other-'+randomUUID();
@@ -120,7 +120,7 @@ describe.skipIf(!enabled)('R3-L verified agency delegation, FORCE RLS and irreve
    await db.$disconnect();
   }
  },90000);
- it('enforces grant visibility and client-only mutation with a real non-BYPASSRLS DB principal',async()=>{
+ it('T01-002 client/agency SQL RLS and immutable grant acceptance against non-BYPASSRLS principal',async()=>{
   const db=new PrismaClient();
   const client='r3l-rls-client-'+randomUUID();
   const agency='r3l-rls-agency-'+randomUUID();
