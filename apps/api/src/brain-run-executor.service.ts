@@ -36,10 +36,26 @@ export class BrainRunExecutorService {
     if(step.status==='COMPLETED'){causationId=step.executionId??undefined;continue;}
     if(step.status!=='PENDING')throw new ConflictException('Unresolved brain step requires investigation');
     const capability=nextAgentCapability(step.agentId);
+    // Per-agent knowledge scopes are enforced inside the authoritative
+    // MarketingLearningService. Never treat snippets as verified instructions.
+    // During model-enabled deployments, suppress untrusted excerpt bytes
+    // until a separate prompt-injection/remote RAG acceptance gate exists.
+    const knowledge=this.learning&&typeof command.requestedOutcome==='string'?
+     await this.learning.contextForAgent(organizationId,step.agentId,
+      command.requestedOutcome.slice(0,400)):null;
+    const safeKnowledge=knowledge?{
+     ...knowledge,
+     results:knowledge.results.map(result=>({
+      ...result,...(process.env.MARKETING_AI_REASONING_ENABLED==='true'?{
+       snippet:'[WITHHELD_FROM_MODEL_ENABLED_WORKFLOW]'}:{})
+     })),
+     untrustedDataNotInstructions:true,
+     agentMemoryWriteAuthorized:false
+    }:null;
     const result=await this.agents.execute(step.agentId,{
      organizationId,correlationId:run.correlationId,
      ...(causationId?{causationId}:{}),
-     input:{...trustedInput,upstreamExecutionId:causationId??null,brainRunId:runId,trendContext:{verified:false,source:'LEARNING_SIGNAL_REGISTRY',topics:citedTrends},authorityContext,performanceContext,brandContext:brandMaster?{version:brandMaster.version,rules:brandMaster.rules,sourceReference:brandMaster.sourceReference,status:'APPROVED'}:null},
+     input:{...trustedInput,upstreamExecutionId:causationId??null,brainRunId:runId,knowledgeContext:safeKnowledge,trendContext:{verified:false,source:'LEARNING_SIGNAL_REGISTRY',topics:citedTrends},authorityContext,performanceContext,brandContext:brandMaster?{version:brandMaster.version,rules:brandMaster.rules,sourceReference:brandMaster.sourceReference,status:'APPROVED'}:null},
      capabilities:[capability]
     });
     if(!result.decision.executionAllowed)throw new ConflictException('Agent decision denied');
