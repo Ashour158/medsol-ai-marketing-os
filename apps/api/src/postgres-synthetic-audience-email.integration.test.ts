@@ -121,6 +121,38 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
      syntheticTransport:{virtualOutcomeUnknown:1,
       realProviderRequests:0,actualMessagesSent:0,verifiedProviderReceipts:0,
       automaticRetryAllowed:false}}});
+   const journey={
+    timeZone:'Europe/Berlin',startAt:'2026-11-19T22:30:00Z',
+    quietHours:{start:'21:00',end:'08:00'},
+    dailyCap:1,rolling7DayCap:3,
+    steps:[{key:'welcome',delayMinutes:0,scenario:'ACCEPTED'},
+     {key:'follow_up',delayMinutes:0,scenario:'TIMEOUT_AFTER_ACCEPT'}]
+   };
+   const journeyKey='r2j-'+randomUUID();
+   const planned=await synthetic.simulateEmailJourney(org,identity,{
+    ...audience,requestKey:journeyKey,journey
+   });
+   expect(planned).toMatchObject({status:'SIMULATED',
+    results:{syntheticJourneyPlan:{syntheticOnly:true,
+     actualMessagesSent:0,realProviderRequests:0,
+     verifiedProviderReceipts:0,requiresFreshConsentAtExecution:true,
+     externalEffectsAuthorized:false,
+     steps:[{scheduledAt:'2026-11-20T07:00:00.000Z'},
+      {scheduledAt:'2026-11-21T07:00:00.000Z',
+       virtualOutcomeUnknown:1,automaticRetryAllowed:false}]}}});
+   const plannedReplay=await synthetic.simulateEmailJourney(org,identity,{
+    ...audience,requestKey:journeyKey,journey
+   });
+   expect(plannedReplay).toMatchObject({simulationId:planned.simulationId,
+    replayed:true});
+   await expect(synthetic.simulateEmailJourney(org,identity,{
+    ...audience,requestKey:journeyKey,journey:{...journey,dailyCap:2}
+   })).rejects.toThrow('changed audience, consent or creative');
+   await expect(synthetic.simulateEmailJourney(org,identity,{
+    ...audience,requestKey:'invalid-journey-'+randomUUID(),
+    journey:{...journey,steps:[{key:'send',delayMinutes:0,
+     scenario:'REAL_SEND'}]}
+   })).rejects.toThrow('Unknown synthetic email provider scenario');
    await expect(synthetic.simulateEmailJourney(org,identity,{
     ...audience,requestKey:'esp-ambiguous-'+randomUUID(),
     scenario:'SEND_LIVE'
@@ -151,7 +183,7 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     }});
    })).rejects.toThrow();
    expect(await db.marketingEmailSimulation.count({where:{
-    organizationId:org,campaignId:campaign.campaignId}})).toBe(2);
+    organizationId:org,campaignId:campaign.campaignId}})).toBe(3);
    expect(await db.auditEvent.count({where:{organizationId:org,
     objectType:'MarketingEmailSimulation',objectId:simulated.simulationId}})).toBe(1);
    expect(await db.outboxEvent.count({where:{organizationId:org,
@@ -238,14 +270,14 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     expect(observed.before).toEqual([0,0,0]);
     expect(observed.own[0]).toBe(4);
     expect(observed.own[1]).toBeGreaterThan(0);
-    expect(observed.own[2]).toBe(3);
+    expect(observed.own[2]).toBe(4);
     expect(observed.other).toEqual([0,0,0]);
    }finally{
     await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingSyntheticContact",'+
      '"MarketingSyntheticConsent","MarketingEmailSimulation" FROM "'+probeRole+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+probeRole+'"');
    }
-   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(3);
+   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(4);
   }finally{await db.$disconnect();}
  },90000);
  it('keeps real email delivery and recipient export routes unregistered',()=>{

@@ -5,6 +5,7 @@ import {PrismaService} from './prisma.service.js';
 import {hasMarketingPermission} from './marketing-permissions.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
 import {assertSyntheticEmailScenario,simulateSyntheticEmailTransport} from './synthetic-email-transport.js';
+import {parseSyntheticJourney,syntheticJourneyDigest,simulateSyntheticJourney} from './synthetic-email-journey.js';
 
 /** R2H: first bounded synthetic-only Audience/Consent & Email simulation
  * authority. It stores NO actual email addresses, legal consent, send tokens,
@@ -145,7 +146,7 @@ export class SyntheticAudienceEmailService{
   raw:unknown){
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||
      Object.keys(raw).some(k=>!['campaignId','brandId','contactIds',
-      'contentDigest','requestKey','scenario'].includes(k)))
+      'contentDigest','requestKey','scenario','journey'].includes(k)))
    throw new BadRequestException('Only bounded synthetic email simulation input is accepted');
   const v=raw as Record<string,unknown>;
   const campaignId=refId(v.campaignId,'campaign'),brandId=refId(v.brandId,'brand');
@@ -153,6 +154,10 @@ export class SyntheticAudienceEmailService{
   let scenario;
   try{scenario=assertSyntheticEmailScenario(v.scenario??'ACCEPTED');}
   catch{throw new BadRequestException('Unknown synthetic email provider scenario');}
+  let journey;
+  try{journey=v.journey===undefined?null:parseSyntheticJourney(v.journey);}
+  catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid synthetic journey');}
+  const journeyDigest=journey?syntheticJourneyDigest(journey):null;
   if(typeof v.contentDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(v.contentDigest))
    throw new BadRequestException('Immutable email content digest required');
   const contentDigest=v.contentDigest;
@@ -204,7 +209,8 @@ export class SyntheticAudienceEmailService{
     const previous=existing.result as Record<string,unknown>;
     if(existing.campaignId!==campaignId||existing.brandId!==brandId||
        existing.contentDigest!==contentDigest||existing.audienceDigest!==audienceDigest||
-       previous.syntheticTransportScenario!==scenario)
+       previous.syntheticTransportScenario!==scenario||
+       (previous.syntheticJourneyDigest??null)!==journeyDigest)
      throw new ConflictException('Email simulation key reused for changed audience, consent or creative');
     return{simulationId:existing.id,status:existing.status,
      audienceDigest,results:existing.result,replayed:true,
@@ -214,8 +220,13 @@ export class SyntheticAudienceEmailService{
     organizationId,brandId,campaignId,contentDigest,audienceDigest,
     eligibleCount:syntheticEligible,scenario
    });
+   const syntheticJourneyPlan=journey?simulateSyntheticJourney({
+    organizationId,brandId,campaignId,contentDigest,audienceDigest,
+    eligibleAtSnapshot:syntheticEligible,definition:journey
+   }):null;
    const results={
     syntheticTransportScenario:scenario,syntheticTransport,
+    syntheticJourneyDigest:journeyDigest,syntheticJourneyPlan,
     syntheticRecipients:sorted.length,syntheticEligible,withdrawn,
     complaintSuppressed,missingConsent,
     actualMessagesSent:0,verifiedProviderReceipts:0,
