@@ -221,3 +221,11 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## R3-E — signed MCP/A2A registration and revocation
 
 [Reuse Map, Ed25519 trusted manifest signature, strict tool/scope declarations, PostgreSQL FORCE RLS, independent approval and permanent revocation](R3E_GOVERNED_MCP_A2A_REGISTRY.md). The new GovernedToolRegistration aggregate owns **metadata only** and reuses existing OIDC, AuditEvent and OutboxEvent authorities. No MCP/A2A network calls or executable tool permissions are enabled. Provider staging, credential custody, remote schema validation, DNS-safe egress and cross-tenant red-team remain R3 exit blockers.
+
+## R2-J — DST-aware, consent-aware virtual email journeys
+
+[Reuse Map, bounded virtual journey DSL, overnight quiet hours, DST handling, rolling frequency caps, immutable audience/creative binding and SQL no-send acceptance](R2J_CONSENT_AWARE_VIRTUAL_EMAIL_JOURNEYS.md). The existing R2H email simulation authority now supports multi-step schedules and all 12 simulated ESP outcomes. This is **not** a legal consent or email delivery system.
+
+## R2/R3 independent internal release acceptance audit — 2026-11-19
+
+[Read the 25-gate evidence review, negative-control regression coverage, P0 blockers and explicit non-certification verdict](R2_R3_RELEASE_ACCEPTANCE_AUDIT_2026_11_19.md). Both releases remain PARTIAL. CI, virtual provider tests and signed MCP/A2A metadata do not prove production provider interoperability, 500-case E2E acceptance, general workflow deployment, hybrid RAG or legal consent. External effects remain locked pending independent customer/provider/security acceptance.
