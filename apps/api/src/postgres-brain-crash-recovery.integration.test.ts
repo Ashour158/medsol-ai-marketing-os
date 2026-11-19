@@ -5,7 +5,7 @@ import {BrainRunLedgerService} from './brain-run-ledger.service.js';
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('PostgreSQL Brain crash-window/fencing acceptance',()=>{
- it('does not steal cross-run proof, recover on its own, or checkpoint after quarantine',async()=>{
+ it('T15-020 does not steal cross-run proof, recover on its own, or checkpoint after quarantine',async()=>{
   const db=new PrismaClient();
   const organizationId='recovery-test-'+randomUUID();
   const correlationId='crash-corr-'+randomUUID();
