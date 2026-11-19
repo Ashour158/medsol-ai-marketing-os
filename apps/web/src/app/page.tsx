@@ -3,6 +3,7 @@ import { useState } from "react";
 import OperationsConsole from "./operations-console";
 import CreativeGovernanceStudio from "./creative-governance-studio";
 import CampaignPublicationStudio from "./campaign-publication-studio";
+import SyntheticEmailStudio from "./synthetic-email-studio";
 import IntegrationGovernanceStudio from "./integration-governance-studio";
 import {BlueprintVirtualStudio} from "./blueprint-virtual-studio";
 
@@ -120,6 +121,7 @@ export default function Home() {
     </section>
     <CreativeGovernanceStudio identity={identity} />
     <CampaignPublicationStudio identity={identity}/>
+    <SyntheticEmailStudio identity={identity}/>
     <IntegrationGovernanceStudio identity={identity}/>
     <OperationsConsole identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
