@@ -72,8 +72,54 @@ describe('R3-F signed agent release PostgreSQL and runtime acceptance',()=>{
     correlationId:'r3f-safe-execution',capabilities:['ASSESS_OBJECTIVE'],
     input:{objective:'Evidence-based market focus'}});
    expect(executed.decision).toMatchObject({
-    releaseEvidence:{version:2,releaseDigest:undefined}
+    releaseEvidence:{version:2,digest:agentReleaseDigest(manifest),
+     trustedRelease:true,modelCallsAuthorized:false,
+     toolCallsAuthorized:false,externalEffectsAuthorized:false}
    });
+   await expect(runtime.execute(manifest.agentId,{organizationId:org,
+    correlationId:'r3f-bad-capabilities',capabilities:['APPROVE_STRATEGY'],
+    input:{objective:'Attempt to expand approved capability'}}))
+    .rejects.toThrow('outside active signed release');
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.agentManifestRevision.update({where:{id:proposed.id},
+     data:{digest:'sha256:'+'0'.repeat(64)}});
+   })).rejects.toThrow();
+   const rollback=await releases.rollback(org,author,manifest.agentId,2,
+    'Rollback to built-in conservative agent manifest');
+   expect(rollback).toMatchObject({activeVersion:1,replayed:false});
+   const reactivated=await releases.activate(org,reviewer,proposed.id,1);
+   expect(reactivated.activeVersion).toBe(2);
+   const revoked=await releases.revoke(org,author,proposed.id,
+    'Incident requires immediate removal of approved agent revision');
+   expect(revoked).toMatchObject({status:'REVOKED',
+    externalEffectsAuthorized:false});
+   expect((await db.agent.findFirst({where:{
+    organizationId:org,id:manifest.agentId}}))?.version).toBe(1);
+   await expect(releases.activate(org,reviewer,proposed.id,1))
+    .rejects.toThrow('Approved');
+   expect(await db.auditEvent.count({where:{organizationId:org,
+    objectType:'AgentManifestRevision',objectId:proposed.id}})).toBe(3);
+   const role='r3f_probe_'+randomUUID().replaceAll('-','').slice(0,18);
+   await db.$executeRawUnsafe('CREATE ROLE "'+role+'" NOLOGIN');
+   try{
+    await db.$executeRawUnsafe('GRANT SELECT ON "AgentManifestRevision" TO "'+role+'"');
+    const counts=await db.$transaction(async tx=>{
+     await tx.$executeRawUnsafe('SET LOCAL ROLE "'+role+'"');
+     const count=async()=>Number((await tx.$queryRaw<Array<{n:bigint}>>`
+      SELECT count(*)::bigint AS n FROM "AgentManifestRevision"`)[0]?.n);
+     const none=await count();
+     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+     const own=await count();
+     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${other}, true)`;
+     const foreign=await count();
+     return{none,own,foreign};
+    });
+    expect(counts).toEqual({none:0,own:1,foreign:0});
+   }finally{
+    await db.$executeRawUnsafe('REVOKE SELECT ON "AgentManifestRevision" FROM "'+role+'"');
+    await db.$executeRawUnsafe('DROP ROLE "'+role+'"');
+   }
   }finally{
    if(prevKey===undefined)delete process.env.MARKETING_AGENT_RELEASE_TRUSTED_PUBLIC_KEY_PEM;
    else process.env.MARKETING_AGENT_RELEASE_TRUSTED_PUBLIC_KEY_PEM=prevKey;
