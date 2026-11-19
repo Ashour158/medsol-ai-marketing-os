@@ -85,3 +85,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R2G deterministic provider Simulation Lab
 
 [Read R2G simulator Reuse Map and acceptance](docs/blueprint-v2/R2G_SIMULATED_PROVIDER_MATRIX.md). The canonical publication SANDBOX path now supports twelve provider outcomes on all five existing social catalog entries, including callback duplication, delayed readback, rejection and ambiguous timeouts. Exact approved campaign/asset preflight and a single immutable PublicationAttempt, audit and internal event are enforced. The existing Publication Studio exposes scenario selection and synthetic results. This never performs actual vendor requests, does not treat simulated delivery as real metrics, and does not change the hard-locked live provider gateway.
+
+### R3-A Blueprint and Workflow Studio virtual DAG simulator
+
+[Read R3-A implementation and full R3 remaining requirements](docs/blueprint-v2/R3A_VIRTUAL_BLUEPRINT_WORKFLOW_STUDIO.md). A versioned, bounded graph can now be authored in the Command Center and previewed using the canonical Blueprint compiler. The existing MarketingWorkflowService persists a deterministic trace of agent handoffs, parallel branches, joins, human approval gates and event waits in WorkflowExecution/WorkflowStepExecution with tenant OIDC, idempotent replay, audit and Outbox. **This is simulation only:** no model calls, no MCP/A2A invocations, no actual human approval or domain writes; graph deployment remains blocked.
