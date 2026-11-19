@@ -9,7 +9,7 @@ import {permissionForMarketingRoute} from './marketing-permissions.js';
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe('R2H synthetic-only consent, suppression, audience and email pipeline',()=>{
- it.skipIf(!enabled)('runs approved campaign through audience, simulated opt-in, withdrawal, complaint and immutable no-send intent',async()=>{
+ it.skipIf(!enabled)('T10-001 runs approved campaign through audience, simulated opt-in, withdrawal, complaint and immutable no-send intent',async()=>{
   const db=new PrismaClient(),org='r2h-org-'+randomUUID(),
    foreign='r2h-other-'+randomUUID(),
    creator='r2h-creator-'+randomUUID(),reviewer='r2h-admin-'+randomUUID(),
