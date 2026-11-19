@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario, MODEL_PROVIDER_KEYS } from '@medsol/agent-runtime';
+import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
 
 @Injectable()
@@ -17,9 +17,12 @@ export class GovernedModelService {
         process.env.MARKETING_SIMULATED_MODEL_PROVIDER ?? 'LOCAL');
       const scenario = assertModelSimulationScenario(
         process.env.MARKETING_SIMULATED_MODEL_SCENARIO ?? 'SUCCESS');
-      const adapters = Object.fromEntries(MODEL_PROVIDER_KEYS.map(providerKey=>[
-        providerKey,new SimulatedModelAdapter({providerKey,scenario})
-      ])) as Record<typeof MODEL_PROVIDER_KEYS[number],ModelAdapter>;
+      const adapters = {
+        OPENAI:new SimulatedModelAdapter({providerKey:'OPENAI',scenario}),
+        ANTHROPIC:new SimulatedModelAdapter({providerKey:'ANTHROPIC',scenario}),
+        GEMINI:new SimulatedModelAdapter({providerKey:'GEMINI',scenario}),
+        LOCAL:new SimulatedModelAdapter({providerKey:'LOCAL',scenario})
+      };
       adapter = new GovernedModelRouter({
         routes:AGENT_ROSTER.map(agent=>({
           agentId:agent.id,purpose:'INTERNAL_MARKETING_DRAFT',
