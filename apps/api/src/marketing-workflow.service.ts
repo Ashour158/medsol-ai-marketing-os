@@ -563,6 +563,9 @@ export class MarketingWorkflowService {
    */
   private async dagCheckpointAgentStep(lease:WorkflowLease,stepId:string,
     agentId:string,executionId:string,action:string,reviewRequired:boolean){
+    if(process.env.MARKETING_DAG_OFFLINE_EXECUTION_ENABLED!=='true'||
+       process.env.MARKETING_AI_REASONING_ENABLED==='true')
+     throw new ForbiddenException('Offline-only DAG runtime gate changed before checkpoint');
     return this.dagTransaction(lease.organizationId,async tx=>{
       const locked=await tx.$queryRaw<Array<{id:string}>>`
        SELECT "id" FROM "WorkflowExecution"
@@ -762,17 +765,45 @@ export class MarketingWorkflowService {
       status:'WAITING_APPROVAL'}});
      if(!step||approval.scopeDigest!==(wf.input as {releaseDigest?:string}).releaseDigest)
       throw new ConflictException('Human approval does not match pinned DAG step and digest');
+     // A crash can separate the approval command receipt and its downstream
+     // workflow reconciliation. Recheck the release in THIS transaction;
+     // replaying an old APPROVED receipt must never revive revoked code.
+     const meta=wf.input as {deploymentId?:string;releaseDigest?:string};
+     const release=decision==='APPROVED'?await tx.blueprintDeployment.findFirst({
+      where:{organizationId,id:meta.deploymentId??''}
+     }):null;
+     let releaseTrusted=decision!=='APPROVED';
+     if(decision==='APPROVED'){
+      try{
+       releaseTrusted=!!release&&release.status!=='REVOKED'&&
+        release.digest===meta.releaseDigest&&
+        offlineDagDigest(release.manifest)===release.digest&&
+        verifyOfflineDagSignature(release.manifest,release.signature,
+         release.signerKeyId,offlineDagTrust());
+      }catch{releaseTrusted=false;}
+     }
+     const permitted=decision==='APPROVED'&&releaseTrusted;
      await tx.workflowStepExecution.updateMany({where:{id:step.id,
       organizationId,status:'WAITING_APPROVAL'},data:{
-      status:decision==='APPROVED'?'COMPLETED':'BLOCKED',
+      status:permitted?'COMPLETED':'BLOCKED',
       completedAt:new Date(),
-      output:{approvalId,decision,externalEffectsAuthorized:false}}});
+      output:{approvalId,decision,
+       revokedAfterHumanDecision:decision==='APPROVED'&&!releaseTrusted,
+       externalEffectsAuthorized:false}}});
      await tx.workflowExecution.updateMany({where:{id:wf.id,organizationId,
       status:'WAITING_APPROVAL'},data:{
-      status:decision==='APPROVED'?'RUNNING':'BLOCKED',
-      currentStep:approval.objectId,
-      ...(decision==='REJECTED'?{completedAt:new Date()}:{}),
+      status:permitted?'RUNNING':'BLOCKED',
+      currentStep:permitted?approval.objectId:'REVOKED_RELEASE_APPROVAL_RECONCILIATION',
+      ...(!permitted?{completedAt:new Date()}:{}),
       version:{increment:1}}});
+     if(decision==='APPROVED'&&!releaseTrusted)
+      await tx.auditEvent.create({data:{organizationId,actorType:'SYSTEM',
+       actorId:'r3j-fenced-approval-reconciliation',
+       action:'DAG_APPROVAL_RECEIPT_QUARANTINED',
+       objectType:'WorkflowExecution',objectId:wf.id,
+       correlationId:wf.correlationId,
+       after:{approvalId,revokedAfterHumanDecision:true,
+        automaticReplayAllowed:false,externalEffectsAuthorized:false}}});
     });
   }
 
