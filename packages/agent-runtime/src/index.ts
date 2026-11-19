@@ -27,3 +27,6 @@ export * from './openai-responses-adapter.js';
 export * from './social-discussion.js';
 export * from './marketing-expansion.js';
 export * from './provider-neutral-model-router.js';
+export * from './provider-adapter-contract.js';
+export * from './anthropic-messages-adapter.js';
+export * from './gemini-generate-content-adapter.js';

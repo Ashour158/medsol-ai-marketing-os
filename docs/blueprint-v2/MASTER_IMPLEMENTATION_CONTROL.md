@@ -213,3 +213,7 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## R2-I and R3-C — synthetic ESP matrix and provider-neutral model routing
 
 [Reuse Map, 12 synthetic email transport scenarios, 4 simulated model-provider protocols, zero-egress guarantees and acceptance blockers](R2I_R3C_SIMULATED_TRANSPORT_AND_MODEL_ROUTING.md). The existing R2H email authority now persists deterministic, scenario-bound no-send transport observations under its original immutable audience snapshot, with SQL guards against fake real sends or retries. The existing GovernedModelService/BoundedModelGateway can opt into four **offline** provider simulations (OpenAI, Anthropic, Gemini, local) with server-configured canonical-agent routing and the original budget ledger; default remains disabled. Neither slice creates external accounts, real email delivery, real AI inference, or full R2/R3 completion.
+
+## R3-D — dormant Anthropic/Gemini official model transport contracts
+
+[Reuse Map, fixed-endpoint transport contracts, strict no-tool output validation, reviewed pricing and no-account acceptance](R3D_MULTI_PROVIDER_MODEL_ADAPTERS.md). The canonical GovernedModelService and BoundedModelGateway now have dormant Anthropic Messages and Gemini generateContent adapters with explicit server-only credential/price gates, no tool calls, no arbitrary endpoints and no automatic retries. CI mock-fetch tests never contact a provider. Default remains disabled and no customer account is connected. This is **not** R3 production provider acceptance.
