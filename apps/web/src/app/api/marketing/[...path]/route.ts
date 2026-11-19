@@ -94,6 +94,15 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "campaigns" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id)))) ||
       (resource === "brand" && !(path.length===2 && ((request.method==="GET"&&(id==="active"||id==="revisions"))||(request.method==="POST"&&(id==="propose"||id==="decide"))))) ||
       (resource === "learning" && !(
+        (path.length===2&&id==="graph"&&request.method==="POST")||
+        (path.length===3&&id==="graph"&&!!action&&request.method==="GET")||
+        (path.length===4&&id==="graph"&&!!action&&
+         ["review","revoke"].includes(operation??"")&&request.method==="POST")||
+        (path.length===2&&id==="memories"&&["GET","POST"].includes(request.method))||
+        (path.length===4&&id==="memories"&&!!action&&
+         ["review","revoke"].includes(operation??"")&&request.method==="POST")||
+        (path.length===3&&id==="knowledge"&&action==="feedback"&&["GET","POST"].includes(request.method))||
+        (path.length===3&&id==="knowledge"&&action==="evaluate"&&request.method==="POST")||
         (path.length===2&&id==="knowledge"&&["GET","POST"].includes(request.method))||
         (path.length===3&&id==="knowledge"&&action==="search"&&request.method==="POST")||
         (path.length===4&&id==="knowledge"&&!!action&&

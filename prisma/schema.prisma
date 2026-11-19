@@ -71,6 +71,8 @@ model Organization {
   learningSignals LearningSignal[]
   knowledgeDocuments KnowledgeDocument[]
   knowledgeChunks KnowledgeChunk[]
+  knowledgeRelations KnowledgeRelation[]
+  agentKnowledgeMemories AgentKnowledgeMemory[]
   skillProposals AgentSkillProposal[]
   brainRuns BrainRun[]
   brainRunSteps BrainRunStep[]
@@ -1043,6 +1045,9 @@ model KnowledgeDocument {
  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
  chunks KnowledgeChunk[]
  learningSignals LearningSignal[]
+ outgoingRelations KnowledgeRelation[] @relation("KnowledgeRelationSource")
+ incomingRelations KnowledgeRelation[] @relation("KnowledgeRelationTarget")
+ agentMemories AgentKnowledgeMemory[]
  @@unique([organizationId,id])
  @@unique([organizationId,sourceKey])
  @@index([organizationId,status,accessMode,expiresAt],map:"KnowledgeDocument_org_status_access_exp_idx")
@@ -1063,4 +1068,58 @@ model KnowledgeChunk {
  @@unique([organizationId,documentId,ordinal])
  @@index([organizationId,documentId])
  @@index([terms],type:Gin,map:"KnowledgeChunk_terms_gin_idx")
+}
+
+/** R3-I: reviewed provenance edges between existing KnowledgeDocument nodes.
+ * This is not a duplicate document/claim graph or truth-verification authority.
+ */
+model KnowledgeRelation {
+ id String @id @default(cuid())
+ organizationId String
+ fromDocumentId String
+ toDocumentId String
+ relationType String
+ note String
+ noteDigest String
+ status String @default("PROPOSED")
+ createdBy String
+ reviewedBy String?
+ reviewedAt DateTime?
+ revokedBy String?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ fromDocument KnowledgeDocument @relation("KnowledgeRelationSource",fields:[organizationId,fromDocumentId],references:[organizationId,id],onDelete:Restrict)
+ toDocument KnowledgeDocument @relation("KnowledgeRelationTarget",fields:[organizationId,toDocumentId],references:[organizationId,id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,fromDocumentId,toDocumentId,relationType],map:"KnowledgeRelation_edge_key")
+ @@index([organizationId,status,fromDocumentId],map:"KnowledgeRelation_source_status_idx")
+ @@index([organizationId,status,toDocumentId],map:"KnowledgeRelation_target_status_idx")
+}
+
+/** R3-I: human-reviewed, TTL-bound, source-backed memory scoped to exactly
+ * one canonical agent. No autonomous writes, no stand-alone agent brain.
+ */
+model AgentKnowledgeMemory {
+ id String @id @default(cuid())
+ organizationId String
+ agentId String
+ documentId String
+ memoryKey String
+ content String
+ contentDigest String
+ status String @default("PROPOSED")
+ expiresAt DateTime
+ createdBy String
+ reviewedBy String?
+ reviewedAt DateTime?
+ revokedBy String?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ sourceDocument KnowledgeDocument @relation(fields:[organizationId,documentId],references:[organizationId,id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,agentId,memoryKey])
+ @@index([organizationId,agentId,status,expiresAt],map:"AgentMemory_agent_status_expiry_idx")
+ @@index([organizationId,documentId,status],map:"AgentMemory_source_status_idx")
 }

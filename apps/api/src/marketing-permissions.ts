@@ -112,6 +112,18 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if(method==='POST'&&(path==='/marketing/brand/propose'||path==='/marketing/brand/decide'))return 'DECIDE_APPROVAL';
   if (method === 'GET' && path === '/marketing/me') return null;
   if (method === 'POST' && (path === '/marketing/sessions' || path === '/marketing/sessions/revoke')) return null;
+  if(method==='GET'&&(
+   path==='/marketing/learning/memories'||
+   path==='/marketing/learning/knowledge/feedback'||
+   /^\/marketing\/learning\/graph\/[^/]+$/.test(path)
+  ))return 'READ_AUDIT';
+  if(method==='POST'&&(
+   path==='/marketing/learning/graph'||
+   path==='/marketing/learning/memories'||
+   path==='/marketing/learning/knowledge/feedback'||
+   path==='/marketing/learning/knowledge/evaluate'||
+   /^\/marketing\/learning\/(graph|memories)\/[^/]+\/(review|revoke)$/.test(path)
+  ))return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/learning/knowledge')return 'READ_AUDIT';
   if(method==='POST'&&path==='/marketing/learning/knowledge/search')return 'READ_AUDIT';
   if(method==='POST'&&(path==='/marketing/learning/knowledge'||
