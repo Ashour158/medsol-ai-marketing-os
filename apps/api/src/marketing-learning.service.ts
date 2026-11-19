@@ -478,7 +478,7 @@ export class MarketingLearningService {
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
     actorId:identity.userId,action:'KNOWLEDGE_GRAPH_EDGE_PROPOSED',
     objectType:'KnowledgeRelation',objectId:edge.id,correlationId:edge.id,
-    after:{fromDocumentId,toDocumentId,relationType,
+    after:{fromDocumentId,toDocumentId,relationType:relationType as string,
      noteDigest,scientificTruthVerified:false}}});
    return{edgeId:edge.id,status:'PROPOSED' as const,
     replayed:false,scientificTruthVerified:false};
@@ -725,7 +725,7 @@ export class MarketingLearningService {
     actorId:identity.userId,action:'KNOWLEDGE_RETRIEVAL_FEEDBACK',
     objectType:'KnowledgeChunk',objectId:chunkId,correlationId:feedbackId,
     after:{queryDigest,chunkDigest:chunk.digest,documentId:chunk.documentId,
-     relevance:label,reason,autonomousWeightChange:false,
+     relevance:label as string,reason,autonomousWeightChange:false,
      automaticSkillRelease:false}}});
    return{feedbackId,queryDigest,label,
     automaticRankingChange:false,automaticSkillRelease:false};
