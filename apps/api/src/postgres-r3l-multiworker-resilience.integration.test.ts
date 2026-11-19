@@ -10,7 +10,7 @@ import {MarketingIncidentResponseService,INCIDENT_ALERT_EVENT}
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('R3-L offline cross-tenant multi-worker resilience acceptance',()=>{
- it('fences simultaneous publishers, deduplicates crash-window receipts and quarantines failed event delivery',async()=>{
+ it('T15-001 multiworker CAS, receipt crash window and dead letter incident acceptance',async()=>{
   const db=new PrismaClient();
   const orgA='r3l-outbox-a-'+randomUUID();
   const orgB='r3l-outbox-b-'+randomUUID();
