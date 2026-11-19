@@ -107,9 +107,11 @@ model User {
   oidcSubject String?
   tenantRoleDefinitionId String?
   tenantRole TenantRoleDefinition? @relation(fields:[organizationId,tenantRoleDefinitionId],references:[organizationId,id],onDelete:Restrict)
+  authSessions AuthSession[]
   disabledAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,id])
   @@unique([organizationId,email])
   @@unique([organizationId,oidcSubject])
   @@index([organizationId])
@@ -357,6 +359,7 @@ model AuthSession {
   revokedAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user User @relation(fields:[organizationId,userId],references:[organizationId,id],onDelete:Restrict)
   @@index([organizationId,userId,revokedAt,expiresAt])
 }
 
