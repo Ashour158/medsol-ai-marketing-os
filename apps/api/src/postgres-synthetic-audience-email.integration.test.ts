@@ -169,13 +169,44 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
    expect(blocked).toMatchObject({status:'BLOCKED',
     results:{syntheticEligible:0,actualMessagesSent:0,
      verifiedProviderReceipts:0}});
-   const foreignVisible=await db.$transaction(async tx=>{
-    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${foreign}, true)`;
-    return tx.marketingSyntheticContact.findMany({where:{
-     organizationId:org
-    }});
-   });
-   expect(foreignVisible).toEqual([]);
+   // The CI database owner is a SUPERUSER and bypasses RLS. Prove actual
+   // tenant isolation with a temporary unprivileged read-only PostgreSQL role.
+   const probeRole='r2h_probe_'+randomUUID().replaceAll('-','').slice(0,18);
+   await db.$executeRawUnsafe('CREATE ROLE "'+probeRole+'" NOLOGIN');
+   try{
+    await db.$executeRawUnsafe('GRANT SELECT ON "MarketingSyntheticContact",'+
+     '"MarketingSyntheticConsent","MarketingEmailSimulation" TO "'+probeRole+'"');
+    const observed=await db.$transaction(async tx=>{
+     await tx.$executeRawUnsafe('SET LOCAL ROLE "'+probeRole+'"');
+     const count=async(table:'MarketingSyntheticContact'|
+      'MarketingSyntheticConsent'|'MarketingEmailSimulation')=>{
+      const rows=await tx.$queryRawUnsafe<Array<{n:bigint}>>(
+       'SELECT count(*)::bigint AS n FROM "'+table+'"');
+      return Number(rows[0]?.n);
+     };
+     const before=[await count('MarketingSyntheticContact'),
+      await count('MarketingSyntheticConsent'),
+      await count('MarketingEmailSimulation')];
+     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+     const own=[await count('MarketingSyntheticContact'),
+      await count('MarketingSyntheticConsent'),
+      await count('MarketingEmailSimulation')];
+     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${foreign}, true)`;
+     const other=[await count('MarketingSyntheticContact'),
+      await count('MarketingSyntheticConsent'),
+      await count('MarketingEmailSimulation')];
+     return{before,own,other};
+    });
+    expect(observed.before).toEqual([0,0,0]);
+    expect(observed.own[0]).toBe(4);
+    expect(observed.own[1]).toBeGreaterThan(0);
+    expect(observed.own[2]).toBe(2);
+    expect(observed.other).toEqual([0,0,0]);
+   }finally{
+    await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingSyntheticContact",'+
+     '"MarketingSyntheticConsent","MarketingEmailSimulation" FROM "'+probeRole+'"');
+    await db.$executeRawUnsafe('DROP ROLE "'+probeRole+'"');
+   }
    expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(2);
   }finally{await db.$disconnect();}
  },90000);
