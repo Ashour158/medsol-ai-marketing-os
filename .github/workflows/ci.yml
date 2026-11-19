@@ -67,7 +67,7 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
-      - name: Validate 136 mapped engineering assertions in the strict 500-slot blueprint (NOT 500 E2E)
+      - name: Validate 137 mapped engineering assertions in the strict 500-slot blueprint (NOT 500 E2E)
         env:
           MARKETING_R3M_TEST_GATE_PASSED: 'true'
         run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3m-acceptance-evidence.json
