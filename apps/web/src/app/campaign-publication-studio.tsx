@@ -2,6 +2,17 @@
 import {useEffect,useState} from "react";
 
 type Identity={userId:string;organizationId:string;email:string;role:string};
+const SIMULATED_SCENARIOS=["SUCCESS","POLICY_REJECTED","RATE_LIMITED","TOKEN_EXPIRED",
+ "ACCOUNT_REVOKED","MEDIA_REJECTED","PROVIDER_5XX","TIMEOUT_BEFORE_ACK",
+ "TIMEOUT_AFTER_ACCEPT","WEBHOOK_BEFORE_READBACK","DUPLICATE_CALLBACK",
+ "READBACK_MISMATCH"] as const;
+type ProviderScenario=typeof SIMULATED_SCENARIOS[number];
+type SimulationReport={status:string;replayed:boolean;sandboxReceiptOnly:true;
+ simulation:{providerKey:string;scenario:ProviderScenario;outcome:string;
+ transport:string;readback:string;virtualCallbackCount:number;
+ deduplicatedVirtualCallbackCount:number;simulatedRemotePostRef:string|null;
+ verifiedRemoteReceipts:0;realProviderRequests:0;automaticRetryAllowed:false}};
+
 type Campaign={id:string;code:string;name:string;status:string;brandId:string|null};
 type Publication={id:string;campaignId:string;approvalId:string;status:string;
  version:number;creativeAssetRevisionId?:string};
@@ -46,6 +57,9 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
  const [preauth,setPreauth]=useState<PreauthorizationStatus|null>(null);
  const [preauthReason,setPreauthReason]=useState("");
  const [preauthKey,setPreauthKey]=useState("");
+ const [scenario,setScenario]=useState<ProviderScenario>("SUCCESS");
+ const [simulationKey,setSimulationKey]=useState("");
+ const [simulationReport,setSimulationReport]=useState<SimulationReport|null>(null);
  const [holdReason,setHoldReason]=useState("");
  const [holdKey,setHoldKey]=useState("");
  const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
@@ -71,6 +85,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   ]);
   if(selectedId!==id){
    setHoldReason("");setHoldKey("");setPreauthReason("");setPreauthKey("");
+   setSimulationKey("");setSimulationReport(null);
   }
   setSelectedId(id);setDetail(d);setReconciliation(recon);setRelease(releaseGate);
   setPreauth(authorization);setReport(null);
@@ -81,7 +96,7 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
   finally{setBusy(false);}
  }
  useEffect(()=>{
-  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);setPreauth(null);setHoldReason("");setHoldKey("");setPreauthReason("");setPreauthKey("");
+  setCampaigns([]);setPublications([]);setSelectedId("");setDetail(null);setReport(null);setReconciliation(null);setRelease(null);setPreauth(null);setSimulationKey("");setSimulationReport(null);setHoldReason("");setHoldKey("");setPreauthReason("");setPreauthKey("");
   if(!identity)return;
   void inventory().catch(e=>setError(e instanceof Error?e.message:"Unable to load publications"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,6 +192,51 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
         await detailFor(detail.id);await inventory();setNotice("Publication plan cancelled.");
        })}>Cancel pending intent</button>
      </div>
+     <section aria-label="R2 simulated provider scenario engine"
+      style={{marginTop:16,padding:14,border:"1px solid #cbd5e1",borderRadius:8,
+       background:"#f8fafc"}}>
+      <h4 style={{marginTop:0}}>Provider Simulation Lab · No real account</h4>
+      <p style={{fontSize:12,color:"#475569"}}>
+       Executes the existing publication and approval workflow with deterministic,
+       source-bound mock provider responses. A local acceptance, virtual webhook
+       or readback is never a live post, real delivery receipt or platform metric.
+      </p>
+      <label>Simulation scenario
+       <select style={field} disabled={busy||!canSimulate||detail.status!=="PREPARED"}
+        value={scenario} onChange={e=>{
+         setScenario(e.target.value as ProviderScenario);
+         setSimulationKey("");setSimulationReport(null);
+        }}>
+        {SIMULATED_SCENARIOS.map(s=><option key={s} value={s}>
+         {s.replaceAll("_"," ")}</option>)}
+       </select>
+      </label>
+      <button style={{...btn,marginTop:10}}
+       disabled={busy||!canSimulate||detail.status!=="PREPARED"||
+        !detail.preflight.internalReady||
+        !detail.preflight.integrationEvidence?.destinationRegistered}
+       onClick={()=>void run(async()=>{
+        const key=simulationKey||crypto.randomUUID();
+        if(!simulationKey)setSimulationKey(key);
+        const r=await call("publications/"+encodeURIComponent(detail.id)+"/simulate",{
+         expectedVersion:detail.version,scenario,requestKey:key
+        }) as SimulationReport;
+        setSimulationReport(r);
+        await Promise.all([inventory(),detailFor(detail.id)]);
+        setNotice("Mock scenario recorded as "+r.status+
+         ". Real provider requests: 0; real receipts: 0.");
+       })}>Execute selected provider scenario · No send</button>
+      {simulationReport&&<div style={{marginTop:10,fontSize:12}}>
+       <strong>Simulation: {simulationReport.simulation.providerKey} ·
+        {simulationReport.simulation.scenario}</strong>
+       <p>Transport: {simulationReport.simulation.transport} ·
+        Readback: {simulationReport.simulation.readback} ·
+        Duplicate callback count: {simulationReport.simulation.virtualCallbackCount} ·
+        Deduplicated: {simulationReport.simulation.deduplicatedVirtualCallbackCount}</p>
+       <p>Actual provider requests: 0 · Verified real receipts: 0 ·
+        Automatic retry: disabled</p>
+      </div>}
+     </section>
      <section aria-label="Source-reconciled provider delivery evidence" style={{marginTop:16,padding:14,
       border:"1px solid #cbd5e1",borderRadius:8,background:"#f8fafc"}}>
       <h4 style={{marginTop:0}}>R2E-C · Remote delivery correlation</h4>
