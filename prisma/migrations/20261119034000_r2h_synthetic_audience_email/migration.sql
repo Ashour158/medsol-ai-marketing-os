@@ -29,12 +29,14 @@ CREATE TABLE "MarketingSyntheticConsent" (
  "organizationId" TEXT NOT NULL,
  "contactId" TEXT NOT NULL,
  "action" TEXT NOT NULL,
+ "sequence" INTEGER NOT NULL,
  "evidenceRef" TEXT NOT NULL,
  "recordedBy" TEXT NOT NULL,
  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
  CONSTRAINT "MarketingSyntheticConsent_pkey" PRIMARY KEY ("id"),
  CONSTRAINT "MarketingSyntheticConsent_action" CHECK
   ("action" IN ('SIMULATED_OPT_IN','SIMULATED_WITHDRAWAL','SIMULATED_COMPLAINT')),
+ CONSTRAINT "MarketingSyntheticConsent_sequence" CHECK ("sequence">0),
  CONSTRAINT "MarketingSyntheticConsent_ref" CHECK
   ("evidenceRef" ~ '^internal:synthetic-consent/[a-f0-9]{64}$')
 );
@@ -42,6 +44,8 @@ CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_id_key"
  ON "MarketingSyntheticConsent"("organizationId","id");
 CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_contactId_evidenceRef_key"
  ON "MarketingSyntheticConsent"("organizationId","contactId","evidenceRef");
+CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_contactId_sequence_key"
+ ON "MarketingSyntheticConsent"("organizationId","contactId","sequence");
 CREATE INDEX "MarketingSyntheticConsent_organizationId_contactId_createdAt_idx"
  ON "MarketingSyntheticConsent"("organizationId","contactId","createdAt");
 ALTER TABLE "MarketingSyntheticConsent" ADD CONSTRAINT "MarketingSyntheticConsent_org_fk"
