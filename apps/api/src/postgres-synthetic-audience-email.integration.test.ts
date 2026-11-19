@@ -135,7 +135,7 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
    const full=await db.$transaction(async tx=>{
     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
     return tx.marketingSyntheticConsent.findFirstOrThrow({where:{
-     organizationId:org,contactId:withdrawn
+     organizationId:org,contactId:withdrawn!
     }});
    });
    await expect(db.$transaction(async tx=>{
