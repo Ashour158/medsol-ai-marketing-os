@@ -20,7 +20,8 @@ function setup(){
     {metricKey:'spend_micros',_sum:{value:60000000n},_count:{_all:1}}
    ]),count:vi.fn().mockResolvedValue(2)
   },
-  auditEvent:{create:vi.fn().mockResolvedValue({})}
+  auditEvent:{create:vi.fn().mockResolvedValue({})},
+  $queryRaw:vi.fn().mockResolvedValue([])
  };
  db.$transaction=vi.fn(async(cb:any)=>cb(db));
  return{db,service:new MarketingPerformanceService(db)};
