@@ -112,7 +112,7 @@ describe.skipIf(!enabled)('R3-M real Postgres tenant and agency cross-engine acc
    const a=await campaignSvc.create({organizationId:client,
     commandId:'r3m-'+randomUUID(),correlationId:'r3m-'+randomUUID(),
     code:'visible-'+randomUUID(),name:'Visible campaign',objectiveId:objective.id,
-    brandId:brand.id,riskLevel:'R2'});
+    brandId:brand.id,riskLevel:'R2'}) as {campaignId:string};
    await campaignSvc.create({organizationId:client,
     commandId:'r3m-'+randomUUID(),correlationId:'r3m-'+randomUUID(),
     code:'hidden-'+randomUUID(),name:'Hidden campaign',objectiveId:objective.id,
