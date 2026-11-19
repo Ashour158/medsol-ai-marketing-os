@@ -10,6 +10,7 @@ import {randomUUID} from 'node:crypto';
  async create(cmd:CreateCampaignCommand,actorId?:string){
   const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
   return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${cmd.organizationId}, true)`;
    const objective=await tx.marketingObjective.findFirst({where:{id:cmd.objectiveId,organizationId:cmd.organizationId}});if(!objective)throw new NotFoundException('Objective not found in tenant');
    if(cmd.productId){const p=await tx.marketingProduct.findFirst({where:{id:cmd.productId,organizationId:cmd.organizationId}});if(!p)throw new NotFoundException('Product not found in tenant')}
    if(cmd.brandId){const b=await tx.brand.findFirst({where:{organizationId:cmd.organizationId,id:cmd.brandId,status:'ACTIVE'}});if(!b)throw new NotFoundException('Active campaign brand not found in tenant')}
