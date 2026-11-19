@@ -657,8 +657,8 @@ model MarketingSyntheticContact {
   syntheticRecipientRef String
   createdBy String
   createdAt DateTime @default(now())
-  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict,map:"MarketingSyntheticContact_org_fk")
+  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict,map:"MarketingSyntheticContact_org_brand_fk")
   consentEvents MarketingSyntheticConsent[]
   @@unique([organizationId,id])
   @@unique([organizationId,brandId,syntheticRecipientRef])
@@ -675,8 +675,8 @@ model MarketingSyntheticConsent {
   evidenceRef String
   recordedBy String
   createdAt DateTime @default(now())
-  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict)
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict,map:"MarketingSyntheticConsent_org_fk")
+  contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict,map:"MarketingSyntheticConsent_org_contact_fk")
   @@unique([organizationId,id])
   @@unique([organizationId,contactId,evidenceRef])
   @@unique([organizationId,contactId,sequence])
@@ -696,9 +696,9 @@ model MarketingEmailSimulation {
   result Json
   createdBy String
   createdAt DateTime @default(now())
-  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
-  campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict,map:"MarketingEmailSimulation_org_fk")
+  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict,map:"MarketingEmailSimulation_org_brand_fk")
+  campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict,map:"MarketingEmailSimulation_org_campaign_fk")
   @@unique([organizationId,id])
   @@unique([organizationId,requestKey])
   @@index([organizationId,campaignId,createdAt])
