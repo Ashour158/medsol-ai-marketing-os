@@ -7,9 +7,11 @@ import {createHash} from 'node:crypto';
  * No real tokens, accounts, addresses or permissions are accepted.
  */
 export type TrialProvider='META_GRAPH'|'LINKEDIN'|'SENDGRID'|
- 'OPENAI'|'ANTHROPIC'|'GEMINI'|'MCP'|'A2A';
+ 'OPENAI'|'ANTHROPIC'|'GEMINI'|'MCP'|'A2A'|
+ 'INSTAGRAM'|'TIKTOK'|'YOUTUBE'|'X'|'CANVA'|'ADOBE_FIREFLY';
 export const TRIAL_PROVIDERS:readonly TrialProvider[]=[
- 'META_GRAPH','LINKEDIN','SENDGRID','OPENAI','ANTHROPIC','GEMINI','MCP','A2A'
+ 'META_GRAPH','LINKEDIN','SENDGRID','OPENAI','ANTHROPIC','GEMINI','MCP','A2A',
+ 'INSTAGRAM','TIKTOK','YOUTUBE','X','CANVA','ADOBE_FIREFLY'
 ] as const;
 export const TRIAL_SCENARIOS=[
  'SUCCESS','AUTH_REJECTED','SCOPE_REJECTED','RATE_LIMITED',
@@ -19,7 +21,7 @@ export const TRIAL_SCENARIOS=[
 ] as const;
 export type TrialScenario=typeof TRIAL_SCENARIOS[number];
 export type TrialWireRequest={
- method:'GET'|'POST';url:string;headers:Record<string,string>;
+ method:'GET'|'POST'|'PUT';url:string;headers:Record<string,string>;
  body:Record<string,unknown>|null
 };
 export type TrialWireResponse={

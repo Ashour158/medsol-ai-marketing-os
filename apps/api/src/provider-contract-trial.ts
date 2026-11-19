@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {isExtraTrialProvider,rehearseExtraTrial} from './provider-trial-extra-protocols.js';
 import {AnthropicMessagesAdapter,BoundedModelGateway,
  GeminiGenerateContentAdapter,OpenAIResponsesAdapter,type ModelRequest}
  from '@medsol/agent-runtime';
@@ -20,6 +21,7 @@ export type ProviderTrialResult={
  fixtureReadbackMatches:boolean;mockHttpExchanges:number;
  mockCallbacks:number;mockDeduplicatedCallbacks:number;
  wire:ReturnType<typeof safeTrialWireSummary>|null;
+ protocolSteps?:ReturnType<typeof safeTrialWireSummary>[];
  actualProviderRequests:0;actualEmailsSent:0;actualPostsPublished:0;
  actualModelCalls:0;actualMcpCalls:0;actualA2aCalls:0;
  verifiedRemoteReceipts:0;accountOwnershipVerified:false;
@@ -181,9 +183,18 @@ export async function runProviderContractTrial(input:{
  let fixtureReadbackMatches=false;
  let mockHttpExchanges=0,mockCallbacks=0,mockDeduplicatedCallbacks=0;
  let wire:ProviderTrialResult['wire']=null;
+ let protocolSteps:ProviderTrialResult['protocolSteps'];
  if(isModel(provider)){
   const model=await rehearseModel(provider,scenario);
   outcome=model.outcome;mockHttpExchanges=model.exchanges;wire=model.wire;
+ }else if(isExtraTrialProvider(provider)){
+  const result=rehearseExtraTrial(provider,scenario);
+  outcome=result.outcome;
+  mockHttpExchanges=result.mockHttpExchanges;
+  mockCallbacks=result.mockCallbacks;
+  mockDeduplicatedCallbacks=result.mockDeduplicatedCallbacks;
+  fixtureReadbackMatches=result.fixtureReadbackMatches;
+  wire=result.wire;protocolSteps=result.steps;
  }else{
   // Unsupported protocol scenarios are rejected, never silently reported
   // as a successful account/readback or callback integration.
@@ -237,7 +248,7 @@ export async function runProviderContractTrial(input:{
  return{trialRef,provider,scenario,fixtureOnly:true,
   contractOutcome:outcome,fixtureReadbackMatches,
   mockHttpExchanges,mockCallbacks,mockDeduplicatedCallbacks,
-  wire,actualProviderRequests:0,actualEmailsSent:0,
+  wire,...(protocolSteps?{protocolSteps}:{}),actualProviderRequests:0,actualEmailsSent:0,
   actualPostsPublished:0,actualModelCalls:0,actualMcpCalls:0,
   actualA2aCalls:0,verifiedRemoteReceipts:0,
   accountOwnershipVerified:false,appEntitlementVerified:false,

@@ -10,6 +10,8 @@ type TrialResult={provider:string;scenario:string;trialRef:string;
  mockCallbacks:number;mockDeduplicatedCallbacks:number;
  wire:{method:string;host:string;path:string;headerNames:string[];
  bodyKeys:string[];wireDigest:string}|null;
+ protocolSteps?:Array<{method:string;host:string;path:string;
+ headerNames:string[];bodyKeys:string[];wireDigest:string}>;
  actualProviderRequests:0;actualEmailsSent:0;actualPostsPublished:0;
  actualModelCalls:0;actualMcpCalls:0;actualA2aCalls:0;
  verifiedRemoteReceipts:0;automaticRetryAllowed:false;
@@ -92,6 +94,17 @@ export default function ProviderContractTrialStudio({identity}:{identity:Identit
     Rehearsed HTTP: <code>{result.wire.method} {result.wire.host}{result.wire.path}</code>
     <br/>Body fields: {result.wire.bodyKeys.join(", ")||"none"} ·
     Header names only: {result.wire.headerNames.join(", ")}</p>}
+   {!!result.protocolSteps?.length&&<details open style={{marginTop:12}}>
+    <summary>Rehearsed protocol steps ({result.protocolSteps.length}) — no network</summary>
+    <ol style={{fontSize:12,paddingLeft:20}}>
+     {result.protocolSteps.map((step,i)=><li key={step.wireDigest+"-"+i}
+      style={{marginTop:8,overflowWrap:"anywhere"}}>
+      <strong>{step.method}</strong> {step.host}{step.path}
+      <div>Body fields: {step.bodyKeys.join(", ")||"none"} ·
+       header names: {step.headerNames.join(", ")}</div>
+     </li>)}
+    </ol>
+   </details>}
    <p style={{fontSize:12,color:"#9f3030"}}>{result.limitation}</p>
    <p style={{fontSize:11,overflowWrap:"anywhere"}}>Internal trial reference: {result.trialRef}</p>
   </div>}

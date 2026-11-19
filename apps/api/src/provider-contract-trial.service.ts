@@ -57,7 +57,13 @@ export class ProviderContractTrialService{
      ANTHROPIC:'Messages API through existing adapter, injected fake fetch',
      GEMINI:'generateContent through existing adapter, injected fake fetch',
      MCP:'JSON-RPC initialize fixture, no tools/call',
-     A2A:'JSON-RPC message/send fixture, no peer message sent'
+     A2A:'JSON-RPC message/send fixture, no peer message sent',
+     INSTAGRAM:'Instagram Professional: container, processing status, publish, media readback; all fixtures',
+     TIKTOK:'TikTok Direct Post: creator-info, PRIVATE upload init, chunk and publish status; no account',
+     YOUTUBE:'YouTube Data API v3: resumable session, fake chunk and processing status; private fixture',
+     X:'X API v2: chunked media initialize, append, finalize, status, post and readback',
+     CANVA:'Canva Connect: editable design autofill async job, export job and status',
+     ADOBE_FIREFLY:'Adobe Firefly: server-to-server token shape, image generate-async and status'
     },
     mockOnly:true,realNetworkCalls:0,realAccountsConnected:0,
     externalEffectsAuthorized:false};

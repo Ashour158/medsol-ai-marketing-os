@@ -233,3 +233,7 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## R2/R3 — offline official-provider wire and OAuth connection trials
 
 [Eight-provider official-shaped wire rehearsal, real model adapter parsing with injected fake HTTP, Meta/LinkedIn canonical PKCE exchange with fake broker, 11-scenario chaos, tenant OIDC/CommandReceipt/AuditEvent, admin trial studio](R2_R3_OFFICIAL_PROVIDER_OFFLINE_CONNECTION_TRIAL.md). This extends the **existing** Integration Hub, OAuth, model router and publishing authorities without a parallel sender or provider connection. Real provider HTTP, real accounts, customer delivery, model inference, MCP/A2A execution and verified receipts remain **zero**. The external staging and security acceptance gates in [the R2/R3 release audit](R2_R3_RELEASE_ACCEPTANCE_AUDIT_2026_11_19.md) are unchanged.
+
+## Six additional offline provider protocols — Instagram, TikTok, YouTube, X, Canva, Adobe
+
+[Reuse Map, ordered upload/post/job/status contracts, 66 new provider chaos cases, 5 fake PKCE flows, Adobe server-to-server fixture, exact HTTP shapes, no-egress checks and remaining official sandbox requirements](R2_R3_SIX_PROVIDER_PROTOCOL_COMPLETION_2026_11_19.md). All **14** provider categories now have in-process trial contract coverage. This is **not** a connected production API adapter release; customer permissions, real binary uploads, application approval, provider callbacks and all cross-channel production R2/R3 acceptance remain unverified. The social/email and tool/model egress locks are unchanged.

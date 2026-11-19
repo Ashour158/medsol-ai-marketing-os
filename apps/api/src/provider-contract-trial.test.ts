@@ -8,6 +8,7 @@ import {TRIAL_PROVIDERS,TRIAL_SCENARIOS,
  TRIAL_META_PAGE,TRIAL_META_POST,TRIAL_LINKEDIN_ORG,
  TRIAL_LINKEDIN_POST,TRIAL_TEXT,TRIAL_FAKE_TOKEN}
  from './provider-trial-wire.js';
+import {isExtraTrialProvider} from './provider-trial-extra-protocols.js';
 import {LockedOfficialProviderDispatchGateway}
  from './official-social-publishing.port.js';
 import {permissionForMarketingRoute} from './marketing-permissions.js';
@@ -113,7 +114,8 @@ describe('R2/R3 official-provider-shaped offline protocol acceptance',()=>{
      verifiedRemoteReceipts:0,accountOwnershipVerified:false,
      appEntitlementVerified:false,senderDomainVerified:false,
      externalEffectsAuthorized:false,automaticRetryAllowed:false});
-    expect(result.mockHttpExchanges).toBeLessThanOrEqual(2);
+    expect(result.mockHttpExchanges).toBeLessThanOrEqual(
+     isExtraTrialProvider(provider)?6:2);
     expect(JSON.stringify(result)).not.toContain(TRIAL_FAKE_TOKEN);
     expect(JSON.stringify(result)).not.toContain('authorization: Bearer');
     expect(result.trialRef).toMatch(
