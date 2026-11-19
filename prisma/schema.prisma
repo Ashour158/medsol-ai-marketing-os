@@ -55,6 +55,7 @@ model Organization {
   modelBudgets ModelBudget[]
   modelUsage ModelUsage[]
   agents Agent[]
+  agentManifestRevisions AgentManifestRevision[]
   agentExecutions AgentExecution[]
   objectives MarketingObjective[]
   products MarketingProduct[]
@@ -120,6 +121,7 @@ model Agent {
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   executions AgentExecution[]
+  manifestRevisions AgentManifestRevision[]
   @@id([organizationId,id])
   @@index([organizationId,status])
 }
@@ -946,4 +948,32 @@ model GovernedToolRegistration {
  @@unique([organizationId,id])
  @@unique([organizationId,kind,serverKey])
  @@index([organizationId,status,kind])
+}
+
+/**
+ * R3-F immutable signed, reviewed revisions of canonical Agent.
+ * Agent.version is the sole active version pointer; version=1 is baseline.
+ * Revisions cannot create agents, expand the roster, or enable remote egress.
+ */
+model AgentManifestRevision {
+ id String @id @default(cuid())
+ organizationId String
+ agentId String
+ revision Int
+ manifest Json
+ digest String
+ signature String
+ signerKeyId String
+ status String @default("PROPOSED")
+ createdBy String
+ approvedBy String?
+ approvedAt DateTime?
+ revokedBy String?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ agent Agent @relation(fields:[organizationId,agentId],references:[organizationId,id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,agentId,revision])
+ @@index([organizationId,agentId,status])
 }
