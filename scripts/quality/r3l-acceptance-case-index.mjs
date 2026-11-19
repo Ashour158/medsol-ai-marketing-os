@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-L authoritatively enumerates the planned 500-case blueprint.
+ * R3-M extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -104,7 +104,7 @@ if(active.size!==136)
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3L_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3M_TEST_GATE_PASSED==='true';
 const cases=[];
 for(const [suite,area,count] of PLAN){
  for(let n=1;n<=count;n++){
