@@ -82,6 +82,7 @@ model Organization {
   emailSimulations MarketingEmailSimulation[]
   publicationAttempts PublicationAttempt[]
   integrationConnections IntegrationConnection[]
+  governedToolRegistrations GovernedToolRegistration[]
   verifiedMediaEvidence VerifiedMediaEvidence[]
   oauthAuthorizationAttempts OAuthAuthorizationAttempt[]
   providerCredentials ProviderCredential[]
@@ -914,4 +915,35 @@ model ProviderWebhookObservation {
   @@unique([organizationId,integrationConnectionId,payloadDigest],map:"ProviderWebhookObs_org_conn_payload_key")
   @@index([organizationId,integrationConnectionId,status,verifiedAt],map:"ProviderWebhookObs_org_conn_state_time_idx")
   @@index([organizationId,integrationConnectionId,candidatePostDigest],map:"ProviderWebhookObs_org_conn_post_idx")
+}
+
+/**
+ * R3-E single authoritative tenant-owned MCP/A2A metadata registration.
+ * This is NOT a remote tool credential or execution ledger. All network
+ * dispatch remains prohibited, including APPROVED signed registrations.
+ */
+model GovernedToolRegistration {
+ id String @id @default(cuid())
+ organizationId String
+ kind String
+ serverKey String
+ name String
+ manifest Json
+ manifestDigest String
+ signature String
+ signerKeyId String
+ trustTier String
+ status String @default("QUARANTINED")
+ version Int @default(1)
+ createdBy String
+ approvedBy String?
+ approvedAt DateTime?
+ revokedBy String?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,kind,serverKey])
+ @@index([organizationId,status,kind])
 }

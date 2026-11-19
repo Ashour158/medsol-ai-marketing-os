@@ -217,3 +217,7 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## R3-D — dormant Anthropic/Gemini official model transport contracts
 
 [Reuse Map, fixed-endpoint transport contracts, strict no-tool output validation, reviewed pricing and no-account acceptance](R3D_MULTI_PROVIDER_MODEL_ADAPTERS.md). The canonical GovernedModelService and BoundedModelGateway now have dormant Anthropic Messages and Gemini generateContent adapters with explicit server-only credential/price gates, no tool calls, no arbitrary endpoints and no automatic retries. CI mock-fetch tests never contact a provider. Default remains disabled and no customer account is connected. This is **not** R3 production provider acceptance.
+
+## R3-E — signed MCP/A2A registration and revocation
+
+[Reuse Map, Ed25519 trusted manifest signature, strict tool/scope declarations, PostgreSQL FORCE RLS, independent approval and permanent revocation](R3E_GOVERNED_MCP_A2A_REGISTRY.md). The new GovernedToolRegistration aggregate owns **metadata only** and reuses existing OIDC, AuditEvent and OutboxEvent authorities. No MCP/A2A network calls or executable tool permissions are enabled. Provider staging, credential custody, remote schema validation, DNS-safe egress and cross-tenant red-team remain R3 exit blockers.
