@@ -117,7 +117,7 @@ const result={
 if(cases.length!==500||new Set(cases.map(c=>c.id)).size!==500||
  result.suiteSummaries.some(s=>s.offlineEvidenceMapped>s.planned))
  throw new Error('500-case coverage register inconsistency');
-const outputPath=process.argv[1]==='--output'?process.argv[2]:null;
+const outputPath=process.argv[2]==='--output'?process.argv[3]:null;
 if(outputPath&&typeof outputPath==='string'){
  const target=resolve(outputPath);
  if(!target.endsWith('.json'))throw new Error('Only JSON evidence is supported');
