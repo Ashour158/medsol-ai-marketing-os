@@ -13,7 +13,7 @@ CREATE TABLE "MarketingSyntheticContact" (
 );
 CREATE UNIQUE INDEX "MarketingSyntheticContact_organizationId_id_key"
  ON "MarketingSyntheticContact"("organizationId","id");
-CREATE UNIQUE INDEX "MarketingSyntheticContact_organizationId_brandId_syntheticRecipientRef_key"
+CREATE UNIQUE INDEX "SyntheticContact_tenant_brand_ref_uq"
  ON "MarketingSyntheticContact"("organizationId","brandId","syntheticRecipientRef");
 CREATE INDEX "MarketingSyntheticContact_organizationId_brandId_createdAt_idx"
  ON "MarketingSyntheticContact"("organizationId","brandId","createdAt");
@@ -42,7 +42,7 @@ CREATE TABLE "MarketingSyntheticConsent" (
 );
 CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_id_key"
  ON "MarketingSyntheticConsent"("organizationId","id");
-CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_contactId_evidenceRef_key"
+CREATE UNIQUE INDEX "SyntheticConsent_tenant_contact_ref_uq"
  ON "MarketingSyntheticConsent"("organizationId","contactId","evidenceRef");
 CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_contactId_sequence_key"
  ON "MarketingSyntheticConsent"("organizationId","contactId","sequence");
