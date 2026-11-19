@@ -1,3 +1,7 @@
+import {validateAgentInput} from '@medsol/agent-runtime';
+import {agentReleaseDigest,agentReleaseTrustConfig,baselineAgentReleaseManifest,
+ parseAgentReleaseManifest,verifyTrustedAgentReleaseSignature}
+ from './agent-manifest-release.js';
 import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
@@ -11,9 +15,38 @@ import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {G
    where:{organizationId_id:{organizationId:i.organizationId,id:agentId}},
    create:{id:agentId,organizationId:i.organizationId,name:manifest.name,version:1,
      capabilities:[...manifest.capabilities]},
-   update:{name:manifest.name,capabilities:[...manifest.capabilities]}
+   update:{}
  });
  if(installed.status!=='ACTIVE')throw new ForbiddenException('Agent is administratively paused or retired');
+ // Agent.version is the authoritative active release pointer; no second roster.
+ // Signed revisions may only narrow the built-in identity and capabilities.
+ let activeManifest=baselineAgentReleaseManifest(agentId);
+ if(installed.version>1){
+  const release=await this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${i.organizationId}, true)`;
+   return tx.agentManifestRevision.findFirst({where:{
+    organizationId:i.organizationId,agentId,revision:installed.version,
+    status:'APPROVED'
+   }});
+  });
+  if(!release)throw new ForbiddenException('Active agent release missing, revoked or unapproved');
+  activeManifest=parseAgentReleaseManifest(release.manifest);
+  if(agentReleaseDigest(activeManifest)!==release.digest||
+   !verifyTrustedAgentReleaseSignature(activeManifest,release.signature,
+    release.signerKeyId,agentReleaseTrustConfig()))
+   throw new ForbiddenException('Active agent release signature no longer trusted');
+ }
+ const expectedCapabilities=[...activeManifest.capabilities].sort();
+ if(!Array.isArray(installed.capabilities)||
+  JSON.stringify([...installed.capabilities].sort())!==JSON.stringify(expectedCapabilities)||
+  i.capabilities.some(c=>!activeManifest.capabilities.includes(c)))
+  throw new ForbiddenException('Agent requested capability outside active signed release');
+ validateAgentInput(i.input,activeManifest.maxInputBytes);
+ if(installed.version>1&&process.env.MARKETING_AI_REASONING_ENABLED==='true')
+  throw new ForbiddenException('Signed offline-only release cannot invoke a remote model');
+ const releaseEvidence={version:installed.version,digest:agentReleaseDigest(activeManifest),
+  trustedRelease:installed.version>1,modelCallsAuthorized:false,
+  toolCallsAuthorized:false,externalEffectsAuthorized:false};
  const executionId=randomUUID();const started=await this.db.agentExecution.create({data:{id:executionId,organizationId:i.organizationId,agentId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input as any,status:'RUNNING'}});try{const decision=await this.runtime.execute(agentId,{executionId,organizationId:i.organizationId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input,capabilities:i.capabilities});let approvedDraft=decision;
  if(process.env.MARKETING_AI_REASONING_ENABLED==='true' && decision.executionAllowed){
    if(!this.model)throw new Error('Governed model service not configured');
@@ -35,7 +68,8 @@ import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {G
       costMicrosEstimated:generated.actualCostMicros,externalEffectsPermitted:false
    }}};
  }
- await this.db.agentExecution.update({where:{id:started.id},data:{decision:approvedDraft as any,status:approvedDraft.executionAllowed?'COMPLETED':'BLOCKED',completedAt:new Date()}});
- return{executionId,decision:approvedDraft}}catch(error){await this.db.agentExecution.update({where:{id:started.id},data:{status:'FAILED',completedAt:new Date(),decision:{error:error instanceof Error?error.message:'Unknown error'} as any}});throw error}}
+ const pinnedDecision={...approvedDraft,releaseEvidence};
+ await this.db.agentExecution.update({where:{id:started.id},data:{decision:pinnedDecision as any,status:pinnedDecision.executionAllowed?'COMPLETED':'BLOCKED',completedAt:new Date()}});
+ return{executionId,decision:pinnedDecision}}catch(error){await this.db.agentExecution.update({where:{id:started.id},data:{status:'FAILED',completedAt:new Date(),decision:{error:error instanceof Error?error.message:'Unknown error'} as any}});throw error}}
  list(){return AGENT_ROSTER.map(m=>({id:m.id,name:m.name,mission:m.mission,capabilities:m.capabilities,registered:this.registry.list().some(a=>a.id===m.id)}))}
 }
