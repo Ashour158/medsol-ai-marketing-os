@@ -4,6 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
 import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
 import {providerClaimDigest} from './provider-claim-digest.js';
+import {assertSocialSimulationScenario,simulateProviderTransport} from './social-provider-simulation.js';
 import {
  authorizeCommercialScope,evaluateSocialPublishingRelease
 } from '@medsol/policy';
@@ -828,45 +829,108 @@ export class CampaignPublicationService{
   });
  }
  async simulate(organizationId:string,actorId:string,publicationIdInput:unknown,
-  expectedVersionInput:unknown){
+  expectedVersionInput:unknown,scenarioInput?:unknown,simulationKeyInput?:unknown){
   id(actorId,'actor');const publicationId=id(publicationIdInput,'publication');
   if(!Number.isSafeInteger(expectedVersionInput)||(expectedVersionInput as number)<1)
    throw new BadRequestException('Expected publication version required');
   const expectedVersion=expectedVersionInput as number;
+  const simulationRequested=scenarioInput!==undefined;
+  let scenario:ReturnType<typeof assertSocialSimulationScenario>|null=null;
+  let simulationKey:string|null=null;
+  if(simulationRequested){
+   try{scenario=assertSocialSimulationScenario(scenarioInput);}
+   catch{throw new BadRequestException('Unsupported provider simulation scenario');}
+   simulationKey=id(simulationKeyInput,'simulation request key',160);
+   if(simulationKey.length<12)throw new BadRequestException('Simulation key must have 12+ characters');
+  }else if(simulationKeyInput!==undefined)
+   throw new BadRequestException('Simulation key requires an explicit scenario');
   return this.scoped(organizationId,async tx=>{
    const row=await tx.campaignPublication.findFirst({where:{organizationId,id:publicationId}});
    if(!row)throw new NotFoundException('Publication not found in tenant');
-   if(row.status==='SIMULATED')return{publicationId,status:'SIMULATED',replayed:true,
-    sandboxReceiptOnly:true,externalEffectsAuthorized:false};
-   if(row.status!=='PREPARED'||row.version!==expectedVersion)
+   let synthetic:ReturnType<typeof simulateProviderTransport>|null=null;
+   if(scenario&&simulationKey){
+    const approval=await tx.approval.findFirst({where:{organizationId,id:row.approvalId}});
+    if(!approval||!isExactCreativeScope(approval.scope)||
+       approval.scopeDigest!==row.scopeDigest||
+       exactCreativeScopeHash(approval.scope)!==row.scopeDigest)
+     throw new ConflictException('Exact immutable creative approval required for simulation');
+    const connection=await tx.integrationConnection.findFirst({where:{
+     organizationId,brandId:approval.scope.brandId,
+     destinationRef:approval.scope.destinationRef
+    }});
+    if(!connection)throw new ConflictException('Registered tenant provider required for simulation');
+    synthetic=simulateProviderTransport({
+     organizationId,publicationId,integrationConnectionId:connection.id,
+     providerKey:connection.providerKey,scopeDigest:row.scopeDigest,
+     scenario,requestKey:simulationKey
+    });
+   }
+   // The same canonical PublicationAttempt remains the only attempt owner.
+   // Synthetic results never create a live provider dispatch or remote receipt.
+   const receiptRef=synthetic?'internal:sandbox/'+createHash('sha256').update(JSON.stringify([
+    'medsol-provider-simulation-receipt-v1',synthetic.providerRequestRef,
+    organizationId,publicationId,row.scopeDigest
+   ])).digest('hex'):'internal:sandbox/'+createHash('sha256').update(
+    [organizationId,row.id,row.scopeDigest,'SANDBOX_V1'].join('|')).digest('hex');
+   const status=synthetic?synthetic.outcome:'SIMULATED';
+   if(row.status!=='PREPARED'){
+    if(!synthetic&&row.status==='SIMULATED')
+     return{publicationId,status:'SIMULATED',replayed:true,
+      sandboxReceiptOnly:true,externalEffectsAuthorized:false};
+    const prior=synthetic?await tx.publicationAttempt.findFirst({where:{
+     organizationId,publicationId,mode:'SANDBOX'
+    }}):null;
+    if(synthetic&&prior?.evidenceRef===receiptRef&&
+       prior.outcome===status&&row.status===status)
+     return{publicationId,status,replayed:true,sandboxReceiptOnly:true,
+      simulation:synthetic,externalEffectsAuthorized:false};
+    throw new ConflictException(synthetic?
+     'Publication already executed or held under different simulation intent':
+     'Publication no longer ready for this simulation');
+   }
+   if(row.version!==expectedVersion)
     throw new ConflictException('Publication no longer ready for this simulation');
    const preflight=await this.check(tx,organizationId,row);
    if(!preflight.internalReady)
     throw new ConflictException('Publication preflight no longer valid: '+preflight.reasons.join(', '));
-   // Deterministic local simulation. No fetch, provider SDK, message send,
-   // network call, access token or customer-visible delivery.
-   const receiptRef='internal:sandbox/'+createHash('sha256').update(
-    [organizationId,row.id,row.scopeDigest,'SANDBOX_V1'].join('|')).digest('hex');
+   const previous=await tx.publicationAttempt.count({where:{organizationId,publicationId}});
+   if(previous>0)throw new ConflictException('Publication already owns attempt evidence');
    const attempt=await tx.publicationAttempt.create({data:{id:randomUUID(),
-    organizationId,publicationId,sequence:1,mode:'SANDBOX',outcome:'SIMULATED',
+    organizationId,publicationId,sequence:1,mode:'SANDBOX',outcome:status,
     evidenceRef:receiptRef,inputDigest:row.scopeDigest,recordedBy:actorId}});
    const changed=await tx.campaignPublication.updateMany({where:{id:publicationId,
     organizationId,status:'PREPARED',version:row.version},
-    data:{status:'SIMULATED',version:{increment:1}}});
+    data:{status,version:{increment:1}}});
    if(changed.count!==1)throw new ConflictException('Concurrent simulation claim');
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,
-    action:'PUBLICATION_SANDBOX_SIMULATED',objectType:'CampaignPublication',
-    objectId:publicationId,correlationId:publicationId,
-    after:{status:'SIMULATED',receiptRef,attemptId:attempt.id,
-     actualPlatformDelivery:false,externalEffectsAuthorized:false}}});
+    action:synthetic?'CAMPAIGN_PROVIDER_SIMULATION_RECORDED':'PUBLICATION_SANDBOX_SIMULATED',
+    objectType:'CampaignPublication',objectId:publicationId,
+    correlationId:publicationId,
+    after:{status,receiptRef,attemptId:attempt.id,
+     ...(synthetic?{syntheticProviderKey:synthetic.providerKey,
+      syntheticScenario:synthetic.scenario,syntheticTransport:synthetic.transport,
+      syntheticReadback:synthetic.readback,
+      virtualCallbackCount:synthetic.virtualCallbackCount,
+      virtualReadbackMatchesApprovedScope:synthetic.virtualReadbackMatchesApprovedScope,
+      syntheticProviderRequestRef:synthetic.providerRequestRef,
+      syntheticPostRef:synthetic.simulatedRemotePostRef}:{}),
+     actualPlatformDelivery:false,verifiedRemoteReceipts:0,
+     externalEffectsAuthorized:false}}});
    await tx.outboxEvent.create({data:{organizationId,eventId:randomUUID(),
-    eventType:'CampaignPublicationSandboxSimulatedInternal',
+    eventType:synthetic?'CampaignProviderSimulationRecordedInternal':
+     'CampaignPublicationSandboxSimulatedInternal',
     aggregateType:'CampaignPublication',aggregateId:publicationId,
     correlationId:publicationId,
-    payload:{publicationId,attemptId:attempt.id,receiptRef,
-     actualPlatformDelivery:false,externalEffectsAuthorized:false},version:row.version+1}});
-   return{publicationId,status:'SIMULATED',replayed:false,
-    sandboxReceiptOnly:true,receiptRef,externalEffectsAuthorized:false};
+    payload:{publicationId,attemptId:attempt.id,receiptRef,status,
+     ...(synthetic?{scenario:synthetic.scenario,providerKey:synthetic.providerKey,
+      readback:synthetic.readback,
+      simulatedRemotePostRef:synthetic.simulatedRemotePostRef,
+      virtualCallbackCount:synthetic.virtualCallbackCount,
+      deduplicatedVirtualCallbackCount:synthetic.deduplicatedVirtualCallbackCount}:{}),
+     actualPlatformDelivery:false,verifiedRemoteReceipts:0,
+     externalEffectsAuthorized:false},version:row.version+1}});
+   return{publicationId,status,replayed:false,sandboxReceiptOnly:true,
+    receiptRef,...(synthetic?{simulation:synthetic}:{}),externalEffectsAuthorized:false};
   });
  }
  async cancel(organizationId:string,actorId:string,publicationIdInput:unknown,

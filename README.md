@@ -81,3 +81,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R2F-D durable no-send provider preauthorization escrow
 
 [R2F-D Reuse Map, expiry and recovery contract and real-provider prerequisites](docs/blueprint-v2/R2F_D_PREAUTHORIZATION_RESERVATION.md). The existing publication and immutable attempt authorities now stage a one-use, admin-OIDC controlled **DISPATCH_RESERVATION** against the exact approved tenant, provider connection and creative, with an idempotency fingerprint, bounded expiry, atomic audit and Outbox. Read-only recovery identifies expired-but-not-sent escrow, and operators may permanently close it; duplicate, forged, foreign-tenant and premature transitions fail. **REMOTE sending and PUBLISHED remain blocked at SQL and API layers.**
+
+### R2G deterministic provider Simulation Lab
+
+[Read R2G simulator Reuse Map and acceptance](docs/blueprint-v2/R2G_SIMULATED_PROVIDER_MATRIX.md). The canonical publication SANDBOX path now supports twelve provider outcomes on all five existing social catalog entries, including callback duplication, delayed readback, rejection and ambiguous timeouts. Exact approved campaign/asset preflight and a single immutable PublicationAttempt, audit and internal event are enforced. The existing Publication Studio exposes scenario selection and synthetic results. This never performs actual vendor requests, does not treat simulated delivery as real metrics, and does not change the hard-locked live provider gateway.

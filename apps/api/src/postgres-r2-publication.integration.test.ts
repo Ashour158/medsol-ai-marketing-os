@@ -249,6 +249,71 @@ describe('R2 governed sandbox publication from real approved campaign and creati
    // never to a second delivery queue and never to a REMOTE mode.
    const originalApproval=await db.approval.findFirstOrThrow({where:{
     organizationId:org,id:preparedCreative.approvalId}});
+   // R2 provider simulation matrix uses the existing approved Campaign,
+   // exact CreativeAssetRevision and canonical SANDBOX PublicationAttempt.
+   const scenarios=[
+    ['SUCCESS','SIMULATED'],['RATE_LIMITED','BLOCKED'],
+    ['TIMEOUT_AFTER_ACCEPT','OUTCOME_UNKNOWN'],
+    ['READBACK_MISMATCH','OUTCOME_UNKNOWN'],
+    ['DUPLICATE_CALLBACK','SIMULATED'],
+    ['WEBHOOK_BEFORE_READBACK','OUTCOME_UNKNOWN']
+   ] as const;
+   for(const [scenario,expectedOutcome] of scenarios){
+    const scopeApprovalId=randomUUID(),simPubId=randomUUID();
+    await db.$transaction(async tx=>{
+     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+     await tx.approval.create({data:{
+      id:scopeApprovalId,organizationId:org,
+      objectType:'CreativeAssetRevision',objectId:version.revisionId,
+      creativeAssetRevisionId:version.revisionId,requestedBy:creator,
+      requiredAuthority:'HUMAN_CREATIVE_RELEASE',riskLevel:'R2',
+      decision:'APPROVED',decidedBy:reviewer,decidedAt:new Date(),
+      scope:originalApproval.scope!,scopeDigest:originalApproval.scopeDigest!,
+      scopeExpiresAt:originalApproval.scopeExpiresAt
+     }});
+     await tx.campaignPublication.create({data:{
+      id:simPubId,organizationId:org,campaignId:campaign.campaignId,
+      creativeAssetRevisionId:version.revisionId,approvalId:scopeApprovalId,
+      scopeDigest:originalApproval.scopeDigest!,requestKey:randomUUID(),
+      createdBy:creator,status:'PREPARED',version:1
+     }});
+    });
+    const key='mock-'+randomUUID();
+    const call=()=>publications.simulate(org,creator,simPubId,1,scenario,key);
+    const first=await call();
+    expect(first).toMatchObject({publicationId:simPubId,
+     status:expectedOutcome,replayed:false,sandboxReceiptOnly:true,
+     externalEffectsAuthorized:false,simulation:{
+      scenario,providerKey:'META_GRAPH',outcome:expectedOutcome,
+      verifiedRemoteReceipts:0,realProviderRequests:0,
+      automaticRetryAllowed:false
+     }});
+    const replay=await call();
+    expect(replay).toMatchObject({status:expectedOutcome,replayed:true});
+    await expect(publications.simulate(org,creator,simPubId,1,
+     scenario,'other-'+randomUUID())).rejects.toThrow('different simulation intent');
+    await expect(publications.simulate(foreign,creator,simPubId,1,
+     scenario,key)).rejects.toThrow('not found in tenant');
+    const simDetail=await publications.detail(org,simPubId);
+    expect(simDetail.attempts).toHaveLength(1);
+    expect(simDetail.attempts[0]).toMatchObject({
+     mode:'SANDBOX',outcome:expectedOutcome});
+    expect(await publications.reconcileProviderDelivery(org,simPubId))
+     .toMatchObject({authorizedRemoteAttempts:0,verifiedRemoteReceipts:0,
+      externallyPublished:false,correlationState:'NO_AUTHORIZED_REMOTE_ATTEMPT'});
+    expect(await db.auditEvent.count({where:{organizationId:org,
+     objectId:simPubId,action:'CAMPAIGN_PROVIDER_SIMULATION_RECORDED'}})).toBe(1);
+    expect(await db.outboxEvent.count({where:{organizationId:org,
+     aggregateId:simPubId,
+     eventType:'CampaignProviderSimulationRecordedInternal'}})).toBe(1);
+    if(scenario==='DUPLICATE_CALLBACK'){
+     expect(first.simulation?.virtualCallbackCount).toBe(2);
+     expect(first.simulation?.deduplicatedVirtualCallbackCount).toBe(1);
+    }
+   }
+   // Unknown simulation scenarios cannot bypass the canonical contract.
+   await expect(publications.simulate(org,creator,intent.publicationId,1,
+    'SEND_REAL_POST','forged-'+randomUUID())).rejects.toThrow('Unsupported provider simulation scenario');
    const heldPublicationId=randomUUID(),holdApprovalId=randomUUID();
    await db.$transaction(async tx=>{
     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
