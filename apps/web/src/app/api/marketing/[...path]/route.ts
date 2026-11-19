@@ -7,7 +7,8 @@ const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const [resource, id, action, operation] = path;
-  if (!resource || !routes.has(resource) || path.length > 5 ||
+  if (!resource || !routes.has(resource) || (path.length > 5 && !(resource==="tenancy" && request.method==="GET" &&
+       [6,7].includes(path.length))) ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "architecture" && !(
         (path.length===2&&id==="readiness"&&request.method==="GET")||
@@ -81,7 +82,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
        (path.length===4 && id==="roles" && !!action && operation==="disable" &&
         request.method==="POST") ||
        (path.length===4 && id==="agency-grants" && !!action &&
-        operation==="revoke" && request.method==="POST")
+        operation==="revoke" && request.method==="POST") ||
+       (request.method==="GET"&&[6,7].includes(path.length)&&
+        id==="clients"&&/^[A-Za-z0-9_-]+$/.test(action??"")&&
+        operation==="brands"&&/^[A-Za-z0-9_-]+$/.test(path[4]??"")&&
+        path[5]==="campaigns"&&
+        (path.length===6||/^[A-Za-z0-9_-]+$/.test(path[6]??"")))
       )) ||
       (resource === "performance" && !((path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
