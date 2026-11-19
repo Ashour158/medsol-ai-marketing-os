@@ -34,7 +34,7 @@ describe('Six additional provider-specific offline API contracts',()=>{
     expect(direct.mockHttpExchanges).toBe(steps[provider]);
     expect(direct.fixtureReadbackMatches).toBe(true);
     const result=await runProviderContractTrial({
-     organizationId:'offline-tenant',requestKey:'trial-'+provider,
+     organizationId:'offline-tenant',requestKey:'trial-case-'+provider,
      provider,scenario:'SUCCESS'});
     expect(result).toMatchObject({fixtureOnly:true,
      contractOutcome:'FIXTURE_MATCH',mockHttpExchanges:steps[provider],
