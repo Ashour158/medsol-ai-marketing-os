@@ -161,8 +161,20 @@ try{
  exec('pg_dump',['--format=custom','--no-owner','--no-acl',
   '--file='+archive,'--dbname='+source]);
  const digest='sha256:'+createHash('sha256').update(readFileSync(archive)).digest('hex');
- exec('pg_restore',['--exit-on-error','--no-owner','--no-acl',
-  '--dbname='+target,archive]);
+ // The hosted GitHub runner may ship a newer pg_restore than the
+ // postgres:16 service. Newer clients emit SET transaction_timeout=0
+ // in the SQL preamble; PostgreSQL 16 does not implement that setting.
+ // Strip ONLY that exact zero-valued session setting, never any table
+ // statement, data row, permission or migration. Keep the custom archive
+ // intact and require ON_ERROR_STOP for the entire materialized restore.
+ const restoreSql=exec('pg_restore',['--no-owner','--no-acl',
+  '--file=-',archive]);
+ const restoreCompatible=restoreSql.replace(
+  /^SET transaction_timeout = 0;\\r?\\n/gm,'');
+ if(restoreSql.length!==restoreCompatible.length&&
+    !restoreSql.includes('SET transaction_timeout = 0;'))
+  throw new Error('Unrecognized restoration compatibility change');
+ sqlFile(target,restoreCompatible);
  const restored=snapshot(target);
  if(JSON.stringify(original)!==JSON.stringify(restored))
   throw new Error('Restored tenant state diverged from source fingerprint');
