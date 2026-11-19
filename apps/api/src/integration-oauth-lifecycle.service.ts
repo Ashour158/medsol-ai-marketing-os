@@ -10,6 +10,9 @@ import {ProviderSecretEnvelope} from './provider-secret-envelope.js';
 export type ApprovedOAuthProvider={
  providerKey:string;authorizationEndpoint:string;pinnedHostname:string;
  clientId:string;redirectUri:string;scopes:readonly string[];
+ /** Provider-specific authorization query dialect; never caller-controlled. */
+ clientIdQueryParam?:'client_id'|'client_key';
+ scopeDelimiter?:'SPACE'|'COMMA';
 };
 export type TrustedOAuthExchange={
  providerKey:string;
@@ -42,6 +45,15 @@ function approvedConfig(config:ApprovedOAuthProvider){
    callback.port||callback.hash||callback.search)
   throw new BadRequestException('OAuth endpoints must be pinned HTTPS URLs without caller query');
  safeHost(callback.hostname);
+ if(config.clientIdQueryParam!==undefined&&
+    !['client_id','client_key'].includes(config.clientIdQueryParam))
+  throw new BadRequestException('Unsupported OAuth client key dialect');
+ if(config.scopeDelimiter!==undefined&&
+    !['SPACE','COMMA'].includes(config.scopeDelimiter))
+  throw new BadRequestException('Unsupported OAuth scope dialect');
+ if(config.clientIdQueryParam==='client_key'&&
+    (config.providerKey!=='TIKTOK'||config.pinnedHostname!=='www.tiktok.com'))
+  throw new BadRequestException('client_key is reserved for TikTok OAuth');
  if(typeof config.clientId!=='string'||config.clientId.length<3||config.clientId.length>256)
   throw new BadRequestException('Provider client ID must be deployment-configured');
  if(!Array.isArray(config.scopes)||!config.scopes.length||config.scopes.length>12||
@@ -113,9 +125,10 @@ export class IntegrationOAuthLifecycleService{
     }}});
    const url=new URL(auth);
    url.searchParams.set('response_type','code');
-   url.searchParams.set('client_id',config.clientId);
+   url.searchParams.set(config.clientIdQueryParam??'client_id',config.clientId);
    url.searchParams.set('redirect_uri',config.redirectUri);
-   url.searchParams.set('scope',config.scopes.join(' '));
+   url.searchParams.set('scope',config.scopes.join(
+    config.scopeDelimiter==='COMMA'?',':' '));
    url.searchParams.set('state',state);
    url.searchParams.set('code_challenge_method','S256');
    url.searchParams.set('code_challenge',challenge);
