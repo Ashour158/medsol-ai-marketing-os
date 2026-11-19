@@ -1,4 +1,4 @@
-import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
@@ -150,7 +150,7 @@ export class TenantBrandService{
   // Reuse the provisioned OIDC/tenant-role engine: it checks subject, user
   // disabledAt, current built-in role and any narrower custom tenant role.
   try{await this.roles.assertActorPermission(actor,permission);}
-  catch(err){if(err instanceof Error&&err.name==='ForbiddenException')
+  catch(err){if(err instanceof ForbiddenException)
    return{authorized:false as const};throw err;}
   return this.db.$transaction(async tx=>{
    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${agencyTenantId}, true)`;
