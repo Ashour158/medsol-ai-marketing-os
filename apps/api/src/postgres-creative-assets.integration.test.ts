@@ -107,7 +107,7 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    await db.$disconnect();
   }
  },60000);
- it('FORCE RLS denies unscoped and cross-tenant asset observations and does not leak through pool reuse',async()=>{
+ it('T11-001 FORCE RLS denies unscoped and cross-tenant asset observations and does not leak through pool reuse',async()=>{
   const db=new PrismaClient(),org='dam-rls-'+randomUUID();
   const brandId=randomUUID();
   const role='dam_reader_'+randomUUID().replaceAll('-','').slice(0,18);
