@@ -20,7 +20,7 @@ const draft=()=>({id:'r3j-fenced-review',version:1,nodes:[
 const manifest=()=>({draft:draft(),canaryPercent:100,maxSteps:10,
  executionMode:'DETERMINISTIC_NO_MODEL'});
 describe('R3-J cross-engine offline recovery and release acceptance',()=>{
- it.skipIf(!enabled)('fences two workers, rejects stale result after prior active check, denies revoked release approval and refuses certification',async()=>{
+ it.skipIf(!enabled)('T04-002 fences two workers, rejects stale result after prior active check, denies revoked release approval and refuses certification',async()=>{
   const db=new PrismaClient();
   const org='r3j-'+randomUUID(),foreign='r3j-other-'+randomUUID();
   const maker='r3j-maker-'+randomUUID(),checker='r3j-checker-'+randomUUID();
