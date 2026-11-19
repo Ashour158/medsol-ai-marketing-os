@@ -47,7 +47,7 @@ describe.skipIf(!enabled)('R3-L offline cross-tenant multi-worker resilience acc
    // Simulate an accepted consumer transaction followed by a lost
    // outbox acknowledgement (worker process SIGKILL window).
    const precommitted=await db.outboxEvent.findFirstOrThrow({where:{
-    organizationId:orgA,eventId:eventIds[0]
+    organizationId:orgA,eventId:eventIds[0]!
    }});
    await consumer.publish({
     eventId:precommitted.eventId,organizationId:orgA,
