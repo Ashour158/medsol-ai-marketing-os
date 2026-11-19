@@ -1,7 +1,7 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 
 const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads','spend_micros']);
 const SOURCE_SYSTEMS=new Set(['MANUAL_EXPORT','APPROVED_CONNECTOR_EXPORT']);
@@ -31,37 +31,51 @@ export class MarketingPerformanceService{
   const observedAt=new Date(required(raw.observedAt,'observedAt',40));
   if(!Number.isFinite(observedAt.getTime())||observedAt.getTime()>Date.now()+3600000||
      observedAt.getTime()<Date.now()-3*365*86400000)throw new BadRequestException('Observed date outside allowed range');
-  const campaign=await this.db.campaign.findFirst({where:{id:campaignId,organizationId},select:{id:true}});
-  if(!campaign)throw new NotFoundException('Campaign not found in tenant');
-  const where={organizationId_sourceSystem_sourceRecordId_metricKey:{organizationId,sourceSystem,sourceRecordId,metricKey}};
-  const existing=await this.db.marketingMetricObservation.findUnique({where});
-  if(existing){
-   if(existing.campaignId!==campaignId||existing.value!==value||existing.sourceReference!==sourceReference||
-      existing.observedAt.getTime()!==observedAt.getTime())throw new ConflictException('Source record reused with conflicting observation');
-   return{observationId:existing.id,status:existing.status,replayed:true};
-  }
   try{
-   const created=await this.db.marketingMetricObservation.create({data:{
-    id:randomUUID(),organizationId,campaignId,sourceSystem,sourceRecordId,metricKey,value,
-    observedAt,sourceReference,submittedBy:actorId,status:'QUARANTINED'
-   }});
-   return{observationId:created.id,status:'QUARANTINED',replayed:false};
+   return await withMarketingTenant(this.db,organizationId,async tx=>{
+    const campaign=await tx.campaign.findFirst({
+     where:{id:campaignId,organizationId},select:{id:true}
+    });
+    if(!campaign)throw new NotFoundException('Campaign not found in tenant');
+    const where={organizationId_sourceSystem_sourceRecordId_metricKey:{
+     organizationId,sourceSystem,sourceRecordId,metricKey
+    }};
+    const existing=await tx.marketingMetricObservation.findUnique({where});
+    if(existing){
+     if(existing.campaignId!==campaignId||existing.value!==value||
+        existing.sourceReference!==sourceReference||
+        existing.observedAt.getTime()!==observedAt.getTime())
+      throw new ConflictException('Source record reused with conflicting observation');
+     return {observationId:existing.id,status:existing.status,replayed:true};
+    }
+    const created=await tx.marketingMetricObservation.create({data:{
+     id:randomUUID(),organizationId,campaignId,sourceSystem,sourceRecordId,
+     metricKey,value,observedAt,sourceReference,submittedBy:actorId,status:'QUARANTINED'
+    }});
+    return {observationId:created.id,status:'QUARANTINED',replayed:false};
+   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }catch(error){
-   if((error as {code?:string})?.code==='P2002')throw new ConflictException('Concurrent duplicate metric import; refresh evidence');
+   if((error as {code?:string})?.code==='P2002'||(error as {code?:string})?.code==='P2034')
+    throw new ConflictException('Concurrent duplicate metric import; refresh evidence');
    throw error;
   }
  }
  list(organizationId:string,campaignId?:string){
-  return this.db.marketingMetricObservation.findMany({
-   where:{organizationId,...(campaignId?{campaignId}:{})},orderBy:{createdAt:'desc'},take:100,
-   select:{id:true,campaignId:true,metricKey:true,value:true,status:true,sourceSystem:true,
-    sourceRecordId:true,sourceReference:true,observedAt:true,submittedBy:true,reviewedBy:true,reviewedAt:true}
-  }).then(records=>records.map(r=>({...r,value:r.value.toString()})));
+  return withMarketingTenant(this.db,organizationId,async tx=>{
+   const records=await tx.marketingMetricObservation.findMany({
+    where:{organizationId,...(campaignId?{campaignId}:{})},
+    orderBy:{createdAt:'desc'},take:100,
+    select:{id:true,campaignId:true,metricKey:true,value:true,status:true,sourceSystem:true,
+     sourceRecordId:true,sourceReference:true,observedAt:true,submittedBy:true,reviewedBy:true,
+     reviewedAt:true}
+   });
+   return records.map(row=>({...row,value:row.value.toString()}));
+  });
  }
  async review(organizationId:string,actorId:string,observationId:string,rationale:string){
   const reason=required(rationale,'review rationale',2000);
   if(reason.length<12)throw new BadRequestException('Detailed review rationale required');
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
    const observed=await tx.marketingMetricObservation.findFirst({where:{id:observationId,organizationId}});
    if(!observed)throw new NotFoundException('Metric observation not found in tenant');
    if(observed.status!=='QUARANTINED')throw new ConflictException('Observation already reviewed');
@@ -80,13 +94,14 @@ export class MarketingPerformanceService{
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
  async summary(organizationId:string,campaignId:string){
-  const campaign=await this.db.campaign.findFirst({
+  return withMarketingTenant(this.db,organizationId,async tx=>{
+  const campaign=await tx.campaign.findFirst({
    where:{id:campaignId,organizationId},select:{id:true,code:true,name:true}});
   if(!campaign)throw new NotFoundException('Campaign not found in tenant');
   const [rows,pending]=await Promise.all([
-   this.db.marketingMetricObservation.groupBy({by:['metricKey'],where:{organizationId,campaignId,status:'REVIEWED'},
+   tx.marketingMetricObservation.groupBy({by:['metricKey'],where:{organizationId,campaignId,status:'REVIEWED'},
     _sum:{value:true},_count:{_all:true}}),
-   this.db.marketingMetricObservation.count({where:{organizationId,campaignId,status:'QUARANTINED'}})
+   tx.marketingMetricObservation.count({where:{organizationId,campaignId,status:'QUARANTINED'}})
   ]);
   const totals:Record<string,string>={};const observations:Record<string,number>={};
   for(const row of rows){totals[row.metricKey]=(row._sum.value??0n).toString();observations[row.metricKey]=row._count._all;}
@@ -100,5 +115,6 @@ export class MarketingPerformanceService{
      spendMicrosPerLead:spend!==null&&leads!==null&&leads>0n?(spend/leads).toString():null},
    pendingReviewCount:pending,status:rows.length?'REVIEWED_SOURCE_EVIDENCE':'INSUFFICIENT_REVIEWED_DATA',
    independentlyVerified:false,attributionValidated:false,spendUnit:'micro currency units'};
+  });
  }
 }
