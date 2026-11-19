@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter } from '@medsol/agent-runtime';
+import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
 
 @Injectable()
@@ -10,6 +10,25 @@ export class GovernedModelService {
     let adapter: ModelAdapter;
     if (provider === 'disabled') {
       adapter = new DisabledModelAdapter();
+    } else if (provider === 'simulation') {
+      // Explicit operator-only environment selection; never a customer-supplied
+      // provider, never a real network call, never a claim of AI inference.
+      const selected = assertModelProviderKey(
+        process.env.MARKETING_SIMULATED_MODEL_PROVIDER ?? 'LOCAL');
+      const scenario = assertModelSimulationScenario(
+        process.env.MARKETING_SIMULATED_MODEL_SCENARIO ?? 'SUCCESS');
+      const adapters = {
+        OPENAI:new SimulatedModelAdapter({providerKey:'OPENAI',scenario}),
+        ANTHROPIC:new SimulatedModelAdapter({providerKey:'ANTHROPIC',scenario}),
+        GEMINI:new SimulatedModelAdapter({providerKey:'GEMINI',scenario}),
+        LOCAL:new SimulatedModelAdapter({providerKey:'LOCAL',scenario})
+      };
+      adapter = new GovernedModelRouter({
+        routes:AGENT_ROSTER.map(agent=>({
+          agentId:agent.id,purpose:'INTERNAL_MARKETING_DRAFT',
+          providerKey:selected
+        })),adapters
+      });
     } else if (provider === 'openai') {
       const key = process.env.OPENAI_API_KEY ?? '';
       const model = process.env.MARKETING_OPENAI_MODEL ?? '';

@@ -112,8 +112,46 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
      externalEffectsAuthorized:false,automaticRetryAllowed:false}});
    const replay=await synthetic.simulateEmailJourney(org,identity,audience);
    expect(replay).toMatchObject({simulationId:simulated.simulationId,replayed:true});
+   const ambiguous=await synthetic.simulateEmailJourney(org,identity,{
+    ...audience,requestKey:'esp-ambiguous-'+randomUUID(),
+    scenario:'TIMEOUT_AFTER_ACCEPT'
+   });
+   expect(ambiguous).toMatchObject({status:'SIMULATED',
+    results:{syntheticTransportScenario:'TIMEOUT_AFTER_ACCEPT',
+     syntheticTransport:{virtualOutcomeUnknown:1,
+      realProviderRequests:0,actualMessagesSent:0,verifiedProviderReceipts:0,
+      automaticRetryAllowed:false}}});
+   await expect(synthetic.simulateEmailJourney(org,identity,{
+    ...audience,requestKey:'esp-ambiguous-'+randomUUID(),
+    scenario:'SEND_LIVE'
+   })).rejects.toThrow('Unknown synthetic email provider scenario');
+   await expect(synthetic.simulateEmailJourney(org,identity,{
+    ...audience,scenario:'BOUNCED'
+   })).rejects.toThrow('changed audience, consent or creative');
+   const sqlSpoof=await db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.marketingEmailSimulation.findFirstOrThrow({
+     where:{organizationId:org,id:ambiguous.simulationId}
+    });
+   });
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.marketingEmailSimulation.create({data:{
+     id:randomUUID(),organizationId:org,brandId,
+     campaignId:campaign.campaignId,audienceDigest:sqlSpoof.audienceDigest,
+     contentDigest,requestKey:'spoof-'+randomUUID(),status:'SIMULATED',
+     result:{actualMessagesSent:0,verifiedProviderReceipts:0,
+      externalEffectsAuthorized:false,
+      syntheticTransportScenario:'ACCEPTED',
+      syntheticTransport:{scenario:'ACCEPTED',realProviderRequests:1,
+       actualMessagesSent:0,verifiedProviderReceipts:0,
+       externalEffectsAuthorized:false,automaticRetryAllowed:false,
+       virtualRequestRef:'internal:synthetic-esp/'+'f'.repeat(64)}},
+     createdBy:reviewer
+    }});
+   })).rejects.toThrow();
    expect(await db.marketingEmailSimulation.count({where:{
-    organizationId:org,campaignId:campaign.campaignId}})).toBe(1);
+    organizationId:org,campaignId:campaign.campaignId}})).toBe(2);
    expect(await db.auditEvent.count({where:{organizationId:org,
     objectType:'MarketingEmailSimulation',objectId:simulated.simulationId}})).toBe(1);
    expect(await db.outboxEvent.count({where:{organizationId:org,
@@ -200,14 +238,14 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     expect(observed.before).toEqual([0,0,0]);
     expect(observed.own[0]).toBe(4);
     expect(observed.own[1]).toBeGreaterThan(0);
-    expect(observed.own[2]).toBe(2);
+    expect(observed.own[2]).toBe(3);
     expect(observed.other).toEqual([0,0,0]);
    }finally{
     await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingSyntheticContact",'+
      '"MarketingSyntheticConsent","MarketingEmailSimulation" FROM "'+probeRole+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+probeRole+'"');
    }
-   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(2);
+   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(3);
   }finally{await db.$disconnect();}
  },90000);
  it('keeps real email delivery and recipient export routes unregistered',()=>{
