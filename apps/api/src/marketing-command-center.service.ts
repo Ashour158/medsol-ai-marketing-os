@@ -21,6 +21,104 @@ export class MarketingCommandCenterService {
   @Optional() private readonly workerHealth?:MarketingWorkerHealthService,
   @Optional() private readonly responses?:MarketingIncidentResponseService
  ){}
+
+ /**
+  * R3-J non-certifying release evidence. Observes the same authoritative
+  * stores as the Command Center; no shadow readiness table, no fake proof of
+  * external provider eligibility, restore drills or independent penetration
+  * testing. A clean tenant is NOT an accepted production deployment.
+  */
+ async r3ReleaseReadiness(organizationId:string){
+  if(!/^[A-Za-z0-9_-]{3,160}$/.test(organizationId))
+   throw new BadRequestException('Stable tenant identifier required');
+  const now=new Date(),staleBefore=new Date(now.getTime()-15*60_000);
+  const counts=await this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+   const [dagActive,dagApproved,dagBlocked,dagWaiting,
+    dagExpiredLease,brainPending,brainStale,brainIntervention,
+    deadLetters,knowledgeReviewed,knowledgeQuarantined,
+    memoryApproved,memoryExpired,graphReviewed,skillsWaiting,
+    signedAgents,toolsRegistered]=await Promise.all([
+    tx.blueprintDeployment.count({where:{organizationId,status:'ACTIVE'}}),
+    tx.blueprintDeployment.count({where:{organizationId,status:'APPROVED'}}),
+    tx.workflowExecution.count({where:{organizationId,
+     workflowType:'BLUEPRINT_OFFLINE_DAG',status:'BLOCKED'}}),
+    tx.workflowExecution.count({where:{organizationId,
+     workflowType:'BLUEPRINT_OFFLINE_DAG',status:'WAITING_APPROVAL'}}),
+    tx.workflowExecution.count({where:{organizationId,
+     workflowType:'BLUEPRINT_OFFLINE_DAG',status:'RUNNING',
+     leaseOwner:{not:null},leaseExpiresAt:{lte:now}}}),
+    tx.brainRun.count({where:{organizationId,status:'PENDING'}}),
+    tx.brainRun.count({where:{organizationId,status:'RUNNING',
+     updatedAt:{lte:staleBefore}}}),
+    tx.brainRun.count({where:{organizationId,status:'NEEDS_INTERVENTION'}}),
+    tx.outboxEvent.count({where:{organizationId,
+     deadLetteredAt:{not:null}}}),
+    tx.knowledgeDocument.count({where:{organizationId,status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:now}}]}}),
+    tx.knowledgeDocument.count({where:{organizationId,status:'QUARANTINED'}}),
+    tx.agentKnowledgeMemory.count({where:{organizationId,status:'APPROVED',
+     expiresAt:{gt:now}}}),
+    tx.agentKnowledgeMemory.count({where:{organizationId,status:'APPROVED',
+     expiresAt:{lte:now}}}),
+    tx.knowledgeRelation.count({where:{organizationId,status:'REVIEWED'}}),
+    tx.agentSkillProposal.count({where:{organizationId,status:{
+     in:['PROPOSED','EVALUATED']}}}),
+    tx.agentManifestRevision.count({where:{organizationId,status:'APPROVED'}}),
+    tx.governedToolRegistration.count({where:{organizationId,status:'APPROVED'}})
+   ]);
+   return{dagActive,dagApproved,dagBlocked,dagWaiting,dagExpiredLease,
+    brainPending,brainStale,brainIntervention,deadLetters,
+    knowledgeReviewed,knowledgeQuarantined,memoryApproved,memoryExpired,
+    graphReviewed,skillsWaiting,signedAgents,toolsRegistered};
+  });
+  const incidentCount=counts.dagBlocked+counts.dagExpiredLease+
+   counts.brainStale+counts.brainIntervention+counts.deadLetters;
+  const gates=[
+   {id:'R3_RUNTIME',owner:'MarketingWorkflowService',
+    status:counts.dagActive>0&&incidentCount===0&&
+     process.env.MARKETING_DAG_OFFLINE_EXECUTION_ENABLED==='true'&&
+     process.env.MARKETING_AI_REASONING_ENABLED!=='true'?
+     'OFFLINE_CONFIGURED_NOT_CERTIFIED':'NEEDS_OPERATOR_REVIEW',
+    evidence:'Canonical signed deployment and workflow counts; not external execution proof'},
+   {id:'R3_AGENT_TRUST',owner:'AgentService',
+    status:counts.signedAgents>0?'PARTIAL_SIGNED_RELEASES':'NO_SIGNED_RELEASE_EVIDENCE',
+    evidence:'Approved agent manifest rows; no enterprise agent skill-quality acceptance'},
+   {id:'R3_KNOWLEDGE',owner:'MarketingLearningService',
+    status:counts.knowledgeReviewed>0?'OFFLINE_REVIEWED_EVIDENCE':'NO_REVIEWED_EVIDENCE',
+    evidence:'Tenant-scoped reviewed source/memory/graph counts; no verified scientific truth or neural retrieval'},
+   {id:'R3_TOOL_GATEWAY',owner:'GovernedToolRegistryService',
+    status:'BLOCKED_NO_REMOTE_GATEWAY',
+    evidence:'Registry metadata never constitutes approved remote MCP/A2A invocation'},
+   {id:'R3_MODEL_PROVIDERS',owner:'GovernedModelService',
+    status:'BLOCKED_NO_PROVIDER_ACCEPTANCE',
+    evidence:'Adapter simulations and budgets do not prove approved tenant BYOK/privacy/billing'},
+   {id:'R3_EXTERNAL_CAMPAIGN',owner:'CampaignPublicationService',
+    status:'BLOCKED_NO_REAL_DESTINATION',
+    evidence:'No eligible verified customer social destination or completed remote receipt'},
+   {id:'R3_INDEPENDENT_SECURITY',owner:'PlatformSecurity',
+    status:'NOT_VERIFIED',evidence:'Independent penetration test and red-team proof not imported'},
+   {id:'R3_RESTORE_AND_DR',owner:'ReliabilityOperations',
+    status:'NOT_VERIFIED',evidence:'CI migration rehearsals are not a tested backup restore, failover or RTO/RPO drill'},
+   {id:'R3_500_E2E',owner:'QualityEngineering',
+    status:'NOT_VERIFIED',evidence:'500-case program is planned; total independently executed end-to-end proofs unavailable'}
+  ] as const;
+  return{organizationId,asOf:now.toISOString(),
+   release:'R3',verdict:'NOT_CERTIFIED' as const,
+   productionExternalEffectsAuthorized:false as const,
+   certificationCanBeOverriddenByThisReport:false as const,
+   noRealProviderCredentialsRequired:true as const,
+   provenance:'TENANT_AUTHORITY_COUNTS_AND_FAIL_CLOSED_UNVERIFIED_GATES',
+   counts,gates,
+   incidentCount,
+   acceptanceEvidence:{
+    ciRunNotInspectedByThisAPI:true,providerAcceptanceVerified:false,
+    independentSecuritySignedOff:false,backupRestoreDrillVerified:false,
+    legalConsentAndDestinationVerified:false,
+    independent500CaseE2eCertified:false
+   },
+   requiredAction:'Complete offline reliability, security, evidence and independent E2E gates before any external provider activation'};
+ }
  async snapshot(organizationId:string){
   const staleBefore=new Date(Date.now()-15*60_000);
   const [overview,agentOperations,delivery,budget,trends,brand,
