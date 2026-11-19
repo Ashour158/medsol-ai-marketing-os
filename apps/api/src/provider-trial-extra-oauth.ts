@@ -50,7 +50,7 @@ export function extraTrialOAuthConfig(key:ExtraTrialOAuthProvider):
    authorizationEndpoint:'https://www.canva.com/api/oauth/authorize',
    pinnedHostname:'www.canva.com',
    clientId:'TRIAL_CANVA_CLIENT_ID_NOT_REGISTERED',redirectUri:callback,
-   scopes:['design:content:read','design:content:write']
+   scopes:['design:content:read','design:content:write','design:meta:read']
   };
  }
 }
