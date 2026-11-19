@@ -26,7 +26,7 @@ const validDraft=()=>({
  ]
 });
 describe('R3 virtual Blueprint Studio uses canonical workflow ledger',()=>{
- it.skipIf(!enabled)('persists tenant-scoped DAG trace exactly once with zero actual model, tools or external effects',async()=>{
+ it.skipIf(!enabled)('T04-003 persists tenant-scoped DAG trace exactly once with zero actual model, tools or external effects',async()=>{
   const db=new PrismaClient(),org='r3-studio-'+randomUUID(),
    foreign='r3-foreign-'+randomUUID(),actorId='r3-admin-'+randomUUID(),
    subject='oidc-r3-'+randomUUID();
