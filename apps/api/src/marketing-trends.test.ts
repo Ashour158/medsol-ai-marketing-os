@@ -12,7 +12,10 @@ describe('evidence-linked market trend intelligence',()=>{
   const db:any={learningSignal:{findMany:vi.fn().mockResolvedValue(signals)}};
   const service=new MarketingLearningService(db);
   const brief=await service.trendBrief('tenant','proteomics');
-  expect(db.learningSignal.findMany).toHaveBeenCalledWith(expect.objectContaining({where:{organizationId:'tenant',status:'REVIEWED',sector:'proteomics'}}));
+  expect(db.learningSignal.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({
+   organizationId:'tenant',status:'REVIEWED',sector:'proteomics',
+   OR:expect.arrayContaining([{knowledgeDocumentId:null}])
+  })}));
   expect(brief.topics[0]?.priority).toBe('RESEARCH_PRIORITY');
   expect(brief.topics[0]?.distinctSourceHosts).toBe(2);
   expect(brief.topics[0]?.inferenceAuthorized).toBe(false);

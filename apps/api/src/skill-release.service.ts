@@ -11,6 +11,20 @@ export class SkillReleaseService {
   const proposal=await this.db.agentSkillProposal.findFirst({where:{id:proposalId,organizationId}});
   if(!proposal)throw new NotFoundException('Skill proposal not found in tenant');
   if(proposal.status!=='PROPOSED')throw new ConflictException('Only proposed skills may enter evaluation');
+  const source=await this.db.learningSignal.findFirst({where:{
+   id:proposal.evidenceSignalId,organizationId}});
+  if(!source||source.status!=='REVIEWED')
+   throw new ConflictException('Skill source is not reviewed or has been withdrawn');
+  if(source.knowledgeDocumentId){
+   const document=await this.db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+    return tx.knowledgeDocument.findFirst({where:{
+     id:source.knowledgeDocumentId!,organizationId,status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
+    }});
+   });
+   if(!document)throw new ConflictException('Linked knowledge is revoked or expired');
+  }
   const manifest=AGENT_ROSTER.find(x=>x.id===proposal.agentId);
   if(!manifest||!manifest.capabilities.includes(proposal.skillKey))throw new BadRequestException('Capability not in immutable agent roster');
   const registry=new AgentRegistry();registry.register(new MarketingDomainAgent(manifest));
@@ -48,6 +62,18 @@ export class SkillReleaseService {
    if(proposal.status!=='EVALUATED')throw new ConflictException('Proposal must pass the fixed regression corpus');
    const evaluation=proposal.evaluation as {evaluationStatus?:string}|null;
    if(evaluation?.evaluationStatus!=='PASSED')throw new ConflictException('Evaluation not passed');
+   const source=await tx.learningSignal.findFirst({where:{
+    id:proposal.evidenceSignalId,organizationId,status:'REVIEWED'
+   }});
+   if(!source)throw new ConflictException('Evaluated skill source was revoked');
+   if(source.knowledgeDocumentId){
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+    const live=await tx.knowledgeDocument.findFirst({where:{
+     id:source.knowledgeDocumentId,organizationId,status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
+    }});
+    if(!live)throw new ConflictException('Knowledge source no longer eligible for skill release');
+   }
    const status=decision==='APPROVE'?'APPROVED_FOR_CODE_RELEASE':'REJECTED';
    const changed=await tx.agentSkillProposal.updateMany({where:{id:proposalId,organizationId,status:'EVALUATED'},data:{status,decidedBy:actorId,decidedAt:new Date()}});
    if(changed.count!==1)throw new ConflictException('Decision already recorded');

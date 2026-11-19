@@ -69,6 +69,8 @@ model Organization {
   workflows WorkflowExecution[]
   workflowSteps WorkflowStepExecution[]
   learningSignals LearningSignal[]
+  knowledgeDocuments KnowledgeDocument[]
+  knowledgeChunks KnowledgeChunk[]
   skillProposals AgentSkillProposal[]
   brainRuns BrainRun[]
   brainRunSteps BrainRunStep[]
@@ -397,10 +399,13 @@ model LearningSignal {
   observedAt DateTime
   sourcePublishedAt DateTime?
   evidence Json
+  knowledgeDocumentId String?
+  knowledgeDocument KnowledgeDocument? @relation(fields:[organizationId,knowledgeDocumentId],references:[organizationId,id],onDelete:Restrict)
   status String @default("QUARANTINED")
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([organizationId,fingerprint])
+  @@unique([organizationId,knowledgeDocumentId])
   @@index([organizationId,sector,status,observedAt])
 }
 model AgentSkillProposal {
@@ -1007,4 +1012,55 @@ model BlueprintDeployment {
  @@unique([organizationId,id])
  @@unique([organizationId,blueprintId,revision])
  @@index([organizationId,blueprintId,status])
+}
+
+/**
+ * R3-H authoritative curated Knowledge Fabric owned by MarketingLearningService.
+ * Explicit review and access gates precede any agent retrieval. No network fetch
+ * or background model/vector provider can activate these documents.
+ */
+model KnowledgeDocument {
+ id String @id @default(cuid())
+ organizationId String
+ sourceKey String
+ title String
+ sourceUrl String?
+ sourceType String @default("MANUAL")
+ publishedAt DateTime?
+ expiresAt DateTime?
+ contentDigest String
+ status String @default("QUARANTINED")
+ accessMode String @default("REVIEWERS_ONLY")
+ agentScope String[] @default([])
+ createdBy String
+ reviewedBy String?
+ reviewedAt DateTime?
+ reviewReason String?
+ revokedBy String?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ chunks KnowledgeChunk[]
+ learningSignals LearningSignal[]
+ @@unique([organizationId,id])
+ @@unique([organizationId,sourceKey])
+ @@index([organizationId,status,accessMode,expiresAt],map:"KnowledgeDocument_org_status_access_exp_idx")
+}
+model KnowledgeChunk {
+ id String @id @default(cuid())
+ organizationId String
+ documentId String
+ ordinal Int
+ content String
+ digest String
+ terms String[] @default([])
+ vector Float[] @default([])
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ document KnowledgeDocument @relation(fields:[organizationId,documentId],references:[organizationId,id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,documentId,ordinal])
+ @@index([organizationId,documentId])
+ @@index([terms],type:Gin,map:"KnowledgeChunk_terms_gin_idx")
 }
