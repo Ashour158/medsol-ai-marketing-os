@@ -646,6 +646,12 @@ export class MarketingWorkflowService {
     if (!workflowExecutionId) return;
     const workflow = await this.db.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
     if (!workflow) return;
+    if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
+      const approvalId=(approval as {approvalId?:unknown})?.approvalId;
+      if(typeof approvalId!=='string')throw new ConflictException('Durable workflow approval identity missing');
+      await this.dagReconcileApproval(organizationId,approvalId,'APPROVED');
+      return;
+    }
     await this.completeWorkflow(workflow.id, 'APPROVAL_COMPLETED', approval, 'COMPLETED');
   }
 
@@ -654,6 +660,10 @@ export class MarketingWorkflowService {
     if (!approval?.workflowExecutionId) return;
     const workflow = await this.db.workflowExecution.findFirst({ where: { id: approval.workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
     if (!workflow) return;
+    if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
+      await this.dagReconcileApproval(organizationId,approvalId,'REJECTED');
+      return;
+    }
     await this.completeWorkflow(workflow.id, 'APPROVAL_REJECTED', { approvalId, rationale, blocked: true }, 'BLOCKED');
   }
 
