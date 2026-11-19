@@ -671,6 +671,7 @@ model MarketingSyntheticConsent {
   organizationId String
   contactId String
   action String
+  sequence Int
   evidenceRef String
   recordedBy String
   createdAt DateTime @default(now())
@@ -678,6 +679,7 @@ model MarketingSyntheticConsent {
   contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict)
   @@unique([organizationId,id])
   @@unique([organizationId,contactId,evidenceRef])
+  @@unique([organizationId,contactId,sequence])
   @@index([organizationId,contactId,createdAt])
 }
 
