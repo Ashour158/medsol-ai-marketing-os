@@ -248,7 +248,7 @@ export async function runProviderContractTrial(input:{
  return{trialRef,provider,scenario,fixtureOnly:true,
   contractOutcome:outcome,fixtureReadbackMatches,
   mockHttpExchanges,mockCallbacks,mockDeduplicatedCallbacks,
-  wire,protocolSteps,actualProviderRequests:0,actualEmailsSent:0,
+  wire,...(protocolSteps?{protocolSteps}:{}),actualProviderRequests:0,actualEmailsSent:0,
   actualPostsPublished:0,actualModelCalls:0,actualMcpCalls:0,
   actualA2aCalls:0,verifiedRemoteReceipts:0,
   accountOwnershipVerified:false,appEntitlementVerified:false,
