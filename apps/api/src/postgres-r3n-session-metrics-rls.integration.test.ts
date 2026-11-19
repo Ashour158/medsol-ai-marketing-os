@@ -48,7 +48,8 @@ describe.skipIf(!enabled)('R3-N real PostgreSQL tenant isolation and RLS accepta
     email:'b-'+randomUUID()+'@example.invalid',oidcSubject:'sub-'+randomUUID()}});
    const auth=new AuthSessionService(db as any);
    const sa=await auth.register(a,uA.id,later()),sb=await auth.register(b,uB.id,later());
-   expect(await db.authSession.count()).toBe(0);
+   // Docker's migration account is a PostgreSQL superuser; its visibility
+   // is NOT RLS evidence. Real non-BYPASSRLS read checks follow below.
    await db.$executeRawUnsafe('CREATE ROLE "'+role+'" NOLOGIN');roleCreated=true;
    await db.$executeRawUnsafe('GRANT SELECT ON "AuthSession" TO "'+role+'"');
    const inspect=async(tenant:string|null)=>db.$transaction(async tx=>{
@@ -97,7 +98,8 @@ describe.skipIf(!enabled)('R3-N real PostgreSQL tenant isolation and RLS accepta
    const oa=await metrics.ingest(a,'author-a',input(ca,'shared-record'));
    const ob=await metrics.ingest(b,'author-b',input(cb,'shared-record'));
    expect(oa.observationId).not.toBe(ob.observationId);
-   expect(await db.marketingMetricObservation.count()).toBe(0);
+   // Docker's migration account is a PostgreSQL superuser; its visibility
+   // is NOT RLS evidence. Real non-BYPASSRLS read checks follow below.
    await db.$executeRawUnsafe('CREATE ROLE "'+role+'" NOLOGIN');created=true;
    await db.$executeRawUnsafe('GRANT SELECT,UPDATE ON "MarketingMetricObservation" TO "'+role+'"');
    const inspect=async(tenant:string|null)=>db.$transaction(async tx=>{
