@@ -9,3 +9,5 @@ export * from './events.js'; export * from './approval.js'; export * from './com
 // v2 is a target-state inventory, never an execution authority.
 export * from './blueprint-v2.js';
 export * from './blueprint-v2-compiler.js';
+
+export * from './blueprint-v2-simulator.js';
