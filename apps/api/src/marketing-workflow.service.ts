@@ -375,7 +375,7 @@ export class MarketingWorkflowService {
      const agentIds=[...new Set(plan.map(s=>s.agentId).filter((x):x is string=>!!x))];
      const installed=await tx.agent.findMany({where:{
       organizationId,id:{in:agentIds}},select:{id:true,version:true,status:true}});
-     const agentPins:Object=Object.fromEntries(agentIds.map(id=>{
+     const agentPins:Record<string,number>=Object.fromEntries(agentIds.map(id=>{
       const row=installed.find(a=>a.id===id);
       if(row&&row.status!=='ACTIVE')
        throw new ForbiddenException('Referenced canonical agent is administratively disabled');
@@ -422,7 +422,7 @@ export class MarketingWorkflowService {
            blueprintId?:string;objective?:string;market?:string;
            requestedBy?:string;agentPins?:Record<string,number>};
           const release=await tx.blueprintDeployment.findFirst({where:{
-           organizationId,id:meta.deploymentId}});
+           organizationId,id:meta.deploymentId??''}});
           if(!release||release.status==='REVOKED'||release.digest!==meta.releaseDigest||
              offlineDagDigest(release.manifest)!==release.digest||
              !verifyOfflineDagSignature(release.manifest,release.signature,
@@ -468,7 +468,7 @@ export class MarketingWorkflowService {
            const approval=await tx.approval.create({data:{
             organizationId,objectType:'BlueprintWorkflowStep',objectId:ready.id,
             requiredAuthority:'HUMAN',riskLevel:'R2',decision:'PENDING',
-            requestedBy:meta.requestedBy,workflowExecutionId:id,
+            requestedBy:meta.requestedBy??null,workflowExecutionId:id,
             scopeDigest:release.digest,
             scope:{deploymentId:release.id,releaseDigest:release.digest,
              stepId:current.id,nodeId:ready.id,
