@@ -231,7 +231,7 @@ describe('R3-J cross-engine offline recovery and release acceptance',()=>{
    await db.$disconnect();
   }
  },90000);
- it('permits only read-only incident evidence, not recovery execution or release overrides',()=>{
+ it('T15-019 permits only read-only incident evidence, not recovery execution or release overrides',()=>{
   expect(permissionForMarketingRoute('GET',
    '/marketing/architecture/readiness')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('GET',
