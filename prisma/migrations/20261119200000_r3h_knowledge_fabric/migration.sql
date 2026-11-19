@@ -38,7 +38,7 @@ CREATE TABLE "KnowledgeDocument" (
 );
 CREATE UNIQUE INDEX "KnowledgeDocument_organizationId_id_key" ON "KnowledgeDocument"("organizationId","id");
 CREATE UNIQUE INDEX "KnowledgeDocument_organizationId_sourceKey_key" ON "KnowledgeDocument"("organizationId","sourceKey");
-CREATE INDEX "KnowledgeDocument_organizationId_status_accessMode_expiresAt_idx"
+CREATE INDEX "KnowledgeDocument_org_status_access_exp_idx"
  ON "KnowledgeDocument"("organizationId","status","accessMode","expiresAt");
 ALTER TABLE "KnowledgeDocument" ADD CONSTRAINT "KnowledgeDocument_organizationId_fkey"
  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
