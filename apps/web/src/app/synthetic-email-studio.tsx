@@ -7,7 +7,9 @@ type Contact={contactId:string;syntheticRecipientRef:string;
 type EmailResult={simulationId:string;status:string;audienceDigest:string;
  replayed:boolean;results:{syntheticRecipients:number;syntheticEligible:number;
  withdrawn:number;complaintSuppressed:number;missingConsent:number;
- actualMessagesSent:0;verifiedProviderReceipts:0}};
+ actualMessagesSent:0;verifiedProviderReceipts:0;
+ syntheticJourneyPlan?:{requiresFreshConsentAtExecution:true;steps:Array<{
+ key:string;scheduledAt:string;scenario:string;virtualOutcomeUnknown:number}>}|null}};
 const btn={background:"#124d83",color:"white",border:0,borderRadius:8,
  padding:"10px 14px",fontWeight:650,cursor:"pointer"} as const;
 const field={padding:"8px",border:"1px solid #cbd5e1",borderRadius:7,
@@ -24,6 +26,15 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
  const [consentKey,setConsentKey]=useState("");
  const [mailKey,setMailKey]=useState("");
  const [content,setContent]=useState("Controlled mock email campaign. No real recipients.");
+ const [scenario,setScenario]=useState("ACCEPTED");
+ const [journeyEnabled,setJourneyEnabled]=useState(false);
+ const [journeyJson,setJourneyJson]=useState(JSON.stringify({
+  timeZone:"Africa/Cairo",startAt:"2026-11-21T08:00:00Z",
+  quietHours:{start:"21:00",end:"08:00"},
+  dailyCap:1,rolling7DayCap:3,
+  steps:[{key:"welcome",delayMinutes:0,scenario:"ACCEPTED"},
+   {key:"follow_up",delayMinutes:1440,scenario:"DELAYED_WEBHOOK"}]
+ },null,2));
  const [result,setResult]=useState<EmailResult|null>(null);
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
@@ -137,6 +148,29 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     setContent(e.target.value);setMailKey("");setResult(null);
    }} style={{...field,minHeight:86}}/>
   </label>
+  <div style={{marginTop:12,display:"grid",gap:10}}>
+   <label style={{fontSize:13}}>Synthetic ESP outcome
+    <select style={field} value={scenario} onChange={e=>{
+     setScenario(e.target.value);setMailKey("");setResult(null);
+    }}>
+     {["ACCEPTED","BOUNCED","COMPLAINT","RATE_LIMITED","ESP_5XX",
+       "TIMEOUT_AFTER_ACCEPT","DUPLICATE_CALLBACK","UNSUBSCRIBE_BEFORE_SEND",
+       "DELAYED_WEBHOOK","TEMPLATE_REJECTED","TOKEN_EXPIRED",
+       "READBACK_MISMATCH"].map(x=><option key={x} value={x}>{x}</option>)}
+    </select>
+   </label>
+   <label style={{fontSize:13}}>
+    <input type="checkbox" checked={journeyEnabled} onChange={e=>{
+     setJourneyEnabled(e.target.checked);setMailKey("");setResult(null);
+    }}/> Simulate multi-step quiet hours, DST and frequency caps
+   </label>
+   {journeyEnabled&&<label style={{fontSize:13}}>Virtual journey definition (JSON)
+    <textarea style={{...field,minHeight:190,fontFamily:"monospace"}}
+     value={journeyJson} onChange={e=>{
+      setJourneyJson(e.target.value);setMailKey("");setResult(null);
+     }}/>
+   </label>}
+  </div>
   <button style={{...btn,marginTop:12}}
    disabled={busy||!campaignId.trim()||!brandId.trim()||
     selected.length===0||!content.trim()}
@@ -149,7 +183,8 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     if(!mailKey)setMailKey(requestKey);
     const r=await call("email/simulations",{
      brandId,campaignId,contactIds:selected,
-     contentDigest:"sha256:"+hex,requestKey
+     contentDigest:"sha256:"+hex,requestKey,scenario,
+     ...(journeyEnabled?{journey:JSON.parse(journeyJson)}:{})
     });
     setResult(r as EmailResult);
    })}>Simulate consent-gated email journey · No send</button>
@@ -161,6 +196,16 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     Complaint-suppressed: {result.results.complaintSuppressed} ·
     Missing opt-in: {result.results.missingConsent}</p>
    <p>Actual emails sent: <strong>0</strong> · Verified external receipts: <strong>0</strong></p>
+   {result.results.syntheticJourneyPlan&&<details open>
+    <summary>Virtual journey schedule · Fresh consent required at execution</summary>
+    <table style={{width:"100%",fontSize:12,marginTop:8}}>
+     <thead><tr><th align="left">Step</th><th align="left">Scheduled UTC</th>
+      <th align="left">Virtual scenario</th><th align="left">Unknown outcomes</th></tr></thead>
+     <tbody>{result.results.syntheticJourneyPlan.steps.map(step=>
+      <tr key={step.key}><td>{step.key}</td><td>{step.scheduledAt}</td>
+       <td>{step.scenario}</td><td>{step.virtualOutcomeUnknown}</td></tr>)}</tbody>
+    </table>
+   </details>}
    <p style={{fontSize:11,color:"#475569"}}>Immutable synthetic snapshot:
     {" "}{result.audienceDigest}</p>
   </section>}
