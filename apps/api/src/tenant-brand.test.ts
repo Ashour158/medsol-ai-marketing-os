@@ -4,6 +4,7 @@ import {permissionForMarketingRoute,hasMarketingPermission} from './marketing-pe
 const future=()=>new Date(Date.now()+7*86400_000).toISOString();
 function setup(){
  const tx:any={
+  $queryRaw:vi.fn().mockResolvedValue([]),
   brand:{create:vi.fn().mockImplementation(async({data}:any)=>data),
    findFirst:vi.fn().mockResolvedValue({id:'brand-1'})},
   organization:{findUnique:vi.fn().mockResolvedValue({id:'agency-b'})},
@@ -16,7 +17,8 @@ function setup(){
  };
  const db:any={...tx,user:{findFirst:vi.fn().mockResolvedValue({role:'ADMIN'})},
   $transaction:vi.fn(async(cb:any)=>cb(tx))};
- return{tx,db,service:new TenantBrandService(db)};
+ const roles:any={assertActorPermission:vi.fn().mockResolvedValue(undefined)};
+ return{tx,db,roles,service:new TenantBrandService(db,roles)};
 }
 describe('R1 authoritative brand and revocable agency scope',()=>{
  it('creates a brand only within trusted tenant scope and records its audit',async()=>{
@@ -77,22 +79,27 @@ describe('R1 authoritative brand and revocable agency scope',()=>{
   expect(tx.auditEvent.create).toHaveBeenCalledTimes(1);
  });
  it('resolves narrow read-only agency scope only for an active member, approved role and live client brand',async()=>{
-  const {db,service}=setup();
-  db.agencyGrant.findFirst=vi.fn().mockResolvedValue({actions:['CAMPAIGN_READ'],
+  const {db,service,tx,roles}=setup();
+  tx.agencyGrant.findFirst=vi.fn().mockResolvedValue({id:'grant-id',version:1,actions:['CAMPAIGN_READ'],
    expiresAt:new Date(Date.now()+86400_000)});
-  db.brand.findFirst=vi.fn().mockResolvedValue({id:'brand-1'});
-  expect(await service.resolveAgencyReadScope('agency-b','tenant-a','brand-1',
-   'agency-user','CAMPAIGN_READ')).toMatchObject({authorized:true,
+  tx.brand.findFirst=vi.fn().mockResolvedValue({id:'brand-1'});
+  const actor={organizationId:'agency-b',userId:'agency-user',
+   subject:'oidc-agency-user',role:'ADMIN',email:'agency@example.invalid'};
+  expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1','CAMPAIGN_READ')).toMatchObject({authorized:true,
     brandId:'brand-1',externalEffectsAuthorized:false});
-  expect(await service.resolveAgencyReadScope('agency-b','tenant-a','brand-1',
-   'agency-user','PUBLISH_SOCIAL')).toEqual({authorized:false});
-  db.user.findFirst.mockResolvedValueOnce({role:'VIEWER'});
-  expect(await service.resolveAgencyReadScope('agency-b','tenant-a','brand-1',
-   'agency-user','CAMPAIGN_READ')).toEqual({authorized:false});
-  db.user.findFirst.mockResolvedValueOnce(null);
-  expect(await service.resolveAgencyReadScope('agency-b','tenant-a','brand-1',
-   'agency-user','CAMPAIGN_READ')).toEqual({authorized:false});
-  expect(db.agencyGrant.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+  expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1','PUBLISH_SOCIAL')).toEqual({authorized:false});
+  roles.assertActorPermission.mockRejectedValueOnce(
+   Object.assign(new Error('Marketing permission denied'),{name:'ForbiddenException'}));
+  expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1',
+   'CAMPAIGN_READ')).toEqual({authorized:false});
+  roles.assertActorPermission.mockRejectedValueOnce(
+   Object.assign(new Error('OIDC user disabled'),{name:'ForbiddenException'}));
+  expect(await service.resolveAgencyReadScope(actor,'tenant-a','brand-1',
+   'CAMPAIGN_READ')).toEqual({authorized:false});
+  expect(await service.resolveAgencyReadScope(
+   {...actor,organizationId:'tenant-a'},'tenant-a','brand-1','CAMPAIGN_READ'))
+   .toEqual({authorized:false});
+  expect(tx.agencyGrant.findFirst).toHaveBeenCalledWith(expect.objectContaining({
    where:expect.objectContaining({agencyOrganizationId:'agency-b',
     clientOrganizationId:'tenant-a',brandId:'brand-1',status:'ACTIVE'})}));
  });
