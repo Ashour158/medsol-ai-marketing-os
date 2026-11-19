@@ -1,3 +1,4 @@
+import {parseRetrievalCases,evaluationMetrics,feedbackDigest} from './knowledge-learning-evaluation.js';
 import {Prisma} from '@prisma/client';
 import {hasMarketingPermission} from './marketing-permissions.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
@@ -225,6 +226,15 @@ export class MarketingLearningService {
    if(changed.count!==1)throw new ConflictException('Concurrent knowledge revocation');
    const scrub=await tx.knowledgeChunk.updateMany({where:{
     organizationId:org,documentId:id},data:{content:'',terms:[],vector:[]}});
+   // Revoke every dependent memory and graph edge atomically with the source.
+   // Historical agent execution records and backups require separate retention.
+   const memoryScrub=await tx.agentKnowledgeMemory.updateMany({where:{
+    organizationId:org,documentId:id,status:{not:'REVOKED'}},data:{
+    status:'REVOKED',content:'',revokedBy:identity.userId,revokedAt:new Date()}});
+   const edgeScrub=await tx.knowledgeRelation.updateMany({where:{
+    organizationId:org,status:{not:'REVOKED'},
+    OR:[{fromDocumentId:id},{toDocumentId:id}]},data:{
+    status:'REVOKED',note:'',revokedBy:identity.userId,revokedAt:new Date()}});
    const signals=await tx.learningSignal.findMany({where:{
     organizationId:org,knowledgeDocumentId:id},select:{id:true}});
    await tx.learningSignal.updateMany({where:{
@@ -242,13 +252,15 @@ export class MarketingLearningService {
     actorId:identity.userId,action:'KNOWLEDGE_SOURCE_REVOKED_AND_SCRUBBED',
     objectType:'KnowledgeDocument',objectId:id,correlationId:id,
     after:{reason,contentDigest:doc.contentDigest,
-     scrubbedChunks:scrub.count,linkedSignals:signals.length,
+     scrubbedChunks:scrub.count,scrubbedMemories:memoryScrub.count,
+     revokedGraphEdges:edgeScrub.count,linkedSignals:signals.length,
      requiresHistoricalRetentionReview:true,externalEffectsAuthorized:false}}});
    await tx.outboxEvent.create({data:{organizationId:org,eventId:randomUUID(),
     eventType:'KnowledgeSourceRevokedInternal',aggregateType:'KnowledgeDocument',
     aggregateId:id,correlationId:id,
     payload:{documentId:id,sourceRevoked:true,externalEffectsAuthorized:false}}});
    return{documentId:id,status:'REVOKED',scrubbedChunks:scrub.count,
+    scrubbedMemories:memoryScrub.count,revokedGraphEdges:edgeScrub.count,
     withdrawnSignals:signals.length,replayed:false};
   });
  }
@@ -258,7 +270,7 @@ export class MarketingLearningService {
   * This is evidence retrieval, NOT fact validation or provider semantic RAG.
   */
  private async knowledgeRetrieve(org:string,queryRaw:unknown,
-  agentId?:string,limitRaw?:unknown){
+  agentId?:string,limitRaw?:unknown,existingTx?:Prisma.TransactionClient){
   const query=required(queryRaw,'knowledge query',400);
   if(query.length<3)throw new BadRequestException('Knowledge query too short');
   const limit=limitRaw===undefined?5:limitRaw;
@@ -266,9 +278,11 @@ export class MarketingLearningService {
    throw new BadRequestException('Knowledge result limit must be 1-10');
   const terms=knowledgeTerms(query);
   if(!terms.length)return{results:[],query,reviewedOnly:true,
-   independentlyVerified:false,externalEffectsAuthorized:false};
+   independentlyVerified:false,externalEffectsAuthorized:false,
+   retrievalMethod:'POSTGRES_FULL_TEXT_PLUS_LOCAL_SPARSE_VECTOR' as const,
+   semanticModelEmbeddings:false};
   const queryVector=sparseKnowledgeVector(query);
-  return this.knowledgeTx(org,async tx=>{
+  const search=async(tx:Prisma.TransactionClient)=>{
    // Strictly intersect tenant, review state, source freshness, agent ACL,
    // indexed terms and FTS before any content crosses the service boundary.
    const rows=await tx.$queryRaw<Array<{
@@ -318,7 +332,8 @@ export class MarketingLearningService {
     retrievalMethod:'POSTGRES_FULL_TEXT_PLUS_LOCAL_SPARSE_VECTOR' as const,
     semanticModelEmbeddings:false,independentlyVerified:false,
     externalEffectsAuthorized:false};
-  });
+  };
+  return existingTx?search(existingTx):this.knowledgeTx(org,search);
  }
  async searchKnowledge(org:string,identity:VerifiedIdentity,
   query:unknown,limit?:unknown){
@@ -328,7 +343,51 @@ export class MarketingLearningService {
  async contextForAgent(org:string,agentId:string,query:unknown){
   if(!AGENT_ROSTER.some(a=>a.id===agentId))
    throw new ForbiddenException('Unknown canonical agent cannot retrieve knowledge');
-  return this.knowledgeRetrieve(org,query,agentId,3);
+  return this.knowledgeTx(org,async tx=>{
+   const base=await this.knowledgeRetrieve(org,query,agentId,3,tx);
+   const now=new Date();
+   // Every memory is anchored to a still-reviewed, still-allowed source.
+   const memories=await tx.agentKnowledgeMemory.findMany({
+    where:{organizationId:org,agentId,status:'APPROVED',expiresAt:{gt:now},
+     sourceDocument:{status:'REVIEWED',accessMode:'AGENT_SCOPED',
+      agentScope:{has:agentId},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}},
+    orderBy:{reviewedAt:'desc'},take:8,
+    select:{id:true,documentId:true,content:true,contentDigest:true,
+     expiresAt:true,sourceDocument:{select:{contentDigest:true,sourceKey:true}}}
+   });
+   const sourceIds=[...new Set(base.results.map(x=>x.documentId))];
+   const relations=sourceIds.length?await tx.knowledgeRelation.findMany({
+    where:{organizationId:org,status:'REVIEWED',
+     fromDocumentId:{in:sourceIds},
+     fromDocument:{status:'REVIEWED',accessMode:'AGENT_SCOPED',
+      agentScope:{has:agentId},OR:[{expiresAt:null},{expiresAt:{gt:now}}]},
+     toDocument:{status:'REVIEWED',accessMode:'AGENT_SCOPED',
+      agentScope:{has:agentId},OR:[{expiresAt:null},{expiresAt:{gt:now}}]}},
+    take:12,orderBy:{createdAt:'desc'},
+    select:{id:true,fromDocumentId:true,toDocumentId:true,
+     relationType:true,noteDigest:true,
+     toDocument:{select:{title:true,contentDigest:true,sourceKey:true}}}
+   }):[];
+   return{...base,memories:memories.map(m=>({
+    memoryId:m.id,documentId:m.documentId,
+    citationRef:'km:'+m.id+':'+m.contentDigest.slice(7,19),
+    text:m.content,contentDigest:m.contentDigest,
+    sourceDigest:m.sourceDocument.contentDigest,
+    sourceKey:m.sourceDocument.sourceKey,expiresAt:m.expiresAt,
+    humanReviewed:true,independentlyVerified:false,
+    externalEffectsAuthorized:false
+   })),
+   relations:relations.map(edge=>({
+    edgeId:edge.id,fromDocumentId:edge.fromDocumentId,
+    toDocumentId:edge.toDocumentId,relationType:edge.relationType,
+    relatedSourceKey:edge.toDocument.sourceKey,
+    relatedTitle:edge.toDocument.title,
+    relatedDigest:edge.toDocument.contentDigest,
+    edgeNoteDigest:edge.noteDigest,scientificTruthVerified:false,
+    externalEffectsAuthorized:false
+   })),
+   agentMemoryWritesAllowed:false as const,graphTruthVerified:false as const};
+  });
  }
  /**
   * Source-approved learning can only create a QUARANTINED LearningSignal.
