@@ -536,23 +536,16 @@ export class MarketingWorkflowService {
             causationId:id,input:{objective:action.objective,market:action.market,
              requestedOutcome:action.objective},capabilities:[capability]});
            await this.leases.assertActive(lease);
-           const changed=await this.db.workflowStepExecution.updateMany({where:{
-            id:action.stepId,organizationId,workflowExecutionId:id,status:'RUNNING'},
-            data:{status:'COMPLETED',completedAt:new Date(),
-             output:{agentExecutionId:result.executionId,action:result.decision.action,
-              reviewRequired:result.decision.approvalRequired,
-              externalEffectsAuthorized:false}}});
-           if(changed.count!==1)throw new ConflictException('Agent step completion fence changed');
+           await this.dagCheckpointAgentStep(lease,action.stepId,
+            action.agentId,result.executionId,result.decision.action,
+            result.decision.approvalRequired);
           }catch(error){
-           await this.db.workflowStepExecution.updateMany({where:{
-            id:action.stepId,organizationId,workflowExecutionId:id,status:'RUNNING'},
-            data:{status:'OUTCOME_UNKNOWN',completedAt:new Date(),
-             error:{reason:'Agent task requires manual recovery review'}}});
-           await this.db.workflowExecution.updateMany({where:{
-            id,organizationId,leaseOwner:lease.owner,
-            leaseGeneration:lease.generation,status:'RUNNING'},
-            data:{status:'BLOCKED',currentStep:'UNCERTAIN_AGENT_STEP',
-             completedAt:new Date(),version:{increment:1}}});
+           // Losing the lease must not corrupt a successor's state.
+           // A current owner quarantines uncertain outcomes atomically.
+           try{await this.dagQuarantineAgentStep(lease,action.stepId);}
+           catch(quarantineError){
+            if(!(quarantineError instanceof ConflictException))throw quarantineError;
+           }
            throw error;
           }
         }
@@ -560,6 +553,126 @@ export class MarketingWorkflowService {
       return{workflowExecutionId:id,status:'RUNNING',batchLimitReached:true,
        externalEffectsAuthorized:false};
     }finally{await this.leases.release(lease);}
+  }
+
+  /**
+   * R3-J crash-window checkpoint. The worker's in-memory lease assertion is
+   * insufficient: fence verification, completed AgentExecution proof, and the
+   * step ledger write MUST share a locked PostgreSQL transaction. This keeps
+   * the single canonical workflow ledger authoritative, even across workers.
+   */
+  private async dagCheckpointAgentStep(lease:WorkflowLease,stepId:string,
+    agentId:string,executionId:string,action:string,reviewRequired:boolean){
+    return this.dagTransaction(lease.organizationId,async tx=>{
+      const locked=await tx.$queryRaw<Array<{id:string}>>`
+       SELECT "id" FROM "WorkflowExecution"
+       WHERE "id"=${lease.workflowId} AND "organizationId"=${lease.organizationId}
+       FOR UPDATE`;
+      if(locked.length!==1)
+       throw new ConflictException('Fenced DAG workflow no longer exists');
+      const now=new Date();
+      const wf=await tx.workflowExecution.findFirst({where:{
+       id:lease.workflowId,organizationId:lease.organizationId,
+       workflowType:'BLUEPRINT_OFFLINE_DAG',status:'RUNNING',
+       leaseOwner:lease.owner,leaseGeneration:lease.generation,
+       leaseExpiresAt:{gt:now}
+      }});
+      if(!wf)throw new ConflictException('DAG agent checkpoint lease superseded or expired');
+      const meta=wf.input as {deploymentId?:string;releaseDigest?:string;
+       agentPins?:Record<string,number>};
+      const release=await tx.blueprintDeployment.findFirst({where:{
+       organizationId:lease.organizationId,id:meta.deploymentId??'',
+       status:{not:'REVOKED'}
+      }});
+      if(!release||release.digest!==meta.releaseDigest||
+       offlineDagDigest(release.manifest)!==release.digest||
+       !verifyOfflineDagSignature(release.manifest,release.signature,
+        release.signerKeyId,offlineDagTrust()))
+       throw new ConflictException('DAG release revoked or signature untrusted at checkpoint');
+      const installed=await tx.agent.findFirst({where:{
+       organizationId:lease.organizationId,id:agentId},select:{
+        version:true,status:true}});
+      if(!Number.isSafeInteger(meta.agentPins?.[agentId])||
+       (installed?.version??1)!==meta.agentPins?.[agentId]||
+       (installed&&installed.status!=='ACTIVE'))
+       throw new ConflictException('Pinned agent release changed before checkpoint');
+      const execution=await tx.agentExecution.findFirst({where:{
+       id:executionId,organizationId:lease.organizationId,agentId,
+       correlationId:wf.correlationId,causationId:lease.workflowId,
+       status:'COMPLETED'
+      },select:{id:true,decision:true}});
+      const decision=execution?.decision as {releaseEvidence?:{
+       modelCallsAuthorized?:boolean;toolCallsAuthorized?:boolean;
+       externalEffectsAuthorized?:boolean}}|null|undefined;
+      if(!execution||decision?.releaseEvidence?.modelCallsAuthorized!==false||
+       decision?.releaseEvidence?.toolCallsAuthorized!==false||
+       decision?.releaseEvidence?.externalEffectsAuthorized!==false)
+       throw new ConflictException('Completed no-egress agent execution proof missing');
+      const changed=await tx.workflowStepExecution.updateMany({where:{
+       id:stepId,organizationId:lease.organizationId,
+       workflowExecutionId:lease.workflowId,status:'RUNNING'
+      },data:{status:'COMPLETED',completedAt:now,output:{
+       agentExecutionId:executionId,action,reviewRequired,
+       releaseDigest:release.digest,leaseGeneration:lease.generation,
+       externalEffectsAuthorized:false}}});
+      if(changed.count!==1)
+       throw new ConflictException('DAG agent checkpoint already decided');
+      await tx.auditEvent.create({data:{
+       organizationId:lease.organizationId,actorType:'SYSTEM',
+       actorId:'r3j-fenced-dag-checkpoint',action:'DAG_AGENT_FENCED_CHECKPOINT',
+       objectType:'WorkflowExecution',objectId:lease.workflowId,
+       correlationId:wf.correlationId,causationId:executionId,
+       after:{stepId,agentId,executionId,
+        leaseGeneration:lease.generation,releaseDigest:release.digest,
+        externalEffectsAuthorized:false}
+      }});
+      return{stepId,status:'COMPLETED' as const,executionId};
+    });
+  }
+  /**
+   * Ambiguous completions are quarantined only by the STILL-CURRENT lease
+   * holder. Stale owners cannot overwrite a successor's live step ledger.
+   * No automatic retry or detached remote effect is attempted.
+   */
+  private async dagQuarantineAgentStep(lease:WorkflowLease,stepId:string){
+    return this.dagTransaction(lease.organizationId,async tx=>{
+      const locked=await tx.$queryRaw<Array<{id:string}>>`
+       SELECT "id" FROM "WorkflowExecution"
+       WHERE "id"=${lease.workflowId} AND "organizationId"=${lease.organizationId}
+       FOR UPDATE`;
+      if(locked.length!==1)return{quarantined:false};
+      const wf=await tx.workflowExecution.findFirst({where:{
+       id:lease.workflowId,organizationId:lease.organizationId,
+       workflowType:'BLUEPRINT_OFFLINE_DAG',status:'RUNNING',
+       leaseOwner:lease.owner,leaseGeneration:lease.generation,
+       leaseExpiresAt:{gt:new Date()}
+      }});
+      if(!wf)return{quarantined:false};
+      const step=await tx.workflowStepExecution.updateMany({where:{
+       id:stepId,organizationId:lease.organizationId,
+       workflowExecutionId:lease.workflowId,status:'RUNNING'
+      },data:{status:'OUTCOME_UNKNOWN',completedAt:new Date(),
+       error:{reason:'Agent task requires manual recovery review',
+        automaticReplayAllowed:false}}});
+      if(step.count!==1)return{quarantined:false};
+      const changed=await tx.workflowExecution.updateMany({where:{
+       id:lease.workflowId,organizationId:lease.organizationId,
+       leaseOwner:lease.owner,leaseGeneration:lease.generation,
+       status:'RUNNING'},data:{status:'BLOCKED',
+        currentStep:'UNCERTAIN_AGENT_STEP',completedAt:new Date(),
+        version:{increment:1}}});
+      if(changed.count!==1)
+       throw new ConflictException('Agent quarantine lease changed');
+      await tx.auditEvent.create({data:{
+       organizationId:lease.organizationId,actorType:'SYSTEM',
+       actorId:'r3j-fenced-dag-checkpoint',action:'DAG_AGENT_OUTCOME_UNKNOWN',
+       objectType:'WorkflowExecution',objectId:lease.workflowId,
+       correlationId:wf.correlationId,
+       after:{stepId,leaseGeneration:lease.generation,
+        automaticReplayAllowed:false,externalEffectsAuthorized:false}
+      }});
+      return{quarantined:true};
+    });
   }
   /** Called by the canonical ApprovalService only after its own durable human decision. */
   private async dagReconcileApproval(organizationId:string,approvalId:string,
