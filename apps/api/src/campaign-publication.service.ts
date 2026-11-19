@@ -884,7 +884,9 @@ export class CampaignPublicationService{
        prior.outcome===status&&row.status===status)
      return{publicationId,status,replayed:true,sandboxReceiptOnly:true,
       simulation:synthetic,externalEffectsAuthorized:false};
-    throw new ConflictException('Publication already executed or held under different simulation intent');
+    throw new ConflictException(synthetic?
+     'Publication already executed or held under different simulation intent':
+     'Publication no longer ready for this simulation');
    }
    if(row.version!==expectedVersion)
     throw new ConflictException('Publication no longer ready for this simulation');
