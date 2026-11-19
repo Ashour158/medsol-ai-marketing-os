@@ -131,7 +131,7 @@ export function buildExtraTrialFlow(provider:ExtraTrialProvider):ExtraTrialStep[
      type:'create_from_brand_template',brand_template_id:'DAGTRIALBRAND001',
      data:{headline:{type:'text',text:TRIAL_TEXT}}},'design:content:write','PREPARE'),
     request('autofill_status','GET',host+'autofills/'+
-     EXTRA_FIXTURE_IDS.canvaAutofill,null,'design:content:read','STATUS_READ'),
+     EXTRA_FIXTURE_IDS.canvaAutofill,null,'design:meta:read','STATUS_READ'),
     request('export_create','POST',host+'exports',{
      design_id:EXTRA_FIXTURE_IDS.canvaDesign,format:{type:'png'}},
      'design:content:read','CREATIVE_EXPORT_FIXTURE'),
@@ -207,8 +207,8 @@ export function verifyExtraTrialStage(provider:ExtraTrialProvider,
    }else if(phase==='publish_status'){
     match(obj(body.error).code,'ok','TikTok status');
     match(obj(body.data).status,'PUBLISH_COMPLETE','TikTok completion');
-    match(obj(body.data).publish_id,EXTRA_FIXTURE_IDS.tiktokPublish,
-     'TikTok status publish id');
+    // TikTok status response carries status and optional public post IDs,
+    // not necessarily the original publish_id. It is bound by the request.
    }else throw new Error('Unknown TikTok protocol stage');
    return;
   case 'YOUTUBE':
@@ -261,7 +261,9 @@ export function verifyExtraTrialStage(provider:ExtraTrialProvider,
     const job=obj(body.job);
     match(job.id,EXTRA_FIXTURE_IDS.canvaAutofill,'Canva autofill status');
     match(job.status,'success','Canva autofill completion');
-    match(obj(job.result).design_id,EXTRA_FIXTURE_IDS.canvaDesign,
+    const result=obj(job.result);
+    match(result.type,'create_design','Canva autofill result type');
+    match(obj(result.design).id,EXTRA_FIXTURE_IDS.canvaDesign,
      'Canva editable design');
    }else if(phase==='export_create')
     match(obj(body.job).id,EXTRA_FIXTURE_IDS.canvaExport,'Canva export job');
@@ -284,7 +286,8 @@ export function verifyExtraTrialStage(provider:ExtraTrialProvider,
     match(body.status,'succeeded','Adobe generation status');
     const outputs=obj(body.result).outputs;
     if(!Array.isArray(outputs)||outputs.length!==1||
-     obj(outputs[0]).url!=='https://assets.example.invalid/adobe-trial.png')
+     obj(obj(outputs[0]).image).url!==
+      'https://assets.example.invalid/adobe-trial.png')
      throw new Error('Adobe output must be an offline fixture URL');
    }else throw new Error('Unknown Adobe stage');
    return;
@@ -323,7 +326,6 @@ export function extraTrialFixture(provider:ExtraTrialProvider,phase:string,
     upload_url:'https://upload.example.invalid/tiktok/trial-only-upload'}};
    else if(phase==='video_upload')body={uploaded_bytes:videoBytes};
    else body={error:{code:'ok'},data:{
-    publish_id:EXTRA_FIXTURE_IDS.tiktokPublish,
     status:last?'PROCESSING_UPLOAD':'PUBLISH_COMPLETE'}};
    break;
   case 'YOUTUBE':
@@ -353,7 +355,7 @@ export function extraTrialFixture(provider:ExtraTrialProvider,phase:string,
     EXTRA_FIXTURE_IDS.canvaAutofill,status:'in_progress'}};
    else if(phase==='autofill_status')body={job:{
     id:EXTRA_FIXTURE_IDS.canvaAutofill,status:'success',
-    result:{design_id:EXTRA_FIXTURE_IDS.canvaDesign}}};
+    result:{type:'create_design',design:{id:EXTRA_FIXTURE_IDS.canvaDesign}}}};
    else if(phase==='export_create')body={job:{
     id:EXTRA_FIXTURE_IDS.canvaExport,status:'in_progress'}};
    else body={job:{id:EXTRA_FIXTURE_IDS.canvaExport,status:last?'failed':'success',
@@ -365,7 +367,7 @@ export function extraTrialFixture(provider:ExtraTrialProvider,phase:string,
     statusUrl:'https://firefly-api.adobe.io/v3/status/'+EXTRA_FIXTURE_IDS.adobeJob};
    else body={jobId:EXTRA_FIXTURE_IDS.adobeJob,
     status:last?'failed':'succeeded',
-    result:{outputs:[{url:'https://assets.example.invalid/adobe-trial.png'}]}};
+    result:{outputs:[{image:{url:'https://assets.example.invalid/adobe-trial.png'}}]}};
  }
  return{status:200,headers,body};
 }
