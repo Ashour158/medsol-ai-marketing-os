@@ -701,7 +701,7 @@ export class MarketingWorkflowService {
         release.signerKeyId,offlineDagTrust());
       const steps=await tx.workflowStepExecution.findMany({where:{
        organizationId,workflowExecutionId:id
-      },orderBy:{createdAt:'asc'},take:40});
+      },orderBy:{startedAt:'asc'},take:40});
       const approvalRows=await tx.approval.findMany({where:{
        organizationId,workflowExecutionId:id,objectType:'BlueprintWorkflowStep'
       },orderBy:{createdAt:'asc'},take:40,
