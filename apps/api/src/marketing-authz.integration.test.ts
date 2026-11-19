@@ -3,7 +3,8 @@ import { BootstrapAuthGuard } from './bootstrap-auth.guard.js';
 import { verifyOidcIdentity } from './oidc-identity.js';
 vi.mock('./oidc-identity.js', () => ({ verifyOidcIdentity: vi.fn() }));
 const initial = { ...process.env };
-const db: any = { user: { findFirst: vi.fn() }, authSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session' }) } };
+const db: any = { user: { findFirst: vi.fn() }, authSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session' }) },$queryRaw:vi.fn().mockResolvedValue([]) };
+db.$transaction=vi.fn(async (cb:any)=>cb(db));
 const req = (url: string, method = 'GET') => ({ url, method, headers: { authorization: 'Bearer secret', 'x-organization-id': 'tenant', 'x-marketing-session-id': '11111111-1111-4111-8111-111111111111' } as Record<string, unknown>, body: { organizationId: 'tenant' }, identity: undefined as unknown });
 const ctx = (request: unknown): any => ({ switchToHttp: () => ({ getRequest: () => request }) });
 describe('API-wide permission enforcement', () => {
