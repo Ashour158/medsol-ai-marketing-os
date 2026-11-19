@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {hasMarketingPermission,permissionForMarketingRoute}
  from './marketing-permissions.js';
 import {parseToolManifest} from './governed-tool-manifest.js';
@@ -11,7 +12,7 @@ type R3LCase={
  owner:string;setup:string;expectedDeniedSideEffects:string[];trace:string
 };
 const data=JSON.parse(readFileSync(
- new URL('./fixtures/r3l-acceptance-reference-set.json',import.meta.url),
+ resolve(process.cwd(),'src/fixtures/r3l-acceptance-reference-set.json'),
  'utf8')) as {schema:string;cases:R3LCase[]};
 const positiveTool={
  kind:'MCP',serverKey:'r3l_synthetic_tool',name:'Synthetic internal read',
