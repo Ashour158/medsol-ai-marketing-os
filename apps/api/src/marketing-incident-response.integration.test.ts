@@ -78,7 +78,7 @@ describe('authenticated incident response and worker dispatch boundaries',()=>{
  });
 });
 describe.skipIf(!enabled)('PostgreSQL tenant-fenced incident acknowledgement and alert staging',()=>{
- it('queues one outbox alert per occurrence/escalation, survives duplicate scans, and stops after human acknowledgement',async()=>{
+ it('T15-018 queues one outbox alert per occurrence/escalation, survives duplicate scans, and stops after human acknowledgement',async()=>{
   const db=new PrismaClient();
   const org='incident-ops-'+randomUUID();
   const runId='run-'+randomUUID();
