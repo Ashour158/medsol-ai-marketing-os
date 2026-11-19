@@ -2,8 +2,9 @@
  * Master Blueprint v2.1 target-state register (v2.0 plus approved capability amendment).
  * Declarative classification only: NOTHING here registers executable agents,
  * exposes external network connectors, approves actions, or creates database owners.
- * Status describes observed repository implementation as of main b1900a7 (2026-11-18);
- * later releases must update these statuses only with linked acceptance evidence.
+ * Status is revised by linked acceptance slices through R2H synthetic
+ * email/consent; partial means internal simulated or limited governance only,
+ * NEVER permission to send or a production-ready customer capability.
  */
 export type TargetRelease='R0'|'R1'|'R2'|'R3'|'R4'|'R5';
 export type TargetState='NOT_IMPLEMENTED'|'DRAFT_ONLY'|'PARTIAL'|'VERIFIED_IMPLEMENTED';
@@ -133,8 +134,8 @@ export const TARGET_ENGINES = [
     "goal": "Versioned asset, source, license and rendition",
     "release": "R1",
     "owner": "Creative & DAM",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No authoritative DAM models"
+    "state": "PARTIAL",
+    "blocker": "Versioned DAM and independent rights review exist; editable design/source verification and production creatives pending"
   },
   {
     "id": "E15",
@@ -142,8 +143,8 @@ export const TARGET_ENGINES = [
     "goal": "Idempotent approved social publish and reconciliation",
     "release": "R2",
     "owner": "Social & Community",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No social network publishing intents or adapters"
+    "state": "PARTIAL",
+    "blocker": "Canonical publication intent, governed sandbox and 12 mock provider scenarios exist; no live delivery"
   },
   {
     "id": "E16",
@@ -151,8 +152,8 @@ export const TARGET_ENGINES = [
     "goal": "Capability scoped official integration hub",
     "release": "R2",
     "owner": "Integration Hub",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No provider credential lifecycle"
+    "state": "PARTIAL",
+    "blocker": "Integration registry, OAuth custody and observation evidence exist; no verified customer binding or live adapters"
   },
   {
     "id": "E17",
@@ -268,8 +269,8 @@ export const TARGET_ENGINES = [
     "goal": "Consent evidence, suppression and segments",
     "release": "R2",
     "owner": "Audience & Consent",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Required before any mass send"
+    "state": "PARTIAL",
+    "blocker": "Synthetic-only consent, complaints, withdrawals and immutable audience snapshots; no real contact or legal consent"
   },
   {
     "id": "E30",
@@ -277,8 +278,8 @@ export const TARGET_ENGINES = [
     "goal": "Immutable email template, audience and send intent",
     "release": "R2",
     "owner": "Email & Messaging",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No email campaigns"
+    "state": "PARTIAL",
+    "blocker": "Synthetic-only campaign email audience eligibility and immutable no-send batch; no ESP or legal contact master"
   },
   {
     "id": "E31",
@@ -447,14 +448,14 @@ export const TARGET_WORKFLOWS = [
     "name": "Contact and consent intake",
     "release": "R2",
     "owner": "Audience & Consent",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL"
   },
   {
     "id": "WF17",
     "name": "Email campaign",
     "release": "R2",
     "owner": "Email & Messaging",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL"
   },
   {
     "id": "WF18",
@@ -871,7 +872,7 @@ export type BlueprintInventory={
  releaseGates:typeof RELEASE_GATES;
 };
 export function getBlueprintV2Inventory():BlueprintInventory {
- return {version:'2.1',asOfCommit:'b1900a7d0aba7e6d12b5a61752dfc7bf98548da5',
+ return {version:'2.1',asOfCommit:'57cfda8e61acd9949e939c424fb8501b25a53da3',
   targetStateOnly:true,counts:TARGET_COUNTS,engines:TARGET_ENGINES,
   workflows:TARGET_WORKFLOWS,studios:TARGET_STUDIOS,
   brains:TARGET_BRAINS,personas:TARGET_PERSONAS,releaseGates:RELEASE_GATES};

@@ -89,3 +89,7 @@ R2C-A adds a server-only [OAuth PKCE / encrypted credential foundation](docs/blu
 ### R3-A Blueprint and Workflow Studio virtual DAG simulator
 
 [Read R3-A implementation and full R3 remaining requirements](docs/blueprint-v2/R3A_VIRTUAL_BLUEPRINT_WORKFLOW_STUDIO.md). A versioned, bounded graph can now be authored in the Command Center and previewed using the canonical Blueprint compiler. The existing MarketingWorkflowService persists a deterministic trace of agent handoffs, parallel branches, joins, human approval gates and event waits in WorkflowExecution/WorkflowStepExecution with tenant OIDC, idempotent replay, audit and Outbox. **This is simulation only:** no model calls, no MCP/A2A invocations, no actual human approval or domain writes; graph deployment remains blocked.
+
+### R2H synthetic Audience, Consent & Email Simulation Studio
+
+[R2H Reuse Map and PostgreSQL E2E requirements](docs/blueprint-v2/R2H_SYNTHETIC_CONSENT_EMAIL.md). Administrators can create anonymized synthetic contact references, test opt-in/withdrawal/irreversible complaint suppression, and snapshot eligibility for an actual human-approved campaign. Synthetic email simulations persist immutable consent/source digests, no-send status, one audit and one internal Outbox event. **No email addresses, legal opt-ins, SMTP/ESP credentials, messages sent, or verified email receipts.** The Audience/Consent and Email domains are newly bounded as the master blueprint requires, rather than duplicate Campaign/Approval/Outbox owners. All real emailing remains disabled.

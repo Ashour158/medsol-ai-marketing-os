@@ -47,6 +47,12 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'READ_TENANCY';
   if(method==='POST'&&/^\/marketing\/media\/evidence\/[^/]+\/revoke$/.test(path))
    return 'MANAGE_TENANT';
+  if(method==='GET'&&path==='/marketing/audience/synthetic-contacts')return 'READ_TENANCY';
+  if(method==='POST'&&(path==='/marketing/audience/synthetic-contacts'||
+    /^\/marketing\/audience\/synthetic-contacts\/[^/]+\/consent$/.test(path)))
+   return 'MANAGE_TENANT';
+  if(method==='GET'&&path==='/marketing/email/simulations')return 'READ_TENANCY';
+  if(method==='POST'&&path==='/marketing/email/simulations')return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/publications')return 'READ_PORTFOLIO';
   if(method==='GET'&&/^\/marketing\/publications\/[^/]+$/.test(path))return 'READ_AUDIT';
   if(method==='GET'&&/^\/marketing\/publications\/[^/]+\/(preflight|performance|reconciliation|release-readiness)$/.test(path))
