@@ -98,11 +98,18 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length === 4 && id === "runs" && !!action && ((operation === "recovery" && request.method === "GET") || ((operation === "execute" || operation === "quarantine") && request.method === "POST")))
       )) ||
       (resource === "operations" && !(path.length === 2 && (id === "delivery" || id === "workers") && request.method === "GET")) ||
-      (resource === "agents" && !(request.method === "GET" && (
-        path.length === 1 ||
-        (path.length === 2 && (id === "executions" || id === "operations" || id === "budget")) ||
-        (path.length === 3 && id === "executions" && !!action)
-      ))) ||
+      (resource === "agents" && !(
+        (request.method === "GET" && (
+          path.length === 1 ||
+          (path.length === 2 && ["executions","operations","budget","manifests"].includes(id??"")) ||
+          (path.length === 3 && id === "executions" && !!action)
+        )) ||
+        (request.method === "POST" && (
+          (path.length === 2 && id === "manifests") ||
+          (path.length === 4 && id === "manifests" && !!action &&
+           ["approve","activate","revoke","rollback"].includes(operation??""))
+        ))
+      )) ||
       (resource === "approvals" && !((path.length === 2 && id === "pending" && request.method === "GET") || (path.length === 2 && id === "decide" && request.method === "POST"))) ||
       (resource === "requests" && (path.length !== 1 || request.method !== "POST")) ||
       (resource === "workflows" && !(
