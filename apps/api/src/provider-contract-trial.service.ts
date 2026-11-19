@@ -82,7 +82,7 @@ export class ProviderContractTrialService{
   return this.scoped(org,async tx=>{
    await this.admin(tx,org,identity);
    // Serialize same-tenant same-key races; this is a DB-only synthetic trial.
-   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${ref}))`;
+   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${ref})::bigint)::text AS lock_result`;
    const commandId='PROVIDER_TRIAL:'+requestKey;
    const prior=await tx.commandReceipt.findUnique({where:{
     organizationId_commandId:{organizationId:org,commandId}
