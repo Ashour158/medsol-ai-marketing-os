@@ -75,7 +75,8 @@ describe('R3 canonical blueprint DAG virtual simulator',()=>{
   loop.nodes[2]={id:'route',type:'LOOP_BOUNDED',maxIterations:999} as any;
   expect(simulateBlueprintDraft(loop).issues.map(x=>x.code))
    .toContain('UNBOUNDED_ITERATION');
-  const effects=draft();effects.nodes[1]!.sideEffect='IRREVERSIBLE_EXTERNAL';
+  const effects=draft();effects.nodes[1]={...effects.nodes[1]!,
+   sideEffect:'IRREVERSIBLE_EXTERNAL'} as any;
   expect(simulateBlueprintDraft(effects).issues.map(x=>x.code))
    .toContain('EXTERNAL_EFFECT_BLOCKED');
   expect(simulateBlueprintDraft(null).stepCount).toBe(0);
