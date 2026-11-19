@@ -120,6 +120,59 @@ export function lintBlueprintDraft(raw:unknown):BlueprintLintResult{
   if(type==='TRIGGER'&&es.some(e=>e?.to===id))fail('TRIGGER_HAS_INPUT','Start trigger cannot have incoming edges',id);
   if(type==='END'&&es.some(e=>e?.from===id))fail('END_HAS_OUTPUT','Terminal node cannot have outgoing edges',id);
  }
+ // A single root, total reachability and guaranteed eventual END are
+ // mandatory even for draft-only simulation. Otherwise unreachable human
+ // approval and dangling branches could be hidden in an apparently valid DAG.
+ const triggers=[...typed].filter(([,type])=>type==='TRIGGER').map(([id])=>id);
+ if(triggers.length!==1)
+  fail('SINGLE_TRIGGER_REQUIRED','Exactly one canonical trigger is required');
+ const endings=[...typed].filter(([,type])=>type==='END').map(([id])=>id);
+ if(triggers.length===1){
+  const seen=new Set<string>();
+  const queue=[triggers[0]!];
+  while(queue.length){
+   const next=queue.shift()!;
+   if(seen.has(next))continue;
+   seen.add(next);
+   for(const child of graph.get(next)??[])if(!seen.has(child))queue.push(child);
+  }
+  for(const nodeId of ids)if(!seen.has(nodeId))
+   fail('UNREACHABLE_NODE','Node is not reachable from the only trigger',nodeId);
+ }
+ const reverse=new Map([...ids].map(nodeId=>[nodeId,[] as string[]]));
+ for(const [parent,children] of graph)
+  for(const child of children)reverse.get(child)?.push(parent);
+ const reachesEnd=new Set<string>();
+ const backward=[...endings];
+ while(backward.length){
+  const nodeId=backward.shift()!;
+  if(reachesEnd.has(nodeId))continue;
+  reachesEnd.add(nodeId);
+  for(const parent of reverse.get(nodeId)??[])
+   if(!reachesEnd.has(parent))backward.push(parent);
+ }
+ for(const nodeId of ids)if(!reachesEnd.has(nodeId))
+  fail('NO_TERMINAL_PATH','Every branch must eventually reach an END node',nodeId);
+ // Node configuration must not smuggle effectful commands into a simulated
+ // task. Runtime authorization will be a separate signed deployment contract.
+ for(const untrusted of ns.slice(0,101)){
+  if(!untrusted||typeof untrusted!=='object'||Array.isArray(untrusted))continue;
+  const node=untrusted as Record<string,unknown>;
+  const nodeId=typeof node.id==='string'?node.id:undefined;
+  for(const key of Object.keys(node)){
+   if(!['id','type','engineId','agentId','workflowId','sideEffect',
+     'maxIterations','maxSeconds'].includes(key))
+    fail('UNRECOGNIZED_NODE_FIELD','Unknown node configuration is not permitted',nodeId);
+  }
+  if(node.sideEffect!==undefined&&node.sideEffect!=='NONE')
+   fail('EFFECT_POLICY_DENIED','Drafts must explicitly have no side effects',nodeId);
+  if(node.type!=='AGENT_TASK'&&node.agentId!==undefined)
+   fail('AGENT_OWNER_MISMATCH','Only agent tasks may reference an agent',nodeId);
+  if(node.type!=='LOOP_BOUNDED'&&node.maxIterations!==undefined)
+   fail('LOOP_BOUND_MISMATCH','Iteration bound belongs only to loop design nodes',nodeId);
+  if(node.type!=='AGENT_TASK'&&node.maxSeconds!==undefined)
+   fail('DEADLINE_OWNER_MISMATCH','Agent deadline belongs only to agent tasks',nodeId);
+ }
  return{validDraft:issues.length===0,deployAuthorized:false,executable:false,
   issues,nodeCount:ns.length,edgeCount:es.length};
 }
