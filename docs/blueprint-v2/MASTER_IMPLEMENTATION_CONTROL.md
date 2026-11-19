@@ -209,3 +209,7 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## R2/R3 combined hardening tranche — graph safety and remaining acceptance
 
 [Reuse Map, adversarial blueprint graph validation, outstanding R2/R3 functional capabilities and acceptance sequence](R2_R3_BIG_TRANCHE_GAP_AND_GRAPH_SAFETY.md). The existing Blueprint compiler now rejects unreachable nodes, branches without terminal paths, multiple roots and unknown configuration fields. Canonical virtual workflow simulation remains non-executable and cannot send messages or call providers. **Neither R2 nor R3 is declared complete.**
+
+## R2-I and R3-C — synthetic ESP matrix and provider-neutral model routing
+
+[Reuse Map, 12 synthetic email transport scenarios, 4 simulated model-provider protocols, zero-egress guarantees and acceptance blockers](R2I_R3C_SIMULATED_TRANSPORT_AND_MODEL_ROUTING.md). The existing R2H email authority now persists deterministic, scenario-bound no-send transport observations under its original immutable audience snapshot, with SQL guards against fake real sends or retries. The existing GovernedModelService/BoundedModelGateway can opt into four **offline** provider simulations (OpenAI, Anthropic, Gemini, local) with server-configured canonical-agent routing and the original budget ledger; default remains disabled. Neither slice creates external accounts, real email delivery, real AI inference, or full R2/R3 completion.
