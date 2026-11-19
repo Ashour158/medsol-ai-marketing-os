@@ -28,8 +28,14 @@ describe('authoritative catalogue data for the marketing Brain',()=>{
   const db:any={brainRun:{updateMany:vi.fn().mockResolvedValue({count:1})}};
   const agents:any={execute:vi.fn().mockResolvedValue({executionId:'agent-ex',decision:{executionAllowed:true}})};
   const ledger:any={get:vi.fn().mockResolvedValueOnce(run).mockResolvedValueOnce({status:'REVIEW_REQUIRED'}),checkpoint:vi.fn().mockResolvedValue({completed:true})};
-  const learning:any={trendBrief:vi.fn().mockResolvedValue({topics:[{topic:'Proteomics',sector:'proteomics',status:'HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED',
-   evidence:[{signalId:'s1',url:'https://europepmc.org/article/MED/123'}]}]})};
+  const learning:any={
+   trendBrief:vi.fn().mockResolvedValue({topics:[{topic:'Proteomics',sector:'proteomics',status:'HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED',
+    evidence:[{signalId:'s1',url:'https://europepmc.org/article/MED/123'}]}]}),
+   contextForAgent:vi.fn().mockResolvedValue({results:[{citationRef:'kb:curated:0:123abc',
+    snippet:'Review-required research excerpt',independentlyVerified:false,
+    untrustedSourceText:true}],reviewedOnly:true,independentlyVerified:false,
+    externalEffectsAuthorized:false})
+  };
   const context={source:'TENANT_MARKETING_CATALOG',product:{id:'p1',code:'SEQ-001',name:'Platform'},objective:null,
    declarationsVerified:true,scientificClaimsVerified:false,regulatoryApprovalVerified:false};
   const read:any={brainAuthorityContext:vi.fn().mockResolvedValue(context)};
@@ -39,5 +45,8 @@ describe('authoritative catalogue data for the marketing Brain',()=>{
   const payload=agents.execute.mock.calls[0]![1].input;
   expect(payload.authorityContext.product.code).toBe('SEQ-001');
   expect(payload.trendContext.verified).toBe(false);
+  expect(learning.contextForAgent).toHaveBeenCalledWith('tenant-a','MKT-CMO-001','Launch');
+  expect(payload.knowledgeContext.untrustedDataNotInstructions).toBe(true);
+  expect(payload.knowledgeContext.results[0].citationRef).toMatch(/^kb:/);
  });
 });
