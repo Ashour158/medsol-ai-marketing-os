@@ -5,7 +5,7 @@ import {TenantBrandService} from './tenant-brand.service.js';
 import {TenantRolePolicyService} from './tenant-role-policy.service.js';
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('PostgreSQL R1 tenant, brand and agency grant authority',()=>{
- it('keeps client brands, agency users, scopes, revocation and audit isolated',async()=>{
+ it('T01-008 keeps client brands, agency users, scopes, revocation and audit isolated',async()=>{
   const db=new PrismaClient();
   const clientId='r1-client-'+randomUUID();
   const agencyId='r1-agency-'+randomUUID();
