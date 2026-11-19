@@ -18,7 +18,7 @@ const later=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 const mediaBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0pUAAAAASUVORK5CYII=','base64');
 const digest='sha256:'+createHash('sha256').update(mediaBytes).digest('hex');
 describe('R2 governed sandbox publication from real approved campaign and creative',()=>{
- it.skipIf(!enabled)('runs independent human approvals → exact preflight → one sandbox receipt → source-only metrics',async()=>{
+ it.skipIf(!enabled)('T09-001 runs independent human approvals → exact preflight → one sandbox receipt → source-only metrics',async()=>{
   const db=new PrismaClient(),org='r2-org-'+randomUUID(),foreign='r2-other-'+randomUUID();
   const creator='r2-author-'+randomUUID(),reviewer='r2-reviewer-'+randomUUID(),brandId=randomUUID();
   try{

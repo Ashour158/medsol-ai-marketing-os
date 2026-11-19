@@ -5,7 +5,7 @@ import {MarketingPerformanceService} from './marketing-performance.service.js';
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
- it('preserves source provenance, reviewer separation and composite campaign tenant isolation',async()=>{
+ it('T13-001 preserves source provenance, reviewer separation and composite campaign tenant isolation',async()=>{
   const db=new PrismaClient();
   const organizationId='metric-a-'+randomUUID(),otherOrganization='metric-b-'+randomUUID();
   try{

@@ -20,7 +20,7 @@ const draft=()=>({id:'r3j-fenced-review',version:1,nodes:[
 const manifest=()=>({draft:draft(),canaryPercent:100,maxSteps:10,
  executionMode:'DETERMINISTIC_NO_MODEL'});
 describe('R3-J cross-engine offline recovery and release acceptance',()=>{
- it.skipIf(!enabled)('fences two workers, rejects stale result after prior active check, denies revoked release approval and refuses certification',async()=>{
+ it.skipIf(!enabled)('T04-002 fences two workers, rejects stale result after prior active check, denies revoked release approval and refuses certification',async()=>{
   const db=new PrismaClient();
   const org='r3j-'+randomUUID(),foreign='r3j-other-'+randomUUID();
   const maker='r3j-maker-'+randomUUID(),checker='r3j-checker-'+randomUUID();
@@ -231,7 +231,7 @@ describe('R3-J cross-engine offline recovery and release acceptance',()=>{
    await db.$disconnect();
   }
  },90000);
- it('permits only read-only incident evidence, not recovery execution or release overrides',()=>{
+ it('T15-019 permits only read-only incident evidence, not recovery execution or release overrides',()=>{
   expect(permissionForMarketingRoute('GET',
    '/marketing/architecture/readiness')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('GET',

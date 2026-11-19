@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-L authoritatively enumerates the planned 500-case blueprint.
+ * R3-M extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -51,25 +51,61 @@ for(const item of reference.cases){
   testSource:suiteSource,contractEngine:item.trace,
   operatorSignoff:false,providerUatVerified:false});
 }
+const extendedUnitCases=[
+ {id:'T14-001',testSource:'apps/api/src/model-reconciliation.test.ts'}
+];
+for(const {id,testSource} of extendedUnitCases){
+ if(active.has(id)||!existsSync(testSource)||
+  !readFileSync(testSource,'utf8').includes("it('"+id+' '))
+  throw new Error('Model billing acceptance marker missing: '+id);
+ active.set(id,{kind:'OFFLINE_UNIT_ASSERTION',testSource,
+  contractEngine:'ModelReconciliationService',operatorSignoff:false,
+  providerUatVerified:false});
+}
 const databaseCases=[
  {id:'T01-001',testSource:'apps/api/src/postgres-r3l-agency-e2e.integration.test.ts'},
  {id:'T01-002',testSource:'apps/api/src/postgres-r3l-agency-e2e.integration.test.ts'},
- {id:'T15-017',testSource:'apps/api/src/postgres-r3l-multiworker-resilience.integration.test.ts'}
+ {id:'T15-017',testSource:'apps/api/src/postgres-r3l-multiworker-resilience.integration.test.ts'},
+ {id:'T01-003',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
+ {id:'T01-004',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
+ {id:'T01-005',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
+ {id:'T01-009',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
+ {id:'T01-006',testSource:'apps/api/src/postgres-r2-publication-rls.integration.test.ts'},
+ {id:'T01-007',testSource:'apps/api/src/postgres-r2e-signed-webhook.integration.test.ts'},
+ {id:'T01-008',testSource:'apps/api/src/postgres-tenant-brand-agency.integration.test.ts'},
+ {id:'T03-021',testSource:'apps/api/src/postgres-campaign.integration.test.ts'},
+ {id:'T03-022',testSource:'apps/api/src/postgres-creative-assets.integration.test.ts'},
+ {id:'T04-001',testSource:'apps/api/src/postgres-r3g-offline-dag.integration.test.ts'},
+ {id:'T04-002',testSource:'apps/api/src/postgres-r3j-recovery-acceptance.integration.test.ts'},
+ {id:'T04-003',testSource:'apps/api/src/postgres-blueprint-virtual.integration.test.ts'},
+ {id:'T05-001',testSource:'apps/api/src/postgres-agent-multitenant.integration.test.ts'},
+ {id:'T06-021',testSource:'apps/api/src/postgres-governed-tool-registry.integration.test.ts'},
+ {id:'T07-025',testSource:'apps/api/src/postgres-r3i-memory-graph.integration.test.ts'},
+ {id:'T09-001',testSource:'apps/api/src/postgres-r2-publication.integration.test.ts'},
+ {id:'T10-001',testSource:'apps/api/src/postgres-synthetic-audience-email.integration.test.ts'},
+ {id:'T11-001',testSource:'apps/api/src/postgres-creative-assets.integration.test.ts'},
+ {id:'T13-001',testSource:'apps/api/src/postgres-marketing-performance.integration.test.ts'},
+ {id:'T15-018',testSource:'apps/api/src/marketing-incident-response.integration.test.ts'},
+ {id:'T15-019',testSource:'apps/api/src/postgres-r3j-recovery-acceptance.integration.test.ts'},
+ {id:'T15-020',testSource:'apps/api/src/postgres-brain-crash-recovery.integration.test.ts'},
+ {id:'T15-021',testSource:'apps/api/src/postgres-brain-crash-recovery.integration.test.ts'}
 ];
 for(const {id,testSource} of databaseCases){
  if(active.has(id))throw new Error('Duplicate acceptance slot '+id);
- if(!existsSync(testSource)||!readFileSync(testSource,'utf8').includes("it('"+id+' '))
+ if(!existsSync(testSource)||
+  !new RegExp("\\bit(?:\\.skipIf\\([^)]*\\))?\\s*\\(\\s*['\\\"]"+id+"\\s")
+   .test(readFileSync(testSource,'utf8')))
   throw new Error('Real PostgreSQL acceptance test marker missing: '+id);
  active.set(id,{kind:'POSTGRES_INTEGRATION_ASSERTION',testSource,
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==113)
- throw new Error('Expected precisely 113 mapped offline cases, got '+active.size);
+if(active.size!==137)
+ throw new Error('Expected precisely 137 mapped offline cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3L_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3M_TEST_GATE_PASSED==='true';
 const cases=[];
 for(const [suite,area,count] of PLAN){
  for(let n=1;n<=count;n++){
@@ -88,18 +124,18 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3l-500-case-acceptance-index-v1',
+ schema:'medsol-r3m-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
  evidenceScope:'CI_OFFLINE_UNIT_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
  releaseVerdict:'NOT_CERTIFIED',
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
- mappedOfflineUnitCases:110,
- mappedPostgresIntegrationCases:3,
- mappedEngineeringAssertions:113,
- unmappedPlannedCases:387,
- referenceCasesAssertedInThisCi:verifiedInCi?113:0,
+ mappedOfflineUnitCases:111,
+ mappedPostgresIntegrationCases:26,
+ mappedEngineeringAssertions:137,
+ unmappedPlannedCases:363,
+ referenceCasesAssertedInThisCi:verifiedInCi?137:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,

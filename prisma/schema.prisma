@@ -107,9 +107,11 @@ model User {
   oidcSubject String?
   tenantRoleDefinitionId String?
   tenantRole TenantRoleDefinition? @relation(fields:[organizationId,tenantRoleDefinitionId],references:[organizationId,id],onDelete:Restrict)
+  authSessions AuthSession[]
   disabledAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  @@unique([organizationId,id])
   @@unique([organizationId,email])
   @@unique([organizationId,oidcSubject])
   @@index([organizationId])
@@ -156,6 +158,7 @@ model MarketingObjective {
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   campaigns Campaign[]
+  @@unique([organizationId,id])
   @@index([organizationId,status])
 }
 model MarketingProduct {
@@ -170,6 +173,7 @@ model MarketingProduct {
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   campaigns Campaign[]
+  @@unique([organizationId,id])
   @@unique([organizationId,code])
 }
 model Campaign {
@@ -187,8 +191,8 @@ model Campaign {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  objective MarketingObjective @relation(fields:[objectiveId],references:[id],onDelete:Restrict)
-  product MarketingProduct? @relation(fields:[productId],references:[id],onDelete:Restrict)
+  objective MarketingObjective @relation(fields:[organizationId,objectiveId],references:[organizationId,id],onDelete:Restrict)
+  product MarketingProduct? @relation(fields:[organizationId,productId],references:[organizationId,id],onDelete:Restrict)
   brand Brand? @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
   publications CampaignPublication[]
   emailSimulations MarketingEmailSimulation[]
@@ -217,7 +221,7 @@ model Approval {
   createdAt DateTime @default(now())
   decidedAt DateTime?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  workflow WorkflowExecution? @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
+  workflow WorkflowExecution? @relation(fields:[organizationId,workflowExecutionId],references:[organizationId,id],onDelete:Restrict)
   creativeAssetRevision CreativeAssetRevision? @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
   publications CampaignPublication[]
   @@unique([organizationId,id])
@@ -325,6 +329,7 @@ model WorkflowExecution {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   steps WorkflowStepExecution[]
   approvals Approval[]
+  @@unique([organizationId,id])
   @@index([organizationId,status])
   @@index([organizationId,correlationId])
   @@index([status,leaseExpiresAt])
@@ -341,7 +346,7 @@ model WorkflowStepExecution {
   error Json?
   startedAt DateTime @default(now())
   completedAt DateTime?
-  workflow WorkflowExecution @relation(fields:[workflowExecutionId],references:[id],onDelete:Restrict)
+  workflow WorkflowExecution @relation(fields:[organizationId,workflowExecutionId],references:[organizationId,id],onDelete:Restrict)
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([workflowExecutionId,stepKey])
   @@index([organizationId,status])
@@ -354,6 +359,7 @@ model AuthSession {
   revokedAt DateTime?
   createdAt DateTime @default(now())
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user User @relation(fields:[organizationId,userId],references:[organizationId,id],onDelete:Restrict)
   @@index([organizationId,userId,revokedAt,expiresAt])
 }
 
@@ -442,6 +448,7 @@ model BrainRun {
   completedAt DateTime?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   steps BrainRunStep[]
+  @@unique([organizationId,id])
   @@unique([organizationId,commandKey])
   @@index([organizationId,status,createdAt])
 }
@@ -458,7 +465,7 @@ model BrainRunStep {
   startedAt DateTime?
   completedAt DateTime?
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
-  run BrainRun @relation(fields:[runId],references:[id],onDelete:Restrict)
+  run BrainRun @relation(fields:[organizationId,runId],references:[organizationId,id],onDelete:Restrict)
   @@unique([runId,agentId])
   @@unique([runId,ordinal])
   @@index([organizationId,runId,status])

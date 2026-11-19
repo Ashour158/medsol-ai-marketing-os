@@ -21,7 +21,7 @@ const draft=(version=1)=>({id:'r3g-reviewed-campaign',version,nodes:[
 const manifest=(version=1)=>({draft:draft(version),canaryPercent:100,
  maxSteps:16,executionMode:'DETERMINISTIC_NO_MODEL'});
 describe('R3-G signed offline DAG and canonical PostgreSQL workflow acceptance',()=>{
- it.skipIf(!enabled)('reviews, activates, executes canonical agents, human waits, reruns, rolls back and revokes without egress',async()=>{
+ it.skipIf(!enabled)('T04-001 reviews, activates, executes canonical agents, human waits, reruns, rolls back and revokes without egress',async()=>{
   const db=new PrismaClient(),org='r3g-'+randomUUID(),other='r3g-other-'+randomUUID(),
    maker='r3g-maker-'+randomUUID(),reviewer='r3g-reviewer-'+randomUUID(),
    subA='sub-'+randomUUID(),subB='sub-'+randomUUID();

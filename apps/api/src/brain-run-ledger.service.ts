@@ -22,7 +22,7 @@ export class BrainRunLedgerService {
    return await this.db.brainRun.create({data:{
     id:randomUUID(),organizationId,commandKey,correlationId:command.correlationId,
     input:command as any,status:'PENDING',
-    steps:{create:stages.map((s,ordinal)=>({id:randomUUID(),organizationId,agentId:s.agentId,stage:s.stage,ordinal,status:'PENDING'}))}
+    steps:{create:stages.map((s,ordinal)=>({id:randomUUID(),agentId:s.agentId,stage:s.stage,ordinal,status:'PENDING'}))}
    },include:{steps:{orderBy:{ordinal:'asc'}}}});
   }catch(error){
    if((error as {code?:string})?.code==='P2002'){

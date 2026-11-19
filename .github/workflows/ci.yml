@@ -67,18 +67,18 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
-      - name: Validate strict 500-slot blueprint acceptance index and executed offline evidence
+      - name: Validate 137 mapped engineering assertions in the strict 500-slot blueprint (NOT 500 E2E)
         env:
-          MARKETING_R3L_TEST_GATE_PASSED: 'true'
-        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3l-acceptance-evidence.json
-      - name: Upload R3-L non-certifying 500-case evidence coverage
+          MARKETING_R3M_TEST_GATE_PASSED: 'true'
+        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3m-acceptance-evidence.json
+      - name: Upload R3-M non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3l-acceptance-evidence-${{ github.run_id }}
+          name: medsol-r3m-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: r3l-acceptance-evidence.json
+          path: r3m-acceptance-evidence.json
       - name: Disposable PostgreSQL backup and restore rehearsal (not production DR certification)
         env:
           MARKETING_DR_CI_ONLY: '1'

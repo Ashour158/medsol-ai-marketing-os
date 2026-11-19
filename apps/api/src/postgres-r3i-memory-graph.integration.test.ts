@@ -13,7 +13,7 @@ const otherCorpus='Long read sequencing research discusses genome variants and '
  'need independent review before marketing publication or clinical use.';
 
 describe('R3-I source-bound agent memory, document graph and retrieval quality governance',()=>{
- it.skipIf(!enabled)('checks maker/checker, agent graph ACL, memory TTL, evaluation, feedback and source kill switch',async()=>{
+ it.skipIf(!enabled)('T07-025 checks maker/checker, agent graph ACL, memory TTL, evaluation, feedback and source kill switch',async()=>{
   const db=new PrismaClient();
   const org='r3i-'+randomUUID(),other='r3i-other-'+randomUUID();
   const maker='maker-'+randomUUID(),checker='checker-'+randomUUID();

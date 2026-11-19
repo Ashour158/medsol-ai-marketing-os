@@ -7,7 +7,7 @@ const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 const plusDays=(n:number)=>new Date(Date.now()+n*86400_000).toISOString();
 const mediaHash='sha256:'+'b'.repeat(64);
 describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',()=>{
- it('keeps immutable revisions, independent rights, exact approvals, stale invalidation and audit together',async()=>{
+ it('T03-022 keeps immutable revisions, independent rights, exact approvals, stale invalidation and audit together',async()=>{
   const db=new PrismaClient();
   const org='dam-org-'+randomUUID(),foreign='dam-foreign-'+randomUUID();
   const creator='dam-author-'+randomUUID(),reviewer='dam-reviewer-'+randomUUID();
@@ -107,7 +107,7 @@ describe.skipIf(!enabled)('R1C real PostgreSQL asset/approval tenant authority',
    await db.$disconnect();
   }
  },60000);
- it('FORCE RLS denies unscoped and cross-tenant asset observations and does not leak through pool reuse',async()=>{
+ it('T11-001 FORCE RLS denies unscoped and cross-tenant asset observations and does not leak through pool reuse',async()=>{
   const db=new PrismaClient(),org='dam-rls-'+randomUUID();
   const brandId=randomUUID();
   const role='dam_reader_'+randomUUID().replaceAll('-','').slice(0,18);

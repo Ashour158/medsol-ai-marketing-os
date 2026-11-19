@@ -5,7 +5,7 @@ import {AgentService} from './agent.service.js';
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('PostgreSQL multi-tenant agent authority',()=>{
- it('runs the same logical agent for two tenants without cross-tenant identity or execution borrowing',async()=>{
+ it('T05-001 runs the same logical agent for two tenants without cross-tenant identity or execution borrowing',async()=>{
   const db=new PrismaClient();
   const organizationA='agent-tenant-a-'+randomUUID();
   const organizationB='agent-tenant-b-'+randomUUID();

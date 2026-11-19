@@ -7,7 +7,7 @@ import { OutboxService } from './outbox.service.js';
 
 const enabled = process.env.MARKETING_DB_INTEGRATION === '1';
 describe.skipIf(!enabled)('PostgreSQL campaign authority and approval integration', () => {
-  it('persists campaign, outbox, independent approval and tenant isolation atomically', async () => {
+  it('T03-021 persists campaign, outbox, independent approval and tenant isolation atomically', async () => {
     const db = new PrismaClient();
     const orgId = 'integration-' + randomUUID();
     const otherId = 'integration-' + randomUUID();

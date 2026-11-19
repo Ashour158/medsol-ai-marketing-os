@@ -97,6 +97,9 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    path==='/marketing/tenancy/roles/assign'||
    /^\/marketing\/tenancy\/roles\/[^/]+\/disable$/.test(path)))
    return 'MANAGE_TENANT';
+  if(method==='GET'&&
+   /^\/marketing\/tenancy\/clients\/[A-Za-z0-9_-]+\/brands\/[A-Za-z0-9_-]+\/campaigns(?:\/[A-Za-z0-9_-]+)?$/.test(path))
+   return 'READ_PORTFOLIO';
   if(method==='GET'&&(path==='/marketing/tenancy/brands'||path==='/marketing/tenancy/agency-grants'))
    return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/tenancy/brands'||

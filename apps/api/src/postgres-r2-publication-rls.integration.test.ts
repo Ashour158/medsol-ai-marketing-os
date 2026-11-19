@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('R2 PostgreSQL publication/attempt FORCE RLS isolation',()=>{
- it('requires transaction-local tenant scope and never leaks between pooled reads',async()=>{
+ it('T01-006 requires transaction-local tenant scope and never leaks between pooled reads',async()=>{
   const db=new PrismaClient();
   const org='r2rls-org-'+randomUUID(),foreign='r2rls-foreign-'+randomUUID();
   const brandId=randomUUID(),campaignId=randomUUID(),assetId=randomUUID(),

@@ -6,7 +6,7 @@ import {parseToolManifest,toolManifestDigest} from './governed-tool-manifest.js'
 import {permissionForMarketingRoute} from './marketing-permissions.js';
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe('R3-E signed MCP/A2A registration with PostgreSQL tenant security',()=>{
- it.skipIf(!enabled)('enforces maker-checker, trusted signature, immutability, revocation, no-egress and FORCE RLS',async()=>{
+ it.skipIf(!enabled)('T06-021 enforces maker-checker, trusted signature, immutability, revocation, no-egress and FORCE RLS',async()=>{
   const db=new PrismaClient(),org='r3e-'+randomUUID(),
    other='r3e-other-'+randomUUID(),maker='r3e-maker-'+randomUUID(),
    reviewer='r3e-reviewer-'+randomUUID(),
