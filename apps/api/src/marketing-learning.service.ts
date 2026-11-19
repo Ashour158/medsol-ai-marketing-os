@@ -433,6 +433,358 @@ export class MarketingLearningService {
     skillReleased:false};
   });
  }
+
+ /**
+  * R3-I graph edges have existing KnowledgeDocument endpoints, never
+  * shadow graph nodes. Metadata records a reviewed relation, NOT truth.
+  */
+ async proposeKnowledgeRelation(org:string,identity:VerifiedIdentity,raw:{
+  fromDocumentId?:unknown;toDocumentId?:unknown;
+  relationType?:unknown;note?:unknown
+ }){
+  const fromDocumentId=this.knowledgeId(raw?.fromDocumentId,'source ID');
+  const toDocumentId=this.knowledgeId(raw?.toDocumentId,'target ID');
+  if(fromDocumentId===toDocumentId)
+   throw new BadRequestException('Knowledge relation cannot link a source to itself');
+  const relationType=raw?.relationType;
+  if(!['SHARES_TOPIC','METHODOLOGICALLY_RELATED','REPORTS_CONFLICT'].includes(relationType as string))
+   throw new BadRequestException('Only non-assertive source relationship labels allowed');
+  const note=required(raw?.note,'relationship rationale',600);
+  if(note.length<12)throw new BadRequestException('Detailed source relation note required');
+  const noteDigest=knowledgeSourceDigest(note);
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const now=new Date();
+   const sources=await tx.knowledgeDocument.findMany({where:{
+    organizationId:org,id:{in:[fromDocumentId,toDocumentId]},
+    status:'REVIEWED',OR:[{expiresAt:null},{expiresAt:{gt:now}}]
+   }});
+   if(sources.length!==2)throw new ConflictException(
+    'Both relation endpoints must be reviewed unexpired tenant sources');
+   const existing=await tx.knowledgeRelation.findFirst({where:{
+    organizationId:org,fromDocumentId,toDocumentId,
+    relationType:relationType as string}});
+   if(existing){
+    if(existing.noteDigest!==noteDigest)
+     throw new ConflictException('Immutable graph edge cannot be overwritten');
+    return{edgeId:existing.id,status:existing.status,
+     replayed:true,scientificTruthVerified:false};
+   }
+   const edge=await tx.knowledgeRelation.create({data:{
+    id:randomUUID(),organizationId:org,fromDocumentId,toDocumentId,
+    relationType:relationType as string,note,noteDigest,
+    createdBy:identity.userId,status:'PROPOSED'
+   }});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'KNOWLEDGE_GRAPH_EDGE_PROPOSED',
+    objectType:'KnowledgeRelation',objectId:edge.id,correlationId:edge.id,
+    after:{fromDocumentId,toDocumentId,relationType,
+     noteDigest,scientificTruthVerified:false}}});
+   return{edgeId:edge.id,status:'PROPOSED' as const,
+    replayed:false,scientificTruthVerified:false};
+  });
+ }
+ async reviewKnowledgeRelation(org:string,identity:VerifiedIdentity,
+  idRaw:unknown,decision:unknown,reasonRaw:unknown){
+  const id=this.knowledgeId(idRaw,'graph edge ID');
+  if(!['APPROVE','REVOKE'].includes(decision as string))
+   throw new BadRequestException('Graph review requires APPROVE or REVOKE');
+  const reason=required(reasonRaw,'review rationale',1000);
+  if(reason.length<12)throw new BadRequestException('Review rationale must be detailed');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const edge=await tx.knowledgeRelation.findFirst({where:{id,organizationId:org}});
+   if(!edge)throw new NotFoundException('Graph relation not found in tenant');
+   if(edge.status!=='PROPOSED')
+    throw new ConflictException('Only proposed graph edges may be reviewed');
+   if(edge.createdBy===identity.userId)
+    throw new ForbiddenException('Independent graph edge reviewer required');
+   const now=new Date();
+   if(decision==='APPROVE'){
+    const docs=await tx.knowledgeDocument.count({where:{
+     organizationId:org,id:{in:[edge.fromDocumentId,edge.toDocumentId]},
+     status:'REVIEWED',OR:[{expiresAt:null},{expiresAt:{gt:now}}]
+    }});
+    if(docs!==2)throw new ConflictException('Graph sources changed after proposal');
+   }
+   const status=decision==='APPROVE'?'REVIEWED':'REVOKED';
+   const changed=await tx.knowledgeRelation.updateMany({where:{
+    id,organizationId:org,status:'PROPOSED'},data:
+    status==='REVIEWED'?{status,reviewedBy:identity.userId,reviewedAt:now}:{
+     status:'REVOKED',note:'',revokedBy:identity.userId,revokedAt:now
+    }});
+   if(changed.count!==1)throw new ConflictException('Concurrent relation review');
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'KNOWLEDGE_GRAPH_EDGE_'+status,
+    objectType:'KnowledgeRelation',objectId:id,correlationId:id,
+    after:{reason,status,noteDigest:edge.noteDigest,
+     scientificTruthVerified:false,agentAutonomyAuthorized:false}}});
+   return{edgeId:id,status,scientificTruthVerified:false};
+  });
+ }
+ async revokeKnowledgeRelation(org:string,identity:VerifiedIdentity,
+  idRaw:unknown,reasonRaw:unknown){
+  const id=this.knowledgeId(idRaw,'graph edge ID');
+  const reason=required(reasonRaw,'revocation reason',1000);
+  if(reason.length<12)throw new BadRequestException('Revocation reason must be detailed');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const edge=await tx.knowledgeRelation.findFirst({where:{organizationId:org,id}});
+   if(!edge)throw new NotFoundException('Knowledge relation not found');
+   if(edge.status==='REVOKED')return{edgeId:id,status:'REVOKED',replayed:true};
+   const now=new Date();
+   const changed=await tx.knowledgeRelation.updateMany({where:{
+    organizationId:org,id,status:edge.status},data:{
+    status:'REVOKED',note:'',revokedBy:identity.userId,revokedAt:now
+   }});
+   if(changed.count!==1)throw new ConflictException('Concurrent relation revocation');
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'KNOWLEDGE_GRAPH_EDGE_REVOKED',
+    objectType:'KnowledgeRelation',objectId:id,correlationId:id,
+    after:{reason,sourceRevocation:false,noteScrubbed:true}}});
+   return{edgeId:id,status:'REVOKED' as const,replayed:false};
+  });
+ }
+ async graphForReviewer(org:string,identity:VerifiedIdentity,docIdRaw:unknown){
+  const documentId=this.knowledgeId(docIdRaw,'graph source ID');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'READ_AUDIT');
+   const source=await tx.knowledgeDocument.findFirst({where:{
+    organizationId:org,id:documentId}});
+   if(!source)throw new NotFoundException('Knowledge graph source not found');
+   const now=new Date();
+   const relations=await tx.knowledgeRelation.findMany({where:{
+    organizationId:org,status:'REVIEWED',
+    OR:[{fromDocumentId:documentId},{toDocumentId:documentId}],
+    fromDocument:{status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:now}}]},
+    toDocument:{status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:now}}]}
+   },orderBy:{createdAt:'desc'},take:100});
+   return{documentId,edges:relations.map(e=>({
+    edgeId:e.id,fromDocumentId:e.fromDocumentId,toDocumentId:e.toDocumentId,
+    relationType:e.relationType,note:e.note,noteDigest:e.noteDigest,
+    reviewedAt:e.reviewedAt,scientificTruthVerified:false
+   })),graphTruthVerified:false,externalEffectsAuthorized:false};
+  });
+ }
+ /**
+  * Human-authored memory is a scoped, short-lived projection of a reviewed
+  * existing knowledge document. Agents cannot call this method themselves.
+  */
+ async proposeAgentMemory(org:string,identity:VerifiedIdentity,raw:{
+  documentId?:unknown;agentId?:unknown;memoryKey?:unknown;
+  content?:unknown;expiresAt?:unknown
+ }){
+  const documentId=this.knowledgeId(raw?.documentId,'memory source ID');
+  const agentId=required(raw?.agentId,'agent ID',100);
+  if(!AGENT_ROSTER.some(a=>a.id===agentId))
+   throw new ForbiddenException('Memory must use an immutable canonical agent ID');
+  const memoryKey=this.knowledgeId(raw?.memoryKey,'memory key');
+  if(memoryKey.length<12)throw new BadRequestException('Stable memory key needs 12+ characters');
+  const content=required(raw?.content,'memory content',1200);
+  if(content.length<40)throw new BadRequestException('Substantive memory content required');
+  const expiresAt=this.knowledgeDate(raw?.expiresAt,'memory expiry');
+  if(!expiresAt||expiresAt<=new Date()||
+     expiresAt.getTime()>Date.now()+30*86400000)
+   throw new BadRequestException('Memory expiry must be in next 30 days');
+  const contentDigest=knowledgeSourceDigest(content);
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const doc=await tx.knowledgeDocument.findFirst({where:{
+    organizationId:org,id:documentId,status:'REVIEWED',
+    accessMode:'AGENT_SCOPED',agentScope:{has:agentId},
+    OR:[{expiresAt:null},{expiresAt:{gte:expiresAt}}]
+   }});
+   if(!doc)throw new ConflictException('Memory source must be reviewed, scoped and unexpired');
+   const existing=await tx.agentKnowledgeMemory.findFirst({where:{
+    organizationId:org,agentId,memoryKey}});
+   if(existing){
+    if(existing.documentId!==documentId||existing.contentDigest!==contentDigest||
+       existing.expiresAt.getTime()!==expiresAt.getTime())
+     throw new ConflictException('Immutable memory key reused for different evidence');
+    return{memoryId:existing.id,status:existing.status,replayed:true};
+   }
+   const memory=await tx.agentKnowledgeMemory.create({data:{
+    id:randomUUID(),organizationId:org,agentId,documentId,
+    memoryKey,content,contentDigest,expiresAt,createdBy:identity.userId,
+    status:'PROPOSED'
+   }});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'AGENT_MEMORY_PROPOSED',
+    objectType:'AgentKnowledgeMemory',objectId:memory.id,
+    correlationId:memory.id,after:{documentId,agentId,contentDigest,
+     expiresAt:expiresAt.toISOString(),autonomousLearning:false}}});
+   return{memoryId:memory.id,status:'PROPOSED' as const,
+    replayed:false,expiresAt,autoActivated:false};
+  });
+ }
+ async reviewAgentMemory(org:string,identity:VerifiedIdentity,
+  idRaw:unknown,decision:unknown,reasonRaw:unknown){
+  const id=this.knowledgeId(idRaw,'memory ID');
+  if(!['APPROVE','REVOKE'].includes(decision as string))
+   throw new BadRequestException('Memory decision requires APPROVE or REVOKE');
+  const reason=required(reasonRaw,'memory review rationale',1000);
+  if(reason.length<12)throw new BadRequestException('Memory review rationale must be detailed');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const memory=await tx.agentKnowledgeMemory.findFirst({where:{
+    id,organizationId:org}});
+   if(!memory)throw new NotFoundException('Agent memory not found in tenant');
+   if(memory.status!=='PROPOSED')
+    throw new ConflictException('Only proposed memory may be reviewed');
+   if(memory.createdBy===identity.userId)
+    throw new ForbiddenException('Independent agent memory reviewer required');
+   const now=new Date();
+   if(decision==='APPROVE'){
+    const doc=await tx.knowledgeDocument.findFirst({where:{
+     organizationId:org,id:memory.documentId,status:'REVIEWED',
+     accessMode:'AGENT_SCOPED',agentScope:{has:memory.agentId},
+     OR:[{expiresAt:null},{expiresAt:{gte:memory.expiresAt}}]
+    }});
+    if(!doc||memory.expiresAt<=now)
+     throw new ConflictException('Source ACL or memory expiry changed');
+   }
+   const status=decision==='APPROVE'?'APPROVED':'REVOKED';
+   const changed=await tx.agentKnowledgeMemory.updateMany({where:{
+    organizationId:org,id,status:'PROPOSED'},data:
+    status==='APPROVED'?{status,reviewedBy:identity.userId,reviewedAt:now}:{
+     status:'REVOKED',content:'',revokedBy:identity.userId,revokedAt:now
+    }});
+   if(changed.count!==1)throw new ConflictException('Concurrent memory decision');
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'AGENT_MEMORY_'+status,
+    objectType:'AgentKnowledgeMemory',objectId:id,correlationId:id,
+    after:{reason,agentId:memory.agentId,documentId:memory.documentId,
+     contentDigest:memory.contentDigest,autonomousLearning:false}}});
+   return{memoryId:id,status,autoActivated:false};
+  });
+ }
+ async revokeAgentMemory(org:string,identity:VerifiedIdentity,
+  idRaw:unknown,reasonRaw:unknown){
+  const id=this.knowledgeId(idRaw,'memory ID');
+  const reason=required(reasonRaw,'memory revocation reason',1000);
+  if(reason.length<12)throw new BadRequestException('Memory revocation reason must be detailed');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const memory=await tx.agentKnowledgeMemory.findFirst({where:{
+    id,organizationId:org}});
+   if(!memory)throw new NotFoundException('Agent memory not found');
+   if(memory.status==='REVOKED')
+    return{memoryId:id,status:'REVOKED',replayed:true};
+   const changed=await tx.agentKnowledgeMemory.updateMany({where:{
+    id,organizationId:org,status:memory.status},data:{
+    status:'REVOKED',content:'',revokedBy:identity.userId,revokedAt:new Date()
+   }});
+   if(changed.count!==1)throw new ConflictException('Concurrent memory kill switch');
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'AGENT_MEMORY_REVOKED',
+    objectType:'AgentKnowledgeMemory',objectId:id,correlationId:id,
+    after:{reason,contentScrubbed:true,sourceDocumentId:memory.documentId}}});
+   return{memoryId:id,status:'REVOKED' as const,replayed:false};
+  });
+ }
+ async memoriesForReviewer(org:string,identity:VerifiedIdentity,agentIdRaw?:unknown){
+  const agentId=agentIdRaw===undefined?undefined:required(agentIdRaw,'agent ID',100);
+  if(agentId&&!AGENT_ROSTER.some(a=>a.id===agentId))
+   throw new BadRequestException('Unknown canonical agent');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'READ_AUDIT');
+   const rows=await tx.agentKnowledgeMemory.findMany({where:{
+    organizationId:org,...(agentId?{agentId}:{})},
+    take:100,orderBy:{createdAt:'desc'}});
+   return rows.map(x=>({memoryId:x.id,agentId:x.agentId,documentId:x.documentId,
+    memoryKey:x.memoryKey,status:x.status,expiresAt:x.expiresAt,
+    contentDigest:x.contentDigest,createdBy:x.createdBy,
+    reviewedBy:x.reviewedBy,content:x.content,
+    independentlyVerified:false,autoActivated:false}));
+  });
+ }
+ async recordKnowledgeFeedback(org:string,identity:VerifiedIdentity,raw:{
+  query?:unknown;chunkId?:unknown;label?:unknown;reason?:unknown
+ }){
+  const query=required(raw?.query,'feedback search query',400);
+  if(query.length<3)throw new BadRequestException('Feedback query too short');
+  const chunkId=this.knowledgeId(raw?.chunkId,'chunk ID');
+  const label=raw?.label;
+  if(!['RELEVANT','IRRELEVANT','MISLEADING'].includes(label as string))
+   throw new BadRequestException('Feedback label not recognized');
+  const reason=required(raw?.reason,'feedback review rationale',800);
+  if(reason.length<12)throw new BadRequestException('Detailed feedback rationale required');
+  const queryDigest=feedbackDigest(query);
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const chunk=await tx.knowledgeChunk.findFirst({where:{
+    organizationId:org,id:chunkId,
+    document:{status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]}
+   }});
+   if(!chunk)throw new ConflictException('Feedback must target live reviewed source chunk');
+   const feedbackId=randomUUID();
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'KNOWLEDGE_RETRIEVAL_FEEDBACK',
+    objectType:'KnowledgeChunk',objectId:chunkId,correlationId:feedbackId,
+    after:{queryDigest,chunkDigest:chunk.digest,documentId:chunk.documentId,
+     relevance:label,reason,autonomousWeightChange:false,
+     automaticSkillRelease:false}}});
+   return{feedbackId,queryDigest,label,
+    automaticRankingChange:false,automaticSkillRelease:false};
+  });
+ }
+ async feedbackSummary(org:string,identity:VerifiedIdentity){
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'READ_AUDIT');
+   const rows=await tx.auditEvent.findMany({where:{
+    organizationId:org,action:'KNOWLEDGE_RETRIEVAL_FEEDBACK',
+    objectType:'KnowledgeChunk'},take:200,orderBy:{occurredAt:'desc'},
+    select:{after:true}});
+   const counts={RELEVANT:0,IRRELEVANT:0,MISLEADING:0};
+   for(const row of rows){
+    const label=(row.after as {relevance?:string}|null)?.relevance;
+    if(label&&label in counts)
+     counts[label as keyof typeof counts]++;
+   }
+   return{organizationId:org,observations:rows.length,labels:counts,
+    autoRetrained:false,automaticMemoryWrites:false,scientificAccuracyVerified:false};
+  });
+ }
+ async evaluateKnowledgeRetrieval(org:string,identity:VerifiedIdentity,raw:{
+  cases?:unknown;k?:unknown
+ }){
+  const cases=parseRetrievalCases(raw?.cases);
+  const cutoff=raw?.k??5;
+  if(!Number.isSafeInteger(cutoff)||(cutoff as number)<1||(cutoff as number)>10)
+   throw new BadRequestException('Evaluation cutoff must be 1-10');
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   const ids=[...new Set(cases.flatMap(c=>c.relevantDocumentIds))];
+   const count=await tx.knowledgeDocument.count({where:{
+    organizationId:org,id:{in:ids},status:'REVIEWED',
+    OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
+   }});
+   if(count!==ids.length)throw new ConflictException(
+    'Every expected retrieval source must be reviewed, unexpired and in tenant');
+   const observations=[];
+   for(const item of cases){
+    const result=await this.knowledgeRetrieve(org,item.query,undefined,cutoff,tx);
+    const rankedDocumentIds=[...new Set(result.results.map(x=>x.documentId))];
+    observations.push({id:item.id,rankedDocumentIds,
+     relevantDocumentIds:item.relevantDocumentIds});
+   }
+   const metrics=evaluationMetrics(observations,cutoff as number);
+   const evaluationId=randomUUID();
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
+    actorId:identity.userId,action:'KNOWLEDGE_RETRIEVAL_EVALUATED',
+    objectType:'KnowledgeRetrievalEvaluation',objectId:evaluationId,
+    correlationId:evaluationId,after:{
+     ...metrics,observations:metrics.observations.map(x=>({
+      ...x,queryDigest:feedbackDigest(cases.find(c=>c.id===x.id)!.query)
+     })),
+     claimVerification:false,promotionAuthorized:false
+    } as Prisma.InputJsonValue}});
+   return{evaluationId,...metrics};
+  });
+ }
  async trendBrief(organizationId:string,sector?:string){
   const normalized=typeof sector==='string'&&sector.trim()?sector.trim().slice(0,120):undefined;
   const signals=await this.db.learningSignal.findMany({
