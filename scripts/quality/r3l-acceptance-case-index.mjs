@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-M extends the authoritative R3-L 500-case blueprint evidence index.
+ * R3-N extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -70,6 +70,10 @@ const databaseCases=[
  {id:'T01-004',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-005',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-009',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
+ {id:'T01-010',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
+ {id:'T13-002',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
+ {id:'T13-003',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
+ {id:'T15-022',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
  {id:'T01-006',testSource:'apps/api/src/postgres-r2-publication-rls.integration.test.ts'},
  {id:'T01-007',testSource:'apps/api/src/postgres-r2e-signed-webhook.integration.test.ts'},
  {id:'T01-008',testSource:'apps/api/src/postgres-tenant-brand-agency.integration.test.ts'},
@@ -100,12 +104,31 @@ for(const {id,testSource} of databaseCases){
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==137)
- throw new Error('Expected precisely 137 mapped offline cases, got '+active.size);
+if(active.size!==141)
+ throw new Error('Expected precisely 141 mapped offline cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3M_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3N_TEST_GATE_PASSED==='true';
+// The same CI run must first prove the actual PostgreSQL FORCE RLS census.
+const inventoryPath='r3n-rls-inventory.json';
+let tenantRlsInventory=null;
+if(verifiedInCi){
+ if(!existsSync(inventoryPath))throw new Error('Missing same-run R3-N RLS inventory');
+ const inventory=JSON.parse(readFileSync(inventoryPath,'utf8'));
+ if(inventory.schema!=='medsol-r3n-postgresql-tenant-rls-inventory-v1'||
+    inventory.runId!==process.env.GITHUB_RUN_ID||
+    inventory.status!=='DISPOSABLE_CI_INVENTORY_PASSED'||
+    inventory.releaseVerdict!=='NOT_CERTIFIED'||
+    !Number.isInteger(inventory.uncoveredTenantTableCount))
+  throw new Error('RLS inventory was not verified against the current CI database');
+ tenantRlsInventory={
+  tableCount:inventory.tenantTableCount,
+  forceRlsTenantTableCount:inventory.forceRlsTenantTableCount,
+  uncoveredTenantTableCount:inventory.uncoveredTenantTableCount,
+  productionCertified:false
+ };
+}
 const cases=[];
 for(const [suite,area,count] of PLAN){
  for(let n=1;n<=count;n++){
@@ -124,18 +147,19 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3m-500-case-acceptance-index-v1',
+ schema:'medsol-r3n-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
  evidenceScope:'CI_OFFLINE_UNIT_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
  releaseVerdict:'NOT_CERTIFIED',
+ tenantRlsInventory,
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:111,
- mappedPostgresIntegrationCases:26,
- mappedEngineeringAssertions:137,
- unmappedPlannedCases:363,
- referenceCasesAssertedInThisCi:verifiedInCi?137:0,
+ mappedPostgresIntegrationCases:30,
+ mappedEngineeringAssertions:141,
+ unmappedPlannedCases:359,
+ referenceCasesAssertedInThisCi:verifiedInCi?141:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,
