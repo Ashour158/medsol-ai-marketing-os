@@ -51,7 +51,7 @@ CREATE UNIQUE INDEX "GovernedToolRegistration_organizationId_kind_serverKey_key"
  ON "GovernedToolRegistration"("organizationId","kind","serverKey");
 CREATE INDEX "GovernedToolRegistration_organizationId_status_kind_idx"
  ON "GovernedToolRegistration"("organizationId","status","kind");
-ALTER TABLE "GovernedToolRegistration" ADD CONSTRAINT "GovernedToolRegistration_org_fk"
+ALTER TABLE "GovernedToolRegistration" ADD CONSTRAINT "GovernedToolRegistration_organizationId_fkey"
  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
  ON DELETE RESTRICT ON UPDATE CASCADE;
 
