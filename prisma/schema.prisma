@@ -1092,9 +1092,9 @@ model KnowledgeRelation {
  fromDocument KnowledgeDocument @relation("KnowledgeRelationSource",fields:[organizationId,fromDocumentId],references:[organizationId,id],onDelete:Restrict)
  toDocument KnowledgeDocument @relation("KnowledgeRelationTarget",fields:[organizationId,toDocumentId],references:[organizationId,id],onDelete:Restrict)
  @@unique([organizationId,id])
- @@unique([organizationId,fromDocumentId,toDocumentId,relationType])
- @@index([organizationId,status,fromDocumentId])
- @@index([organizationId,status,toDocumentId])
+ @@unique([organizationId,fromDocumentId,toDocumentId,relationType],map:"KnowledgeRelation_edge_key")
+ @@index([organizationId,status,fromDocumentId],map:"KnowledgeRelation_source_status_idx")
+ @@index([organizationId,status,toDocumentId],map:"KnowledgeRelation_target_status_idx")
 }
 
 /** R3-I: human-reviewed, TTL-bound, source-backed memory scoped to exactly
@@ -1120,6 +1120,6 @@ model AgentKnowledgeMemory {
  sourceDocument KnowledgeDocument @relation(fields:[organizationId,documentId],references:[organizationId,id],onDelete:Restrict)
  @@unique([organizationId,id])
  @@unique([organizationId,agentId,memoryKey])
- @@index([organizationId,agentId,status,expiresAt])
- @@index([organizationId,documentId,status])
+ @@index([organizationId,agentId,status,expiresAt],map:"AgentMemory_agent_status_expiry_idx")
+ @@index([organizationId,documentId,status],map:"AgentMemory_source_status_idx")
 }
