@@ -185,6 +185,21 @@ export async function runProviderContractTrial(input:{
   const model=await rehearseModel(provider,scenario);
   outcome=model.outcome;mockHttpExchanges=model.exchanges;wire=model.wire;
  }else{
+  // Unsupported protocol scenarios are rejected, never silently reported
+  // as a successful account/readback or callback integration.
+  if(!isSocial(provider)&&
+   ['ACCOUNT_MISMATCH','READBACK_MISMATCH'].includes(scenario)||
+   (provider==='MCP'||provider==='A2A')&&scenario==='DUPLICATE_CALLBACK'){
+   return{trialRef,provider,scenario,fixtureOnly:true,
+    contractOutcome:'BLOCKED',fixtureReadbackMatches:false,
+    mockHttpExchanges:0,mockCallbacks:0,mockDeduplicatedCallbacks:0,
+    wire:null,actualProviderRequests:0,actualEmailsSent:0,
+    actualPostsPublished:0,actualModelCalls:0,actualMcpCalls:0,
+    actualA2aCalls:0,verifiedRemoteReceipts:0,
+    accountOwnershipVerified:false,appEntitlementVerified:false,
+    senderDomainVerified:false,externalEffectsAuthorized:false,
+    automaticRetryAllowed:false,limitation:LIMITATION};
+  }
   const request=buildTrialWireRequest(provider);
   wire=safeTrialWireSummary(request);
   mockHttpExchanges=1;
