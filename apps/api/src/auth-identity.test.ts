@@ -11,7 +11,8 @@ function request(url: string, body: any = { organizationId: 'org-1' }) {
 describe('authentication and approval authority', () => {
   beforeEach(() => { process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID = 'org-1'; process.env.MARKETING_BOOTSTRAP_TOKEN = 'pilot-token'; process.env.MARKETING_AUTH_MODE = 'bootstrap'; vi.clearAllMocks(); });
   afterEach(() => { process.env = { ...original }; });
-  const db: any = { user: { findFirst: vi.fn() }, authSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session' }) } };
+  const db: any = { user: { findFirst: vi.fn() }, authSession: { findFirst: vi.fn().mockResolvedValue({ id: 'session' }) },$queryRaw:vi.fn().mockResolvedValue([]) };
+  db.$transaction=vi.fn(async (cb:any)=>cb(db));
   it('rejects human approval with a shared bootstrap credential', async () => {
     const guard = new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
     await expect(guard.canActivate(context(request('/marketing/approvals/decide')))).rejects.toThrow('Human approval requires OIDC');

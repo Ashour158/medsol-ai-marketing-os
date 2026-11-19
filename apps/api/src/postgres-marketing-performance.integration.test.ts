@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {MarketingPerformanceService} from './marketing-performance.service.js';
+import {withMarketingTenant} from './prisma.service.js';
 
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
@@ -40,7 +41,8 @@ describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
    }})).rejects.toThrow();
   }finally{
    await db.auditEvent.deleteMany({where:{organizationId:{in:[organizationId,otherOrganization]}}});
-   await db.marketingMetricObservation.deleteMany({where:{organizationId:{in:[organizationId,otherOrganization]}}});
+   await withMarketingTenant(db,organizationId,tx=>
+    tx.marketingMetricObservation.deleteMany({where:{organizationId}}));
    await db.campaign.deleteMany({where:{organizationId:{in:[organizationId,otherOrganization]}}});
    await db.marketingObjective.deleteMany({where:{organizationId:{in:[organizationId,otherOrganization]}}});
    await db.organization.deleteMany({where:{id:{in:[organizationId,otherOrganization]}}});

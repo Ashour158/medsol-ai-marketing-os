@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, ForbiddenException, Unauthor
 import { verifyBootstrapRequest } from './bootstrap-auth.js';
 import { verifyOidcIdentity, type VerifiedIdentity } from './oidc-identity.js';
 import { assertMarketingPermission, permissionForMarketingRoute } from './marketing-permissions.js';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import {TenantRolePolicyService} from './tenant-role-policy.service.js';
 
 export type AuthenticatedRequest = {
@@ -35,7 +35,9 @@ export class BootstrapAuthGuard implements CanActivate {
       if (route !== '/marketing/sessions' || req.method !== 'POST') {
         const sessionId = req.headers['x-marketing-session-id'];
         if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new UnauthorizedException('Active server session required');
-        const session = await this.db.authSession.findFirst({ where: { id: sessionId, organizationId, userId: identity.userId, revokedAt: null, expiresAt: { gt: new Date() } } });
+        const session = await withMarketingTenant(this.db,organizationId,tx=>
+          tx.authSession.findFirst({where:{id:sessionId,organizationId,
+           userId:identity.userId,revokedAt:null,expiresAt:{gt:new Date()}}}));
         if (!session) throw new UnauthorizedException('Session expired or revoked');
       }
     } else if (mode === 'bootstrap') {

@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
+import {withMarketingTenant} from './prisma.service.js';
 import {randomUUID} from 'node:crypto';
 import {TenantBrandService} from './tenant-brand.service.js';
 import {TenantRolePolicyService} from './tenant-role-policy.service.js';
@@ -151,19 +152,22 @@ describe.skipIf(!enabled)('R3-M real Postgres tenant and agency cross-engine acc
    const user=await db.user.create({data:{organizationId:a,
     email:'r3m-'+randomUUID()+'@example.invalid',
     name:'Provisioned OIDC user',role:'ADMIN',oidcSubject:'r3m-'+randomUUID()}});
-   await expect(db.authSession.create({data:{id:randomUUID(),organizationId:b,
-    userId:user.id,expiresAt:new Date(Date.now()+600000)}})).rejects.toThrow();
-   await expect(db.authSession.create({data:{id:randomUUID(),organizationId:a,
-    userId:'missing-'+randomUUID(),expiresAt:new Date(Date.now()+600000)}}))
-    .rejects.toThrow();
-   const valid=await db.authSession.create({data:{id:randomUUID(),
-    organizationId:a,userId:user.id,
-    expiresAt:new Date(Date.now()+600000)}});
+   await expect(withMarketingTenant(db,b,tx=>tx.authSession.create({data:{
+    id:randomUUID(),organizationId:b,userId:user.id,
+    expiresAt:new Date(Date.now()+600000)}}))).rejects.toThrow();
+   await expect(withMarketingTenant(db,a,tx=>tx.authSession.create({data:{
+    id:randomUUID(),organizationId:a,userId:'missing-'+randomUUID(),
+    expiresAt:new Date(Date.now()+600000)}}))).rejects.toThrow();
+   const valid=await withMarketingTenant(db,a,tx=>tx.authSession.create({data:{
+    id:randomUUID(),organizationId:a,userId:user.id,
+    expiresAt:new Date(Date.now()+600000)}}));
    expect(valid.organizationId).toBe(a);
-   await expect(db.authSession.update({where:{id:valid.id},
-    data:{organizationId:b}})).rejects.toThrow();
-   expect(await db.authSession.count({where:{organizationId:b}})).toBe(0);
-   expect(await db.authSession.count({where:{organizationId:a,userId:user.id}})).toBe(1);
+   await expect(withMarketingTenant(db,a,tx=>tx.authSession.update({
+    where:{id:valid.id},data:{organizationId:b}}))).rejects.toThrow();
+   expect(await withMarketingTenant(db,b,tx=>tx.authSession.count({
+    where:{organizationId:b}}))).toBe(0);
+   expect(await withMarketingTenant(db,a,tx=>tx.authSession.count({
+    where:{organizationId:a,userId:user.id}}))).toBe(1);
   }finally{await db.$disconnect();}
  },90000);
 
