@@ -77,6 +77,9 @@ model Organization {
   creativeAssets CreativeAsset[]
   creativeAssetRevisions CreativeAssetRevision[]
   campaignPublications CampaignPublication[]
+  syntheticAudienceContacts MarketingSyntheticContact[]
+  syntheticConsentEvents MarketingSyntheticConsent[]
+  emailSimulations MarketingEmailSimulation[]
   publicationAttempts PublicationAttempt[]
   integrationConnections IntegrationConnection[]
   verifiedMediaEvidence VerifiedMediaEvidence[]
@@ -180,6 +183,7 @@ model Campaign {
   product MarketingProduct? @relation(fields:[productId],references:[id],onDelete:Restrict)
   brand Brand? @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
   publications CampaignPublication[]
+  emailSimulations MarketingEmailSimulation[]
   @@unique([organizationId,code])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -538,6 +542,8 @@ model Brand {
   creativeAssets CreativeAsset[]
   campaigns Campaign[]
   integrationConnections IntegrationConnection[]
+  syntheticAudienceContacts MarketingSyntheticContact[]
+  emailSimulations MarketingEmailSimulation[]
   @@unique([organizationId,slug])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -643,6 +649,59 @@ model CreativeAssetRevision {
  * no external provider account, access token or publishing authority.
  * Campaign/approval/DAM/Outbox remain their existing independent owners.
  */
+/** R2H synthetic audience only; never store a live email address or imply consent. */
+model MarketingSyntheticContact {
+  id String @id @default(cuid())
+  organizationId String
+  brandId String
+  syntheticRecipientRef String
+  createdBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  consentEvents MarketingSyntheticConsent[]
+  @@unique([organizationId,id])
+  @@unique([organizationId,brandId,syntheticRecipientRef])
+  @@index([organizationId,brandId,createdAt])
+}
+
+/** Append-only synthetic consent state events. NO legally verified opt-in. */
+model MarketingSyntheticConsent {
+  id String @id @default(cuid())
+  organizationId String
+  contactId String
+  action String
+  evidenceRef String
+  recordedBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([organizationId,id])
+  @@unique([organizationId,contactId,evidenceRef])
+  @@index([organizationId,contactId,createdAt])
+}
+
+/** Customer-visible status is SIMULATED/BLOCKED, never SENT or DELIVERED. */
+model MarketingEmailSimulation {
+  id String @id @default(cuid())
+  organizationId String
+  brandId String
+  campaignId String
+  audienceDigest String
+  contentDigest String
+  requestKey String
+  status String @default("SIMULATED")
+  result Json
+  createdBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+  brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+  campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
+  @@unique([organizationId,id])
+  @@unique([organizationId,requestKey])
+  @@index([organizationId,campaignId,createdAt])
+}
+
 model CampaignPublication {
   id String @id @default(cuid())
   organizationId String
