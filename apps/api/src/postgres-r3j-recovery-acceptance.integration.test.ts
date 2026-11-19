@@ -136,8 +136,33 @@ describe('R3-J cross-engine offline recovery and release acceptance',()=>{
    const waiting=await db.approval.findFirstOrThrow({where:{
     organizationId:org,workflowExecutionId:run2.workflowExecutionId,
     objectType:'BlueprintWorkflowStep',decision:'PENDING'}});
+   // Simulate the real crash window where the canonical Approval command
+   // transaction committed APPROVED, but the process died before workflow
+   // reconciliation. Revocation must beat even replayed old command evidence.
+   const run3=await flow.dagLaunch(org,author,{
+    blueprintId:m.draft.id,requestKey:'receipt-race-'+randomUUID(),
+    objective:'Quarantine orphaned approval command after a process crash'});
+   if(!run3.workflowExecutionId)throw Error('Run 3 must persist');
+   expect((await flow.dagTick(org,author,run3.workflowExecutionId)).status)
+    .toBe('WAITING_APPROVAL');
+   const receipt=await db.approval.findFirstOrThrow({where:{
+    organizationId:org,workflowExecutionId:run3.workflowExecutionId,
+    objectType:'BlueprintWorkflowStep',decision:'PENDING'}});
+   await db.approval.updateMany({where:{id:receipt.id,organizationId:org,
+    decision:'PENDING'},data:{
+    decision:'APPROVED',decidedBy:checker,decidedAt:new Date(),
+    rationale:'Simulated durable approval prior to crash and revocation'}});
    await flow.dagRevoke(org,reviewer,release.id,
     'Operator kill switch after adverse security review of release');
+   await flow.completeAfterApproval(run3.workflowExecutionId,org,{
+    approvalId:receipt.id,decision:'APPROVED'});
+   const quarantined=await db.workflowExecution.findFirstOrThrow({where:{
+    id:run3.workflowExecutionId,organizationId:org}});
+   expect(quarantined.status).toBe('BLOCKED');
+   expect(quarantined.currentStep).toBe('REVOKED_RELEASE_APPROVAL_RECONCILIATION');
+   expect(await db.auditEvent.count({where:{organizationId:org,
+    action:'DAG_APPROVAL_RECEIPT_QUARANTINED',
+    objectId:run3.workflowExecutionId}})).toBe(1);
    const refused={organizationId:org,commandId:randomUUID(),
     correlationId:randomUUID(),approvalId:waiting.id,
     approverUserId:checker,decision:'APPROVED' as const,
