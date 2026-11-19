@@ -1,10 +1,15 @@
-import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
+import {TenantRolePolicyService} from './tenant-role-policy.service.js';
+import type {VerifiedIdentity} from './oidc-identity.js';
 
 const DELEGABLE=new Set(['CAMPAIGN_READ','ASSET_DRAFT','REVIEW_COMMENT','REPORT_READ']);
-const AGENCY_OPERATOR_ROLES=new Set(['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','MARKETING_MANAGER']);
+const AGENCY_ACTION_PERMISSION={
+ CAMPAIGN_READ:'READ_PORTFOLIO',ASSET_DRAFT:'MANAGE_CAMPAIGN',
+ REVIEW_COMMENT:'READ_APPROVALS',REPORT_READ:'READ_AUDIT'
+} as const;
 function str(value:unknown,name:string,max=128):string{
  if(typeof value!=='string'||!value.trim()||value.length>max)throw new BadRequestException('Invalid '+name);
  return value.trim();
@@ -35,7 +40,8 @@ function actions(value:unknown):string[]{
  */
 @Injectable()
 export class TenantBrandService{
- constructor(private readonly db:PrismaService){}
+ constructor(private readonly db:PrismaService,
+  private readonly roles:TenantRolePolicyService){}
  async createBrand(organizationId:string,actorId:string,raw:{slug?:unknown;name?:unknown}){
   id(organizationId,'tenant');id(actorId,'operator');
   const slug=str(raw?.slug,'brand slug',80).toLowerCase();
@@ -71,6 +77,7 @@ export class TenantBrandService{
    throw new BadRequestException('Agency and client must be separate tenants');
   try{
    return await this.db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
     const [brand,agency,existing]=await Promise.all([
      tx.brand.findFirst({where:{id:brandId,organizationId,status:'ACTIVE'},select:{id:true}}),
      tx.organization.findUnique({where:{id:agencyOrganizationId},select:{id:true}}),
@@ -95,16 +102,21 @@ export class TenantBrandService{
   }
  }
  listClientGrants(organizationId:string){
-  return this.db.agencyGrant.findMany({where:{clientOrganizationId:organizationId},
-   select:{id:true,brandId:true,agencyOrganizationId:true,actions:true,status:true,expiresAt:true,
-    revokedAt:true,version:true,createdAt:true},take:100,
-   orderBy:{createdAt:'desc'}});
+  id(organizationId,'client tenant');
+  return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+   return tx.agencyGrant.findMany({where:{clientOrganizationId:organizationId},
+    select:{id:true,brandId:true,agencyOrganizationId:true,actions:true,status:true,expiresAt:true,
+     revokedAt:true,version:true,createdAt:true},take:100,
+    orderBy:{createdAt:'desc'}});
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
  async revokeAgency(organizationId:string,actorId:string,grantId:string,reasonInput:unknown){
   id(organizationId,'client tenant');id(actorId,'operator');id(grantId,'grant');
   const reason=str(reasonInput,'revocation rationale',500);
   if(reason.length<12)throw new BadRequestException('Explain why delegated authority is revoked');
   return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
    const grant=await tx.agencyGrant.findFirst({where:{id:grantId,clientOrganizationId:organizationId}});
    if(!grant)throw new NotFoundException('Agency grant not found in client tenant');
    if(grant.status==='REVOKED')return{grantId,revoked:true,replay:true,authorityChanged:false};
@@ -120,26 +132,45 @@ export class TenantBrandService{
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
  /**
-  * Internal, read-only delegated scope check. Caller must supply actor identity
-  * resolved from the OIDC session and agency User table, never HTTP body claims.
-  * A success grants only the explicitly scoped internal read/draft/comment, NOT
-  * publication, external messaging, platform privilege changes or model tools.
+  * The ONLY delegation resolver. It consumes a verified, OIDC-bound agency
+  * actor (not a caller-supplied agency user ID), the existing tenant-role
+  * authority, and the canonical AgencyGrant row under tenant RLS.
+  * A grant never permits remote publishing, provider accounts or model tools.
   */
- async resolveAgencyReadScope(agencyTenantId:string,clientTenantId:string,
-  brandId:string,actorId:string,action:string,asOf=new Date()){
-  if(!DELEGABLE.has(action)||agencyTenantId===clientTenantId)return{authorized:false};
-  const member=await this.db.user.findFirst({where:{id:actorId,organizationId:agencyTenantId,
-   disabledAt:null},select:{role:true}});
-  if(!member||!AGENCY_OPERATOR_ROLES.has(member.role.toUpperCase()))
-   return{authorized:false};
-  const grant=await this.db.agencyGrant.findFirst({where:{
-   agencyOrganizationId:agencyTenantId,clientOrganizationId:clientTenantId,
-   brandId,status:'ACTIVE',expiresAt:{gt:asOf}},
-   select:{id:true,actions:true,expiresAt:true}});
-  if(!grant||!Array.isArray(grant.actions)||!grant.actions.includes(action))
-   return{authorized:false};
-  const brand=await this.db.brand.findFirst({where:{id:brandId,organizationId:clientTenantId,
-   status:'ACTIVE'},select:{id:true}});
-  return{authorized:!!brand,...(brand?{brandId}:{}),externalEffectsAuthorized:false};
+ async resolveAgencyReadScope(actor:VerifiedIdentity,clientTenantId:string,
+  brandId:string,action:unknown,asOf=new Date()){
+  const agencyTenantId=actor?.organizationId;
+  if(!actor||!actor.userId||!actor.subject||!actor.role||!actor.email||
+     typeof agencyTenantId!=='string'||agencyTenantId===clientTenantId||
+     !Object.hasOwn(AGENCY_ACTION_PERMISSION,String(action)))
+   return{authorized:false as const};
+  id(agencyTenantId,'agency tenant');id(clientTenantId,'client tenant');
+  id(brandId,'brand');id(actor.userId,'agency actor');
+  const permission=AGENCY_ACTION_PERMISSION[action as keyof typeof AGENCY_ACTION_PERMISSION];
+  // Reuse the provisioned OIDC/tenant-role engine: it checks subject, user
+  // disabledAt, current built-in role and any narrower custom tenant role.
+  try{await this.roles.assertActorPermission(actor,permission);}
+  catch(err){if(err instanceof ForbiddenException)
+   return{authorized:false as const};throw err;}
+  return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${agencyTenantId}, true)`;
+   const grant=await tx.agencyGrant.findFirst({where:{
+    agencyOrganizationId:agencyTenantId,clientOrganizationId:clientTenantId,
+    brandId,status:'ACTIVE',expiresAt:{gt:asOf}},
+    select:{id:true,actions:true,expiresAt:true,version:true}});
+   if(!grant||!Array.isArray(grant.actions)||!grant.actions.includes(action as string))
+    return{authorized:false as const};
+   const brand=await tx.brand.findFirst({where:{
+    id:brandId,organizationId:clientTenantId,status:'ACTIVE'},
+    select:{id:true}});
+   if(!brand)return{authorized:false as const};
+   return{authorized:true as const,brandId,
+    grantId:grant.id,grantRevision:grant.version,
+    expiresAt:grant.expiresAt,
+    delegatedAction:action as keyof typeof AGENCY_ACTION_PERMISSION,
+    useForOneReadOnlyOperation:true as const,
+    externalEffectsAuthorized:false as const};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
+
 }
