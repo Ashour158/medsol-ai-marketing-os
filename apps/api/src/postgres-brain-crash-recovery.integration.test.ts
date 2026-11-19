@@ -62,7 +62,7 @@ describe.skipIf(!enabled)('PostgreSQL Brain crash-window/fencing acceptance',()=
    await db.$disconnect();
   }
  },45000);
- it('atomically stores a fenced checkpoint and never emits a second event for the same step',async()=>{
+ it('T15-021 atomically stores a fenced checkpoint and never emits a second event for the same step',async()=>{
   const db=new PrismaClient();
   const organizationId='checkpoint-test-'+randomUUID();
   const agentId='MKT-CMO-001';
