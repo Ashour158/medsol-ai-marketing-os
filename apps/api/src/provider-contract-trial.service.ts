@@ -20,10 +20,18 @@ export class ProviderContractTrialService{
  private scoped<T>(org:string,fn:(tx:Prisma.TransactionClient)=>Promise<T>){
   if(!/^[A-Za-z0-9_-]{3,160}$/.test(org))
    throw new BadRequestException('Valid tenant required');
-  return this.db.$transaction(async tx=>{
-   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
-   return fn(tx);
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  // A serializable abort may safely replay this in-process, no-network
+  // rehearsal. NEVER reuse this helper for a real OAuth exchange or send.
+  return (async()=>{
+   for(let attempt=0;attempt<4;attempt++){
+    try{return await this.db.$transaction(async tx=>{
+     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+     return fn(tx);
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
+    catch(e){if((e as {code?:string})?.code!=='P2034'||attempt===3)throw e;}
+   }
+   throw new Error('Trial transaction retry exhausted');
+  })();
  }
  private async admin(tx:Prisma.TransactionClient,org:string,
   identity:VerifiedIdentity){
