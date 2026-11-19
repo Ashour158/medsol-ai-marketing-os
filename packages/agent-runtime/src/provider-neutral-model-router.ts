@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto';
 import {AGENT_ROSTER} from './roster.js';
 import {ModelGatewayError,type ModelAdapter,type ModelRequest,type ModelResult}
  from './model-gateway.js';
@@ -78,10 +77,15 @@ export class SimulatedModelAdapter implements ModelAdapter{
   if(this.scenario!=='SUCCESS')
    throw new ModelGatewayError('SIMULATED_'+this.scenario+
     ': no provider request was made; no automatic retry is authorized');
-  const fingerprint=createHash('sha256').update(JSON.stringify([
-   'medsol-r3-c-offline-model-v1',this.providerKey,request.organizationId,
-   request.agentId,request.correlationId,request.purpose,request.input
-  ])).digest('hex').slice(0,20);
+  // Deliberately non-cryptographic display marker, never an authorization
+  // digest or source-evidence claim. Avoid a Node crypto dependency in the
+  // environment-neutral agent-runtime package.
+  const marker=JSON.stringify(['offline-model-v1',this.providerKey,
+   request.correlationId,request.agentId,request.purpose]);
+  let checksum=2166136261;
+  for(let i=0;i<marker.length;i++)
+   checksum=Math.imul(checksum^marker.charCodeAt(i),16777619);
+  const fingerprint=(checksum>>>0).toString(16).padStart(8,'0');
   const text='[SYNTHETIC '+this.providerKey+' MODEL — NO AI INFERENCE] '+
    'Offline provider contract test '+fingerprint+
    '. Human review required; no claims, sources or advice generated.';
