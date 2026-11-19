@@ -28,7 +28,7 @@
 
 1. Create two new run-specific disposable PostgreSQL databases and migrate the first through the canonical historical migration chain.
 2. Seed two synthetic tenants with User, Agent, AgentExecution, BLOCKED WorkflowExecution, OUTCOME_UNKNOWN WorkflowStepExecution, quarantined KnowledgeDocument, AuditEvent, unpublished OutboxEvent, InboxEvent and CommandReceipt. No actual provider accounts or data.
-3. Dump with PostgreSQL custom-format `pg_dump` into a temporary file; SHA-256 hash the archive. Restore it into a separate clean DB using `pg_restore --exit-on-error`.
+3. Dump with PostgreSQL custom-format `pg_dump` into a temporary file; SHA-256 hash the archive. Restore it into a separate clean DB using `pg_restore` to emit SQL plus `psql -v ON_ERROR_STOP=1`. For PostgreSQL 16 compatibility with the hosted runner's newer client, only a `SET transaction_timeout = 0;` session preamble line is omitted; no DDL, business row or permission is modified.
 4. Compare ordered row fingerprints in **11 canonical tables** across source and target for both tenants. Run actual `prisma migrate diff --exit-code` against restored schema.
 5. Check FOUR restored knowledge/memory/graph tables still have `FORCE ROW LEVEL SECURITY`; create a low-privilege test role and prove zero rows without tenant context, tenant-A-only visibility with its transaction-local context, and tenant-B-only visibility after switching that context.
 6. Check uncertain workflows remain blocked, outbox remains unpublished with zero attempts, and model usages/provider credential/publication tables remain empty. Intentionally alter one **restored** disposable row and verify fingerprint mismatch is detected.
