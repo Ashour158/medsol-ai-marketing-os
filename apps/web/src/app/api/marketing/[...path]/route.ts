@@ -11,7 +11,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "architecture" && !(
         (path.length===2&&id==="blueprint"&&request.method==="GET")||
-        (path.length===3&&id==="blueprint"&&action==="simulate"&&request.method==="POST")
+        (path.length===3&&id==="blueprint"&&action==="simulate"&&request.method==="POST")||
+        (path.length===2&&id==="deployments"&&["GET","POST"].includes(request.method))||
+        (path.length===4&&id==="deployments"&&!!action&&
+         ["approve","activate","revoke"].includes(operation??"")&&request.method==="POST")||
+        (path.length===2&&id==="runs"&&request.method==="POST")||
+        (path.length===4&&id==="runs"&&!!action&&operation==="tick"&&request.method==="POST")
       )) ||
       (resource === "audience" && !(
         (path.length===2&&id==="synthetic-contacts"&&

@@ -1,3 +1,7 @@
+import {AGENT_ROSTER} from '@medsol/agent-runtime';
+import {parseOfflineDagManifest,offlineDagDigest,verifyOfflineDagSignature,
+ offlineDagTrust,planOfflineDag,canaryAllows,SAFE_DAG_CAPABILITY}
+ from './r3g-offline-dag.js';
 import { Prisma } from '@prisma/client';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash,randomUUID } from 'node:crypto';
@@ -121,6 +125,473 @@ export class MarketingWorkflowService {
     }
   }
 
+
+  // R3-G. This is the existing canonical workflow authority; there is
+  // intentionally no second scheduler, agent registry or workflow ledger.
+  private dagTransaction<T>(organizationId:string,
+    fn:(tx:Prisma.TransactionClient)=>Promise<T>){
+    if(!/^[A-Za-z0-9_-]{3,160}$/.test(organizationId))
+      throw new BadRequestException('Stable tenant identifier required');
+    return this.db.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+      return fn(tx);
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }
+  private async dagAuthorize(tx:Prisma.TransactionClient,organizationId:string,
+   identity:VerifiedIdentity,permission:'MANAGE_TENANT'|'EXECUTE_WORKFLOW'){
+    if(!identity||identity.organizationId!==organizationId||!identity.subject||
+       !hasMarketingPermission(identity,permission))
+      throw new ForbiddenException('Verified tenant workflow authority required');
+    const user=await tx.user.findFirst({where:{
+      id:identity.userId,organizationId,oidcSubject:identity.subject,disabledAt:null
+    },select:{role:true}});
+    if(!user||user.role.toUpperCase()!==identity.role.toUpperCase())
+      throw new ForbiddenException('Active matching tenant OIDC user required');
+    if(permission==='MANAGE_TENANT'&&
+       !['ADMIN','SUPER_ADMIN'].includes(user.role.toUpperCase()))
+      throw new ForbiddenException('Tenant administrator required');
+  }
+  private dagId(raw:unknown){
+    if(typeof raw!=='string'||!/^[A-Za-z0-9_-]{3,160}$/.test(raw))
+      throw new BadRequestException('Stable workflow release identifier required');
+    return raw;
+  }
+  private dagRevision(raw:unknown,zero=false){
+    if(!Number.isSafeInteger(raw)||(raw as number)<(zero?0:1)||
+       (raw as number)>1000000)
+      throw new BadRequestException('Expected active revision required');
+    return raw as number;
+  }
+  private dagEnabled(){
+    if(process.env.MARKETING_DAG_OFFLINE_EXECUTION_ENABLED!=='true')
+      throw new ForbiddenException('Offline DAG runtime is disabled by default');
+    if(process.env.MARKETING_AI_REASONING_ENABLED==='true')
+      throw new ForbiddenException('Offline DAG refuses external model-enabled agent runtime');
+  }
+  private dagReleaseProjection(row:{
+   id:string;blueprintId:string;revision:number;manifest:Prisma.JsonValue;
+   digest:string;signature:string;signerKeyId:string;status:string;
+   createdBy:string;approvedBy:string|null;approvedAt:Date|null;
+   activatedAt:Date|null;revokedAt:Date|null
+  }){
+    const trusted=verifyOfflineDagSignature(row.manifest,row.signature,
+     row.signerKeyId,offlineDagTrust());
+    const manifest=parseOfflineDagManifest(row.manifest);
+    return{id:row.id,blueprintId:row.blueprintId,revision:row.revision,
+     digest:row.digest,status:row.status,canaryPercent:manifest.canaryPercent,
+     stepCount:manifest.draft.nodes.length,signatureTrusted:trusted,
+     createdBy:row.createdBy,approvedBy:row.approvedBy,
+     approvedAt:row.approvedAt,activatedAt:row.activatedAt,
+     revokedAt:row.revokedAt,externalEffectsAuthorized:false as const};
+  }
+  async dagReleases(organizationId:string,identity:VerifiedIdentity,blueprintId?:unknown){
+    const filter=blueprintId===undefined?undefined:this.dagId(blueprintId);
+    return this.dagTransaction(organizationId,async tx=>{
+      await this.dagAuthorize(tx,organizationId,identity,'MANAGE_TENANT');
+      const rows=await tx.blueprintDeployment.findMany({
+       where:{organizationId,...(filter?{blueprintId:filter}:{})},
+       orderBy:[{blueprintId:'asc'},{revision:'desc'}],take:100});
+      return rows.map(row=>this.dagReleaseProjection(row));
+    });
+  }
+  async dagPropose(organizationId:string,identity:VerifiedIdentity,input:{
+    manifest?:unknown;signature?:unknown;signerKeyId?:unknown
+  }){
+    const manifest=parseOfflineDagManifest(input?.manifest);
+    const digest=offlineDagDigest(manifest);
+    const signature=typeof input?.signature==='string'?input.signature:'';
+    const signerKeyId=this.dagId(input?.signerKeyId);
+    if(!verifyOfflineDagSignature(manifest,signature,signerKeyId,offlineDagTrust()))
+      throw new ForbiddenException('Separately trusted Ed25519 DAG release required');
+    return this.dagTransaction(organizationId,async tx=>{
+      await this.dagAuthorize(tx,organizationId,identity,'MANAGE_TENANT');
+      const prior=await tx.blueprintDeployment.findFirst({where:{
+       organizationId,blueprintId:manifest.draft.id,
+       revision:manifest.draft.version}});
+      if(prior){
+        if(prior.digest!==digest||prior.signature!==signature||
+           prior.signerKeyId!==signerKeyId)
+          throw new ConflictException('Immutable blueprint version already registered');
+        return{...this.dagReleaseProjection(prior),replayed:true};
+      }
+      const previous=await tx.blueprintDeployment.findFirst({
+       where:{organizationId,blueprintId:manifest.draft.id},
+       orderBy:{revision:'desc'},select:{revision:true}});
+      if(manifest.draft.version!==(previous?.revision??0)+1)
+       throw new ConflictException('Blueprint revisions must advance monotonically by one');
+      const row=await tx.blueprintDeployment.create({data:{
+       id:randomUUID(),organizationId,blueprintId:manifest.draft.id,
+       revision:manifest.draft.version,
+       manifest:manifest as unknown as Prisma.InputJsonValue,digest,
+       signature,signerKeyId,status:'PROPOSED',createdBy:identity.userId
+      }});
+      await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+       actorId:identity.userId,action:'DAG_RELEASE_PROPOSED',
+       objectType:'BlueprintDeployment',objectId:row.id,correlationId:row.id,
+       after:{digest,revision:row.revision,externalEffectsAuthorized:false}}});
+      return{...this.dagReleaseProjection(row),replayed:false};
+    });
+  }
+  async dagApprove(organizationId:string,identity:VerifiedIdentity,
+   idInput:unknown,expectedRevision:unknown){
+    const id=this.dagId(idInput),expected=this.dagRevision(expectedRevision);
+    return this.dagTransaction(organizationId,async tx=>{
+      await this.dagAuthorize(tx,organizationId,identity,'MANAGE_TENANT');
+      const row=await tx.blueprintDeployment.findFirst({where:{organizationId,id}});
+      if(!row)throw new NotFoundException('Blueprint release not found');
+      if(row.revision!==expected||row.status!=='PROPOSED')
+       throw new ConflictException('Stale or already reviewed blueprint');
+      if(row.createdBy===identity.userId)
+       throw new ForbiddenException('Independent blueprint release reviewer required');
+      if(offlineDagDigest(row.manifest)!==row.digest||
+       !verifyOfflineDagSignature(row.manifest,row.signature,
+        row.signerKeyId,offlineDagTrust()))
+       throw new ForbiddenException('Blueprint signature or immutable digest invalid');
+      const changed=await tx.blueprintDeployment.updateMany({
+       where:{id,organizationId,status:'PROPOSED',revision:expected},
+       data:{status:'APPROVED',approvedBy:identity.userId,approvedAt:new Date()}});
+      if(changed.count!==1)throw new ConflictException('Concurrent blueprint decision');
+      await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+       actorId:identity.userId,action:'DAG_RELEASE_APPROVED',
+       objectType:'BlueprintDeployment',objectId:id,correlationId:id,
+       after:{digest:row.digest,dispatchAuthorized:false}}});
+      return this.dagReleaseProjection(await tx.blueprintDeployment.findFirstOrThrow({
+       where:{id,organizationId}}));
+    });
+  }
+  /** Activating a previously superseded revision is an audited rollback. */
+  async dagActivate(organizationId:string,identity:VerifiedIdentity,
+   idInput:unknown,expectedActiveRevision:unknown){
+    const id=this.dagId(idInput),expected=this.dagRevision(expectedActiveRevision,true);
+    return this.dagTransaction(organizationId,async tx=>{
+      await this.dagAuthorize(tx,organizationId,identity,'MANAGE_TENANT');
+      const target=await tx.blueprintDeployment.findFirst({
+       where:{id,organizationId}});
+      if(!target)throw new NotFoundException('Blueprint release not found');
+      const current=await tx.blueprintDeployment.findFirst({where:{
+       organizationId,blueprintId:target.blueprintId,status:'ACTIVE'}});
+      if((current?.revision??0)!==expected)
+       throw new ConflictException('Stale active blueprint revision');
+      if(current?.id===id)return{
+       ...this.dagReleaseProjection(current),replayed:true};
+      if(!['APPROVED','SUPERSEDED'].includes(target.status))
+       throw new ConflictException('Signed approved or superseded release required');
+      if(offlineDagDigest(target.manifest)!==target.digest||
+       !verifyOfflineDagSignature(target.manifest,target.signature,
+        target.signerKeyId,offlineDagTrust()))
+       throw new ForbiddenException('Untrusted or changed blueprint release');
+      if(current){
+       const changed=await tx.blueprintDeployment.updateMany({where:{
+        id:current.id,organizationId,status:'ACTIVE'},
+        data:{status:'SUPERSEDED'}});
+       if(changed.count!==1)throw new ConflictException('Concurrent blueprint switch');
+      }
+      const changed=await tx.blueprintDeployment.updateMany({where:{
+       id,organizationId,status:target.status},
+       data:{status:'ACTIVE',activatedBy:identity.userId,activatedAt:new Date()}});
+      if(changed.count!==1)throw new ConflictException('Concurrent blueprint activation');
+      const action=target.status==='SUPERSEDED'?'DAG_RELEASE_ROLLBACK':'DAG_RELEASE_ACTIVATED';
+      await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+       actorId:identity.userId,action,objectType:'BlueprintDeployment',
+       objectId:id,correlationId:id,before:{activeRevision:expected},
+       after:{activeRevision:target.revision,digest:target.digest,
+        canaryPercent:parseOfflineDagManifest(target.manifest).canaryPercent,
+        externalEffectsAuthorized:false}}});
+      await tx.outboxEvent.create({data:{organizationId,eventId:randomUUID(),
+       eventType:'OfflineDagDeploymentChangedInternal',aggregateType:'BlueprintDeployment',
+       aggregateId:id,version:target.revision,correlationId:id,
+       payload:{blueprintId:target.blueprintId,
+        activeRevision:target.revision,externalEffectsAuthorized:false}}});
+      return{...this.dagReleaseProjection(await tx.blueprintDeployment.findFirstOrThrow({
+       where:{id,organizationId}})),replayed:false};
+    });
+  }
+  async dagRevoke(organizationId:string,identity:VerifiedIdentity,
+   idInput:unknown,reasonInput:unknown){
+    const id=this.dagId(idInput);
+    const reason=typeof reasonInput==='string'?reasonInput.trim():'';
+    if(reason.length<12||reason.length>500)
+     throw new BadRequestException('Explicit release revocation reason required');
+    return this.dagTransaction(organizationId,async tx=>{
+     await this.dagAuthorize(tx,organizationId,identity,'MANAGE_TENANT');
+     const row=await tx.blueprintDeployment.findFirst({where:{id,organizationId}});
+     if(!row)throw new NotFoundException('Blueprint release not found');
+     if(row.status==='REVOKED')return{...this.dagReleaseProjection(row),replayed:true};
+     const change=await tx.blueprintDeployment.updateMany({where:{
+      id,organizationId,status:row.status},
+      data:{status:'REVOKED',revokedBy:identity.userId,revokedAt:new Date()}});
+     if(change.count!==1)throw new ConflictException('Concurrent blueprint revocation');
+     await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+      actorId:identity.userId,action:'DAG_RELEASE_REVOKED',
+      objectType:'BlueprintDeployment',objectId:id,correlationId:id,
+      after:{reason,externalEffectsAuthorized:false}}});
+     await tx.outboxEvent.create({data:{organizationId,eventId:randomUUID(),
+      eventType:'OfflineDagReleaseRevokedInternal',aggregateType:'BlueprintDeployment',
+      aggregateId:id,version:row.revision,correlationId:id,
+      payload:{reason,revoked:true,externalEffectsAuthorized:false}}});
+     return{...this.dagReleaseProjection(await tx.blueprintDeployment.findFirstOrThrow({
+      where:{id,organizationId}})),replayed:false};
+    });
+  }
+  /** Pinned immutable definition + all PENDING steps in canonical workflow ledger. */
+  async dagLaunch(organizationId:string,identity:VerifiedIdentity,input:{
+   blueprintId?:unknown;requestKey?:unknown;objective?:unknown;market?:unknown
+  }){
+    this.dagEnabled();
+    const blueprintId=this.dagId(input?.blueprintId);
+    const requestKey=this.dagId(input?.requestKey);
+    if(requestKey.length<12)
+     throw new BadRequestException('Launch idempotency key needs 12+ characters');
+    const objective=typeof input?.objective==='string'?input.objective.trim():'';
+    const market=typeof input?.market==='string'?input.market.trim():'';
+    if(objective.length<3||objective.length>1000||market.length>120)
+     throw new BadRequestException('Bounded objective and market required');
+    const correlationId='r3g-'+createHash('sha256').update(JSON.stringify([
+     'medsol-r3g-run-v1',organizationId,blueprintId,requestKey
+    ])).digest('hex');
+    return this.dagTransaction(organizationId,async tx=>{
+     await this.dagAuthorize(tx,organizationId,identity,'EXECUTE_WORKFLOW');
+     const existing=await tx.workflowExecution.findFirst({where:{
+      organizationId,workflowType:'BLUEPRINT_OFFLINE_DAG',correlationId}});
+     if(existing){
+      const previous=existing.input as {objective?:string;market?:string};
+      if(previous?.objective!==objective||previous?.market!==market)
+       throw new ConflictException('Workflow key reused with different input');
+      return{workflowExecutionId:existing.id,status:existing.status,
+       replayed:true,externalEffectsAuthorized:false as const};
+     }
+     const release=await tx.blueprintDeployment.findFirst({where:{
+      organizationId,blueprintId,status:'ACTIVE'}});
+     if(!release)throw new ConflictException('No active approved offline blueprint');
+     const manifest=parseOfflineDagManifest(release.manifest);
+     if(offlineDagDigest(manifest)!==release.digest||
+      !verifyOfflineDagSignature(manifest,release.signature,
+       release.signerKeyId,offlineDagTrust()))
+      throw new ForbiddenException('Active blueprint signature untrusted');
+     if(!canaryAllows(organizationId,blueprintId,requestKey,manifest.canaryPercent))
+      return{workflowExecutionId:null,status:'CANARY_NOT_SELECTED' as const,
+       replayed:false,externalEffectsAuthorized:false as const};
+     const plan=planOfflineDag(manifest);
+     const agentIds=[...new Set(plan.map(s=>s.agentId).filter((x):x is string=>!!x))];
+     const installed=await tx.agent.findMany({where:{
+      organizationId,id:{in:agentIds}},select:{id:true,version:true,status:true}});
+     const agentPins:Record<string,number>=Object.fromEntries(agentIds.map(id=>{
+      const row=installed.find(a=>a.id===id);
+      if(row&&row.status!=='ACTIVE')
+       throw new ForbiddenException('Referenced canonical agent is administratively disabled');
+      return[id,row?.version??1];
+     }));
+     const row=await tx.workflowExecution.create({data:{
+      id:randomUUID(),organizationId,workflowType:'BLUEPRINT_OFFLINE_DAG',
+      correlationId,status:'RUNNING',currentStep:'QUEUED',
+      input:{blueprintId,requestKey,objective,market,requestedBy:identity.userId,
+       deploymentId:release.id,releaseDigest:release.digest,revision:release.revision,
+       agentPins,offlineOnly:true,externalEffectsAuthorized:false}
+     }});
+     await tx.workflowStepExecution.createMany({data:plan.map(step=>({
+      organizationId,workflowExecutionId:row.id,stepKey:step.id,status:'PENDING',
+      input:{type:step.type,agentId:step.agentId,order:step.order,
+       predecessorKeys:step.predecessors,externalEffectsAuthorized:false}
+     }))});
+     await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+      actorId:identity.userId,action:'DAG_OFFLINE_RUN_LAUNCHED',
+      objectType:'WorkflowExecution',objectId:row.id,correlationId,
+      after:{blueprintId,revision:release.revision,steps:plan.length,
+       externalEffectsAuthorized:false}}});
+     return{workflowExecutionId:row.id,status:'RUNNING' as const,
+      replayed:false,externalEffectsAuthorized:false as const};
+    });
+  }
+  async dagTick(organizationId:string,identity:VerifiedIdentity,idInput:unknown){
+    this.dagEnabled();
+    const id=this.dagId(idInput);
+    await this.dagTransaction(organizationId,tx=>
+     this.dagAuthorize(tx,organizationId,identity,'EXECUTE_WORKFLOW'));
+    const lease=await this.leases.claim(organizationId,id,300000);
+    try{
+      for(let iteration=0;iteration<20;iteration++){
+        await this.leases.assertActive(lease);
+        const action=await this.dagTransaction(organizationId,async tx=>{
+          const wf=await tx.workflowExecution.findFirst({where:{
+           id,organizationId,workflowType:'BLUEPRINT_OFFLINE_DAG'}});
+          if(!wf||wf.status!=='RUNNING'||wf.leaseOwner!==lease.owner||
+             wf.leaseGeneration!==lease.generation||
+             !wf.leaseExpiresAt||wf.leaseExpiresAt<=new Date())
+            throw new ConflictException('DAG lease, status or execution fence changed');
+          const meta=wf.input as {deploymentId?:string;releaseDigest?:string;
+           blueprintId?:string;objective?:string;market?:string;
+           requestedBy?:string;agentPins?:Record<string,number>};
+          const release=await tx.blueprintDeployment.findFirst({where:{
+           organizationId,id:meta.deploymentId??''}});
+          if(!release||release.status==='REVOKED'||release.digest!==meta.releaseDigest||
+             offlineDagDigest(release.manifest)!==release.digest||
+             !verifyOfflineDagSignature(release.manifest,release.signature,
+              release.signerKeyId,offlineDagTrust())){
+            await tx.workflowExecution.updateMany({where:{id,organizationId,
+             leaseOwner:lease.owner,leaseGeneration:lease.generation,status:'RUNNING'},
+             data:{status:'BLOCKED',currentStep:'RELEASE_REVOKED_OR_UNTRUSTED',
+              error:{releaseRevokedOrUntrusted:true,externalEffectsAuthorized:false},
+              completedAt:new Date(),version:{increment:1}}});
+            return{kind:'BLOCKED' as const};
+          }
+          const plan=planOfflineDag(release.manifest);
+          const steps=await tx.workflowStepExecution.findMany({where:{
+           workflowExecutionId:id,organizationId}});
+          const ledger=new Map(steps.map(s=>[s.stepKey,s]));
+          if(steps.length!==plan.length||steps.some(s=>!plan.some(p=>p.id===s.stepKey)))
+           throw new ConflictException('Durable DAG step ledger differs from pinned graph');
+          const ready=plan.find(step=>ledger.get(step.id)?.status!=='COMPLETED'&&
+           step.predecessors.every(p=>ledger.get(p)?.status==='COMPLETED'));
+          if(!ready){
+           if(steps.every(s=>s.status==='COMPLETED')){
+            await tx.workflowExecution.updateMany({where:{id,organizationId,
+             leaseOwner:lease.owner,leaseGeneration:lease.generation,status:'RUNNING'},
+             data:{status:'COMPLETED',currentStep:'END',completedAt:new Date(),
+              output:{complete:true,offlineOnly:true,externalEffectsAuthorized:false},
+              version:{increment:1}}});
+            return{kind:'COMPLETED' as const};
+           }
+           throw new ConflictException('Workflow is deadlocked or has inconsistent join');
+          }
+          const current=ledger.get(ready.id)!;
+          if(current.status!=='PENDING'){
+           // A crashed AGENT_TASK may have produced an internal decision.
+           // Never blindly rerun an in-flight or unknown task.
+           await tx.workflowExecution.updateMany({where:{id,organizationId,
+            leaseOwner:lease.owner,leaseGeneration:lease.generation,status:'RUNNING'},
+            data:{status:'BLOCKED',currentStep:ready.id,
+             error:{reason:'UNCERTAIN_STEP_OUTCOME_MANUAL_REVIEW',stepKey:ready.id},
+             completedAt:new Date(),version:{increment:1}}});
+           return{kind:'BLOCKED' as const};
+          }
+          if(ready.type==='HUMAN_TASK'||ready.type==='APPROVAL'){
+           const approval=await tx.approval.create({data:{
+            organizationId,objectType:'BlueprintWorkflowStep',objectId:ready.id,
+            requiredAuthority:'HUMAN',riskLevel:'R2',decision:'PENDING',
+            requestedBy:meta.requestedBy??null,workflowExecutionId:id,
+            scopeDigest:release.digest,
+            scope:{deploymentId:release.id,releaseDigest:release.digest,
+             stepId:current.id,nodeId:ready.id,
+             externalEffectsAuthorized:false}
+           }});
+           await tx.workflowStepExecution.updateMany({where:{
+            id:current.id,organizationId,status:'PENDING'},data:{
+            status:'WAITING_APPROVAL',output:{approvalId:approval.id},
+            completedAt:null}});
+           await tx.workflowExecution.updateMany({where:{id,organizationId,
+            leaseOwner:lease.owner,leaseGeneration:lease.generation,status:'RUNNING'},
+            data:{status:'WAITING_APPROVAL',currentStep:ready.id,
+             version:{increment:1}}});
+           await tx.auditEvent.create({data:{organizationId,actorType:'SYSTEM',
+            actorId:'r3g-canonical-workflow',action:'DAG_WAITING_INDEPENDENT_HUMAN',
+            objectType:'WorkflowExecution',objectId:id,correlationId:wf.correlationId,
+            after:{stepKey:ready.id,approvalId:approval.id,
+             externalEffectsAuthorized:false}}});
+           return{kind:'WAITING_APPROVAL' as const,approvalId:approval.id,
+            stepKey:ready.id};
+          }
+          if(ready.type==='AGENT_TASK'){
+           if(process.env.MARKETING_AI_REASONING_ENABLED==='true')
+            throw new ForbiddenException('Remote model enabled; offline DAG cannot run');
+           const agentId=ready.agentId!;
+           const pin=meta.agentPins?.[agentId];
+           const installed=await tx.agent.findFirst({where:{
+            organizationId,id:agentId},select:{version:true,status:true}});
+           if(!Number.isSafeInteger(pin)||(installed?.version??1)!==pin||
+              (installed&&installed.status!=='ACTIVE'))
+            throw new ConflictException('Pinned agent manifest version has changed');
+           const claimed=await tx.workflowStepExecution.updateMany({where:{
+            id:current.id,organizationId,status:'PENDING'},data:{
+            status:'RUNNING',startedAt:new Date()}});
+           if(claimed.count!==1)throw new ConflictException('Concurrent agent step claim');
+           await tx.workflowExecution.updateMany({where:{id,organizationId,
+            leaseOwner:lease.owner,leaseGeneration:lease.generation,status:'RUNNING'},
+            data:{currentStep:ready.id,version:{increment:1}}});
+           return{kind:'AGENT_TASK' as const,stepId:current.id,
+            agentId,objective:meta.objective??'',market:meta.market??'',
+            correlationId:wf.correlationId};
+          }
+          const claimed=await tx.workflowStepExecution.updateMany({where:{
+           id:current.id,organizationId,status:'PENDING'},data:{
+           status:'COMPLETED',completedAt:new Date(),
+           output:{controlNode:ready.type,offlineOnly:true,externalEffectsAuthorized:false}}});
+          if(claimed.count!==1)throw new ConflictException('Concurrent control node');
+          await tx.workflowExecution.updateMany({where:{id,organizationId,
+           leaseOwner:lease.owner,leaseGeneration:lease.generation,status:'RUNNING'},
+           data:{currentStep:ready.id,version:{increment:1}}});
+          return{kind:'CONTINUE' as const};
+        });
+        if(action.kind==='BLOCKED'||action.kind==='COMPLETED'||
+           action.kind==='WAITING_APPROVAL')
+          return{workflowExecutionId:id,status:action.kind,
+           ...(action.kind==='WAITING_APPROVAL'?{
+            stepKey:action.stepKey,approvalId:action.approvalId}:{}),
+           externalEffectsAuthorized:false};
+        if(action.kind==='AGENT_TASK'){
+          try{
+           const capability=SAFE_DAG_CAPABILITY[action.agentId];
+           if(!capability)throw new ForbiddenException('Agent capability not in offline allowlist');
+           const result=await this.agents.execute(action.agentId,{
+            organizationId,correlationId:action.correlationId,
+            causationId:id,input:{objective:action.objective,market:action.market,
+             requestedOutcome:action.objective},capabilities:[capability]});
+           await this.leases.assertActive(lease);
+           const changed=await this.db.workflowStepExecution.updateMany({where:{
+            id:action.stepId,organizationId,workflowExecutionId:id,status:'RUNNING'},
+            data:{status:'COMPLETED',completedAt:new Date(),
+             output:{agentExecutionId:result.executionId,action:result.decision.action,
+              reviewRequired:result.decision.approvalRequired,
+              externalEffectsAuthorized:false}}});
+           if(changed.count!==1)throw new ConflictException('Agent step completion fence changed');
+          }catch(error){
+           await this.db.workflowStepExecution.updateMany({where:{
+            id:action.stepId,organizationId,workflowExecutionId:id,status:'RUNNING'},
+            data:{status:'OUTCOME_UNKNOWN',completedAt:new Date(),
+             error:{reason:'Agent task requires manual recovery review'}}});
+           await this.db.workflowExecution.updateMany({where:{
+            id,organizationId,leaseOwner:lease.owner,
+            leaseGeneration:lease.generation,status:'RUNNING'},
+            data:{status:'BLOCKED',currentStep:'UNCERTAIN_AGENT_STEP',
+             completedAt:new Date(),version:{increment:1}}});
+           throw error;
+          }
+        }
+      }
+      return{workflowExecutionId:id,status:'RUNNING',batchLimitReached:true,
+       externalEffectsAuthorized:false};
+    }finally{await this.leases.release(lease);}
+  }
+  /** Called by the canonical ApprovalService only after its own durable human decision. */
+  private async dagReconcileApproval(organizationId:string,approvalId:string,
+   decision:'APPROVED'|'REJECTED'){
+    await this.dagTransaction(organizationId,async tx=>{
+     const approval=await tx.approval.findFirst({where:{organizationId,
+      id:approvalId,objectType:'BlueprintWorkflowStep',
+      decision,workflowExecutionId:{not:null}}});
+     if(!approval?.workflowExecutionId)return;
+     const wf=await tx.workflowExecution.findFirst({where:{
+      organizationId,id:approval.workflowExecutionId,
+      workflowType:'BLUEPRINT_OFFLINE_DAG',status:'WAITING_APPROVAL'}});
+     if(!wf)return;
+     const step=await tx.workflowStepExecution.findFirst({where:{
+      organizationId,workflowExecutionId:wf.id,stepKey:approval.objectId,
+      status:'WAITING_APPROVAL'}});
+     if(!step||approval.scopeDigest!==(wf.input as {releaseDigest?:string}).releaseDigest)
+      throw new ConflictException('Human approval does not match pinned DAG step and digest');
+     await tx.workflowStepExecution.updateMany({where:{id:step.id,
+      organizationId,status:'WAITING_APPROVAL'},data:{
+      status:decision==='APPROVED'?'COMPLETED':'BLOCKED',
+      completedAt:new Date(),
+      output:{approvalId,decision,externalEffectsAuthorized:false}}});
+     await tx.workflowExecution.updateMany({where:{id:wf.id,organizationId,
+      status:'WAITING_APPROVAL'},data:{
+      status:decision==='APPROVED'?'RUNNING':'BLOCKED',
+      currentStep:approval.objectId,
+      ...(decision==='REJECTED'?{completedAt:new Date()}:{}),
+      version:{increment:1}}});
+    });
+  }
+
   async start(request: MarketingRequest): Promise<WorkflowResult> {
     const correlationId = randomUUID();
     const workflow = await this.db.workflowExecution.create({ data: { organizationId: request.organizationId, workflowType: 'MARKETING_CAMPAIGN_LIFECYCLE', currentStep: 'CMO_ASSESSMENT', correlationId, input: request as any } });
@@ -175,6 +646,12 @@ export class MarketingWorkflowService {
     if (!workflowExecutionId) return;
     const workflow = await this.db.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
     if (!workflow) return;
+    if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
+      const approvalId=(approval as {approvalId?:unknown})?.approvalId;
+      if(typeof approvalId!=='string')throw new ConflictException('Durable workflow approval identity missing');
+      await this.dagReconcileApproval(organizationId,approvalId,'APPROVED');
+      return;
+    }
     await this.completeWorkflow(workflow.id, 'APPROVAL_COMPLETED', approval, 'COMPLETED');
   }
 
@@ -183,6 +660,10 @@ export class MarketingWorkflowService {
     if (!approval?.workflowExecutionId) return;
     const workflow = await this.db.workflowExecution.findFirst({ where: { id: approval.workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
     if (!workflow) return;
+    if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
+      await this.dagReconcileApproval(organizationId,approvalId,'REJECTED');
+      return;
+    }
     await this.completeWorkflow(workflow.id, 'APPROVAL_REJECTED', { approvalId, rationale, blocked: true }, 'BLOCKED');
   }
 

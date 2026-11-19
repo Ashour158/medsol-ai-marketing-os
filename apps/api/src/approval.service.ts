@@ -25,6 +25,26 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
    if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
    const reviewer=await tx.user.findFirst({where:{id:cmd.approverUserId,organizationId:cmd.organizationId,disabledAt:null}});
    if(!reviewer || !['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','CMO'].includes(reviewer.role.toUpperCase()))throw new ForbiddenException('Approver lacks authorized marketing approval role');
+   if(a.objectType==='BlueprintWorkflowStep'){
+    if(!a.workflowExecutionId||a.requestedBy===cmd.approverUserId)
+     throw new ForbiddenException('Independent human decision required for pinned DAG step');
+    const workflow=await tx.workflowExecution.findFirst({where:{
+      id:a.workflowExecutionId,organizationId:cmd.organizationId,
+      workflowType:'BLUEPRINT_OFFLINE_DAG',status:'WAITING_APPROVAL'
+    }});
+    const step=workflow&&await tx.workflowStepExecution.findFirst({where:{
+      organizationId:cmd.organizationId,workflowExecutionId:workflow.id,
+      stepKey:a.objectId,status:'WAITING_APPROVAL'
+    }});
+    const input=workflow?.input as {releaseDigest?:string}|undefined;
+    const scope=a.scope as {nodeId?:string;stepId?:string;
+     releaseDigest?:string;externalEffectsAuthorized?:boolean}|null;
+    if(!workflow||!step||!scope||scope.nodeId!==a.objectId||
+       scope.stepId!==step.id||scope.releaseDigest!==input?.releaseDigest||
+       scope.externalEffectsAuthorized!==false||
+       a.scopeDigest!==input?.releaseDigest)
+      throw new ConflictException('Human review must match a pending pinned offline DAG step');
+   }
    if(a.objectType==='Campaign' && cmd.decision==='APPROVED'){
     const history=await tx.auditEvent.findMany({where:{organizationId:cmd.organizationId,objectType:'Campaign',objectId:a.objectId,action:{in:['CAMPAIGN_CREATED','CAMPAIGN_STATUS_CHANGED']}},select:{actorType:true,actorId:true,action:true}});
     assertIndependentCampaignReviewer(cmd.approverUserId,history);

@@ -6,6 +6,7 @@ import CampaignPublicationStudio from "./campaign-publication-studio";
 import SyntheticEmailStudio from "./synthetic-email-studio";
 import IntegrationGovernanceStudio from "./integration-governance-studio";
 import {BlueprintVirtualStudio} from "./blueprint-virtual-studio";
+import OfflineDagStudio from "./offline-dag-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 
@@ -290,6 +291,7 @@ export default function Home() {
           </details>
         </>}
         {identity&&<BlueprintVirtualStudio/>}
+        <OfflineDagStudio identity={identity}/>
       </div>
       {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}
       {brainAssessment !== null && <details open><summary>13-agent review trace</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainAssessment,null,2)}</pre></details>}
