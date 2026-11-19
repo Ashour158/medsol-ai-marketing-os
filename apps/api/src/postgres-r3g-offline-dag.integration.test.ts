@@ -99,7 +99,8 @@ describe('R3-G signed offline DAG and canonical PostgreSQL workflow acceptance',
    await expect(approvals.approve(reviewCmd)).rejects.toThrow('Independent');
    const approved=await approvals.approve({...reviewCmd,
     approverUserId:reviewer,commandId:randomUUID()});
-   expect(approved.decision).toBe('APPROVED');
+   expect(approved).toMatchObject({decision:'APPROVED'});
+   if(!started.workflowExecutionId)throw new Error('Expected workflow ID');
    const finished=await flows.dagTick(org,author,started.workflowExecutionId);
    expect(finished).toMatchObject({status:'COMPLETED',externalEffectsAuthorized:false});
    expect(await db.workflowStepExecution.count({where:{
