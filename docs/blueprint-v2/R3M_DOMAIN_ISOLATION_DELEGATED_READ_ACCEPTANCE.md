@@ -23,6 +23,10 @@ Migration `20261120010000_r3m_core_tenant_fk_brand_rls` adds tenant-composite co
 
 **Boundary:** This tranche does not claim all tables in the entire enterprise schema have FORCE RLS. Major other domain tables continue to rely on existing tenant-scoped service queries and composite relationships, pending their own schema-by-schema RLS compatibility and historical-data migration proofs. The eventual full production RLS audit is a separate release gate.
 
+### Authentication session cross-tenant referential integrity
+
+A second additive migration, `20261120012000_r3m_session_tenant_fk`, enforces `AuthSession(organizationId,userId) → User(organizationId,id)` as a tenant-composite foreign key. Existing `AuthSessionService` and the OIDC/session guard remain the sole business authorities; the database refuses sessions for missing users, users from another tenant, or sessions reparented to a different tenant. A historical orphan fails migration validation instead of being silently adopted. `T01-009` exercises these negative paths against real PostgreSQL and confirms a correctly tenant-bound session succeeds.
+
 ## Resource-specific read endpoint
 
 - GET `/marketing/tenancy/clients/:clientId/brands/:brandId/campaigns`
@@ -38,11 +42,12 @@ The new `postgres-r3m-tenant-links-delegated-campaign.integration.test.ts` provi
 
 - `T01-003`: cross-tenant misuse of Objective/Product/Campaign and Workflow/Approval/BrainRunStep references is rejected by actual PostgreSQL constraints, while correct in-tenant creation works.
 - `T01-004`: with a genuinely non-BYPASSRLS PostgreSQL role, Brand reads with missing context/foreign tenant fail; owner and approved agency visibility work, agencies cannot update client-owned brands, revocation removes delegated visibility.
+- `T01-009`: a foreign-tenant, missing-user or reparented OIDC session is refused by the database, while a correctly provisioned user can open a bounded session.
 - `T01-005`: canonical `CampaignService` creates two brand-bound campaigns and outbox events; authorized agency reads only its approved brand; forged OIDC subject, disabled user, ungranted brand and revoked grant are refused. No real provider calls.
 
 Additional **existing** exercised PostgreSQL journeys are now assigned stable blueprint IDs covering publisher and webhook RLS, tenant/agency revocation, independent campaign/creative approval, signed offline workflows and race fencing, agent identity isolation, governed tool registry, knowledge memory, simulated publication, synthetic email/consent, performance review and incident recovery. Their test logic is reused and not duplicated.
 
-The original 110 explicitly authored offline policy reference cases remain. The reconciliation unit proof `T14-001` is mapped as **offline unit** (not PostgreSQL). The sole 500-case owner, `scripts/quality/r3l-acceptance-case-index.mjs`, now produces a 500-slot index with **111 mapped offline unit cases + 25 mapped real PostgreSQL integration cases = 136 engineering evidence cases** and **364 unmapped planned slots**. This does **not** make any of those 136 independent operator-accepted E2E cases. CI explicitly publishes `medsol-r3m-acceptance-evidence-<run_id>` after the full test gate.
+The original 110 explicitly authored offline policy reference cases remain. The reconciliation unit proof `T14-001` is mapped as **offline unit** (not PostgreSQL). The sole 500-case owner, `scripts/quality/r3l-acceptance-case-index.mjs`, now produces a 500-slot index with **111 mapped offline unit cases + 26 mapped real PostgreSQL integration cases = 137 engineering evidence cases** and **363 unmapped planned slots**. This does **not** make any of those 136 independent operator-accepted E2E cases. CI explicitly publishes `medsol-r3m-acceptance-evidence-<run_id>` after the full test gate.
 
 ## Proof gates and unresolved readiness
 
