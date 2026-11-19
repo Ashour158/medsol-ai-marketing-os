@@ -5,6 +5,8 @@ import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
 import {MarketingWorkflowService} from './marketing-workflow.service.js';
+import {offlineDagDigest,verifyOfflineDagSignature,offlineDagTrust}
+ from './r3g-offline-dag.js';
 import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
 
 @Injectable() export class ApprovalService{
@@ -36,14 +38,30 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
       organizationId:cmd.organizationId,workflowExecutionId:workflow.id,
       stepKey:a.objectId,status:'WAITING_APPROVAL'
     }});
-    const input=workflow?.input as {releaseDigest?:string}|undefined;
+    const input=workflow?.input as {releaseDigest?:string;
+     deploymentId?:string}|undefined;
     const scope=a.scope as {nodeId?:string;stepId?:string;
-     releaseDigest?:string;externalEffectsAuthorized?:boolean}|null;
+     deploymentId?:string;releaseDigest?:string;
+     externalEffectsAuthorized?:boolean}|null;
     if(!workflow||!step||!scope||scope.nodeId!==a.objectId||
        scope.stepId!==step.id||scope.releaseDigest!==input?.releaseDigest||
+       scope.deploymentId!==input?.deploymentId||
        scope.externalEffectsAuthorized!==false||
        a.scopeDigest!==input?.releaseDigest)
       throw new ConflictException('Human review must match a pending pinned offline DAG step');
+    // R3-J: an approval must not launder a revoked or untrusted release back
+    // into RUNNING. This transaction rechecks provenance at decision time.
+    if(cmd.decision==='APPROVED'){
+     const release=await tx.blueprintDeployment.findFirst({where:{
+      id:input.deploymentId??'',organizationId:cmd.organizationId,
+      status:{in:['ACTIVE','SUPERSEDED','APPROVED']}
+     }});
+     if(!release||release.digest!==input.releaseDigest||
+        offlineDagDigest(release.manifest)!==release.digest||
+        !verifyOfflineDagSignature(release.manifest,release.signature,
+         release.signerKeyId,offlineDagTrust()))
+      throw new ConflictException('Pinned DAG release revoked or signature untrusted at human decision');
+    }
    }
    if(a.objectType==='Campaign' && cmd.decision==='APPROVED'){
     const history=await tx.auditEvent.findMany({where:{organizationId:cmd.organizationId,objectType:'Campaign',objectId:a.objectId,action:{in:['CAMPAIGN_CREATED','CAMPAIGN_STATUS_CHANGED']}},select:{actorType:true,actorId:true,action:true}});

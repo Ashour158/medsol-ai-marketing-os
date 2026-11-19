@@ -138,6 +138,9 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/quarantine$/.test(path)) return 'DECIDE_APPROVAL';
   if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/execute$/.test(path)) return 'EXECUTE_WORKFLOW';
   if (method === 'POST' && path === '/marketing/brain/runs') return 'EXECUTE_WORKFLOW';
+  if(method==='GET'&&(path==='/marketing/architecture/readiness'||
+    /^\/marketing\/architecture\/runs\/[^/]+\/recovery$/.test(path)))
+    return 'READ_AUDIT';
   if(method==='GET'&&path==='/marketing/architecture/deployments')return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/architecture/deployments'||
     /^\/marketing\/architecture\/deployments\/[^/]+\/(approve|activate|revoke)$/.test(path)))
