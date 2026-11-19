@@ -94,7 +94,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
     await call("deployments",{manifest:parsed,signature,signerKeyId});
     await refresh();
    })}>Propose signed version</button>
-   <button disabled={busy} style={{...button,background:"#64748b"}
+   <button disabled={busy} style={{...button,background:"#64748b"}}
     onClick={()=>void task(refresh)}>Refresh release history</button>
   </div>
   <label style={{fontSize:13,display:"block",marginTop:16}}>Blueprint ID
@@ -158,7 +158,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
    <button disabled={busy||!runId} style={button}
     onClick={()=>void task(async()=>setRunState(await call(
      "runs/"+encodeURIComponent(runId)+"/tick",{})))}>Advance bounded steps</button>
-   <button disabled={busy||!runId} style={{...button,background:"#64748b"}
+   <button disabled={busy||!runId} style={{...button,background:"#64748b"}}
     onClick={()=>void task(async()=>{
      const response=await fetch("/api/marketing/workflows/"+encodeURIComponent(runId),
       {cache:"no-store",credentials:"same-origin"});
