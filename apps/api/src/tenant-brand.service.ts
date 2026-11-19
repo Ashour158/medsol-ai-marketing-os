@@ -158,7 +158,7 @@ export class TenantBrandService{
     agencyOrganizationId:agencyTenantId,clientOrganizationId:clientTenantId,
     brandId,status:'ACTIVE',expiresAt:{gt:asOf}},
     select:{id:true,actions:true,expiresAt:true,version:true}});
-   if(!grant||!Array.isArray(grant.actions)||!grant.actions.includes(action))
+   if(!grant||!Array.isArray(grant.actions)||!grant.actions.includes(action as string))
     return{authorized:false as const};
    const brand=await tx.brand.findFirst({where:{
     id:brandId,organizationId:clientTenantId,status:'ACTIVE'},
