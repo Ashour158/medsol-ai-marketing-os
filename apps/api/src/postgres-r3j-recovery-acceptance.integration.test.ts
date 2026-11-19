@@ -176,7 +176,7 @@ describe('R3-J cross-engine offline recovery and release acceptance',()=>{
    const closed=await approval.approve({...refused,
     commandId:randomUUID(),decision:'REJECTED',
     rationale:'Operator explicitly rejects after revoked release'});
-   expect(closed.decision).toBe('REJECTED');
+   expect(closed).toMatchObject({decision:'REJECTED'});
    expect((await db.workflowExecution.findFirstOrThrow({where:{
     id:run2.workflowExecutionId,organizationId:org}})).status)
     .toBe('BLOCKED');
@@ -243,7 +243,7 @@ describe('R3-J cross-engine offline recovery and release acceptance',()=>{
    ['POST','/marketing/architecture/certify'],
    ['POST','/marketing/email/send'],
    ['POST','/marketing/tools/execute']
-  ])expect(()=>permissionForMarketingRoute(method,path)).toThrow(
+  ])expect(()=>permissionForMarketingRoute(method!,path!)).toThrow(
    'not in the permission registry');
  });
 });
