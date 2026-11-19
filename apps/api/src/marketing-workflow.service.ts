@@ -1,17 +1,125 @@
 import { Prisma } from '@prisma/client';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { MarketingRequest, MarketingRequestSchema } from '@medsol/contracts';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { createHash,randomUUID } from 'node:crypto';
+import { MarketingRequest, MarketingRequestSchema,simulateBlueprintDraft,type BlueprintSimulationResult } from '@medsol/contracts';
 import { PrismaService } from './prisma.service.js';
 import { AgentService } from './agent.service.js';
 import { CampaignService } from './campaign.service.js';
 import { WorkflowLeaseService, type WorkflowLease } from './workflow-lease.service.js';
+import {hasMarketingPermission} from './marketing-permissions.js';
+import type {VerifiedIdentity} from './oidc-identity.js';
 
 type WorkflowResult = { workflowExecutionId: string; status: string; currentStep: string; correlationId: string; output?: unknown };
 
 @Injectable()
 export class MarketingWorkflowService {
   constructor(private readonly db: PrismaService, private readonly agents: AgentService, private readonly campaigns: CampaignService, private readonly leases: WorkflowLeaseService) {}
+
+
+  /**
+   * R3 virtual graph run. The existing WorkflowExecution/WorkflowStepExecution
+   * is the sole execution ledger. It is a deterministic, atomic no-effect
+   * simulation: does NOT call agents, models, MCP, A2A, or domain commands.
+   * Later real graph execution must use the canonical lease/fencing engine.
+   */
+  async simulateBlueprint(organizationId:string,identity:VerifiedIdentity,
+    input:{draft?:unknown;requestKey?:unknown}){
+    if(!identity||identity.organizationId!==organizationId||
+       !identity.userId||!identity.subject||
+       !hasMarketingPermission(identity,'EXECUTE_WORKFLOW'))
+      throw new ForbiddenException('Verified tenant workflow operator required');
+    const requestKey=input?.requestKey;
+    if(typeof requestKey!=='string'||requestKey.length<12||
+       requestKey.length>160||!/^[A-Za-z0-9_-]+$/.test(requestKey))
+      throw new BadRequestException('Stable 12-160 character simulation idempotency key required');
+    const preview=simulateBlueprintDraft(input?.draft);
+    const sourceDigest=createHash('sha256').update(
+     JSON.stringify(input?.draft??null)).digest('hex');
+    const fingerprint=createHash('sha256').update(JSON.stringify([
+     'medsol-r3-virtual-blueprint-v1',organizationId,identity.userId,requestKey
+    ])).digest('hex');
+    const correlationId='r3-virtual-'+fingerprint;
+    const authorize=async(tx:Prisma.TransactionClient)=>{
+      const actor=await tx.user.findFirst({where:{
+       organizationId,id:identity.userId,oidcSubject:identity.subject,disabledAt:null
+      },select:{role:true}});
+      if(!actor||actor.role.toUpperCase()!==identity.role.toUpperCase())
+       throw new ForbiddenException('Active OIDC tenant operator required');
+    };
+    const lookup=async(tx:Prisma.TransactionClient)=>{
+      const row=await tx.workflowExecution.findFirst({where:{
+       organizationId,correlationId,workflowType:'BLUEPRINT_VIRTUAL_SIMULATION'
+      }});
+      if(!row)return null;
+      const meta=row.input as {sourceDigest?:string};
+      if(meta?.sourceDigest!==sourceDigest)
+       throw new ConflictException('Blueprint simulation key already bound to another draft');
+      return{workflowExecutionId:row.id,status:'SIMULATED' as const,
+       replayed:true,saved:true,preview:row.output as unknown as BlueprintSimulationResult,
+       externalEffectsAuthorized:false as const};
+    };
+    const work=async(tx:Prisma.TransactionClient)=>{
+      await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+      await authorize(tx);
+      const existing=await lookup(tx);
+      if(existing)return existing;
+      if(preview.status!=='SIMULATED')
+       return{workflowExecutionId:null,status:'BLOCKED' as const,
+        replayed:false,saved:false,preview,externalEffectsAuthorized:false as const};
+      const now=new Date();
+      const workflow=await tx.workflowExecution.create({data:{
+       id:randomUUID(),organizationId,correlationId,
+       workflowType:'BLUEPRINT_VIRTUAL_SIMULATION',
+       currentStep:'SIMULATED_END',status:'COMPLETED',
+       input:{blueprintId:preview.blueprintId,version:preview.version,
+        sourceDigest,simulationOnly:true,externalEffectsAuthorized:false},
+       output:preview as unknown as Prisma.InputJsonValue,
+       completedAt:now
+      }});
+      await tx.workflowStepExecution.createMany({data:preview.steps.map(step=>({
+       organizationId,workflowExecutionId:workflow.id,stepKey:step.nodeId,
+       status:'COMPLETED',
+       input:{nodeId:step.nodeId,nodeType:step.nodeType,
+        virtualAgentId:step.agentId},
+       output:{kind:step.kind,order:step.order,
+        predecessors:step.predecessors,downstream:step.downstream,
+        requiresHumanDecision:step.requiresHumanDecision,
+        isActualAgentExecution:false,externalEffectsAuthorized:false},
+       completedAt:now
+      }))});
+      await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+       actorId:identity.userId,action:'BLUEPRINT_VIRTUAL_SIMULATION_COMPLETED',
+       objectType:'WorkflowExecution',objectId:workflow.id,
+       correlationId:workflow.id,after:{blueprintId:preview.blueprintId,
+        sourceDigest,virtualSteps:preview.stepCount,
+        realAgentExecutions:0,modelCalls:0,mcpCalls:0,domainWrites:0,
+        externalEffectsAuthorized:false}}});
+      await tx.outboxEvent.create({data:{organizationId,eventId:randomUUID(),
+       eventType:'BlueprintVirtualSimulationCompletedInternal',
+       aggregateType:'WorkflowExecution',aggregateId:workflow.id,
+       correlationId:workflow.id,
+       payload:{workflowExecutionId:workflow.id,
+        blueprintId:preview.blueprintId,virtualSteps:preview.stepCount,
+        externalEffectsAuthorized:false}}});
+      return{workflowExecutionId:workflow.id,status:'SIMULATED' as const,
+       replayed:false,saved:true,preview,externalEffectsAuthorized:false as const};
+    };
+    try{
+      return await this.db.$transaction(work,{
+       isolationLevel:Prisma.TransactionIsolationLevel.Serializable
+      });
+    }catch(error){
+      if(!['P2002','P2034'].includes((error as {code?:string})?.code??''))
+       throw error;
+      return this.db.$transaction(async tx=>{
+       await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+       await authorize(tx);
+       const existing=await lookup(tx);
+       if(existing)return existing;
+       throw new ConflictException('Concurrent blueprint simulation claim; retry same key');
+      },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    }
+  }
 
   async start(request: MarketingRequest): Promise<WorkflowResult> {
     const correlationId = randomUUID();

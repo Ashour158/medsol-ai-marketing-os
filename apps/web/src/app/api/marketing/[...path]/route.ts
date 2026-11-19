@@ -9,7 +9,10 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const [resource, id, action, operation] = path;
   if (!resource || !routes.has(resource) || path.length > 5 ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
-      (resource === "architecture" && !(path.length === 2 && id === "blueprint" && request.method === "GET")) ||
+      (resource === "architecture" && !(
+        (path.length===2&&id==="blueprint"&&request.method==="GET")||
+        (path.length===3&&id==="blueprint"&&action==="simulate"&&request.method==="POST")
+      )) ||
       (resource === "integrations" && !(
         (path.length===1&&(request.method==="GET"||request.method==="POST")) ||
         (path.length===2&&request.method==="GET"&&!!id) ||

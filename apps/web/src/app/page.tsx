@@ -4,6 +4,7 @@ import OperationsConsole from "./operations-console";
 import CreativeGovernanceStudio from "./creative-governance-studio";
 import CampaignPublicationStudio from "./campaign-publication-studio";
 import IntegrationGovernanceStudio from "./integration-governance-studio";
+import {BlueprintVirtualStudio} from "./blueprint-virtual-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -282,6 +283,7 @@ export default function Home() {
             <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify({brains:blueprintInventory.brains,personas:blueprintInventory.personas},null,2)}</pre>
           </details>
         </>}
+        {identity&&<BlueprintVirtualStudio/>}
       </div>
       {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}
       {brainAssessment !== null && <details open><summary>13-agent review trace</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainAssessment,null,2)}</pre></details>}
