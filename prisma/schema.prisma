@@ -680,7 +680,7 @@ model MarketingSyntheticConsent {
   @@unique([organizationId,id])
   @@unique([organizationId,contactId,evidenceRef],map:"SyntheticConsent_tenant_contact_ref_uq")
   @@unique([organizationId,contactId,sequence])
-  @@index([organizationId,contactId,createdAt])
+  @@index([organizationId,contactId,createdAt],map:"SyntheticConsent_org_contact_time_idx")
 }
 
 /** Customer-visible status is SIMULATED/BLOCKED, never SENT or DELIVERED. */
@@ -701,7 +701,7 @@ model MarketingEmailSimulation {
   campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict,map:"MarketingEmailSimulation_org_campaign_fk")
   @@unique([organizationId,id])
   @@unique([organizationId,requestKey])
-  @@index([organizationId,campaignId,createdAt])
+  @@index([organizationId,campaignId,createdAt],map:"EmailSim_org_campaign_time_idx")
 }
 
 model CampaignPublication {
