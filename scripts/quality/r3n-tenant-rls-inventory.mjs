@@ -23,8 +23,9 @@ const query=[
  ") ORDER BY c.relname),'[]'::json)::text",
  "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace",
  "WHERE n.nspname='public' AND c.relkind='r'",
- "AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid",
- "AND a.attname='organizationId' AND a.attnum>0 AND NOT a.attisdropped)"
+ "AND (EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid",
+ "AND a.attname='organizationId' AND a.attnum>0 AND NOT a.attisdropped)",
+ "OR c.relname='AgencyGrant')"
 ].join(' ');
 const proc=spawnSync('psql',['-X','-q','-t','-A','-v','ON_ERROR_STOP=1',
  '-h','localhost','-p','5432','-U','marketing_test','-d','marketing_test',
@@ -64,7 +65,7 @@ const result={
  schema:'medsol-r3n-postgresql-tenant-rls-inventory-v1',
  runId:run,status:'DISPOSABLE_CI_INVENTORY_PASSED',
  auditedAt:new Date().toISOString(),
- source:'actual_postgresql_pg_class_pg_policies_public_base_tables',
+ source:'actual_postgresql_pg_class_pg_policies_public_base_tables_tenant_columns_plus_dual_tenant_agency_grant',
  releaseVerdict:'NOT_CERTIFIED',
  productionDatabaseInspected:false,
  tenantTableCount:rows.length,
