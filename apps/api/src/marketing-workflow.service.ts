@@ -138,7 +138,7 @@ export class MarketingWorkflowService {
     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }
   private async dagAuthorize(tx:Prisma.TransactionClient,organizationId:string,
-   identity:VerifiedIdentity,permission:'MANAGE_TENANT'|'EXECUTE_WORKFLOW'){
+   identity:VerifiedIdentity,permission:'MANAGE_TENANT'|'EXECUTE_WORKFLOW'|'READ_AUDIT'){
     if(!identity||identity.organizationId!==organizationId||!identity.subject||
        !hasMarketingPermission(identity,permission))
       throw new ForbiddenException('Verified tenant workflow authority required');
@@ -674,6 +674,77 @@ export class MarketingWorkflowService {
       return{quarantined:true};
     });
   }
+
+  /**
+   * R3-J operator-only evidence for an uncertain offline DAG. Every fact is
+   * read from the existing workflow, approval, deployment, agent and audit
+   * ledgers; the report never retries or silently repairs an execution.
+   */
+  async dagRecoveryEvidence(organizationId:string,identity:VerifiedIdentity,
+    rawId:unknown){
+    const id=this.dagId(rawId);
+    return this.dagTransaction(organizationId,async tx=>{
+      await this.dagAuthorize(tx,organizationId,identity,'READ_AUDIT');
+      const workflow=await tx.workflowExecution.findFirst({where:{
+       id,organizationId,workflowType:'BLUEPRINT_OFFLINE_DAG'}});
+      if(!workflow)throw new NotFoundException('Offline DAG run not found in tenant');
+      const meta=workflow.input as {
+       deploymentId?:string;releaseDigest?:string;revision?:number
+      };
+      const release=await tx.blueprintDeployment.findFirst({where:{
+       organizationId,id:meta.deploymentId??''
+      }});
+      const releaseTrusted=!!release&&release.status!=='REVOKED'&&
+       release.digest===meta.releaseDigest&&
+       offlineDagDigest(release.manifest)===release.digest&&
+       verifyOfflineDagSignature(release.manifest,release.signature,
+        release.signerKeyId,offlineDagTrust());
+      const steps=await tx.workflowStepExecution.findMany({where:{
+       organizationId,workflowExecutionId:id
+      },orderBy:{createdAt:'asc'},take:40});
+      const approvalRows=await tx.approval.findMany({where:{
+       organizationId,workflowExecutionId:id,objectType:'BlueprintWorkflowStep'
+      },orderBy:{createdAt:'asc'},take:40,
+       select:{id:true,objectId:true,decision:true,decidedBy:true}});
+      const agentRows=await tx.agentExecution.findMany({where:{
+       organizationId,causationId:id,correlationId:workflow.correlationId
+      },select:{id:true,agentId:true,status:true,completedAt:true},
+       orderBy:{startedAt:'asc'},take:100});
+      const leaseExpired=!workflow.leaseExpiresAt||
+       workflow.leaseExpiresAt<=new Date();
+      const suspiciousSteps=steps.filter(x=>
+       ['RUNNING','OUTCOME_UNKNOWN','FAILED','BLOCKED'].includes(x.status));
+      const code=!releaseTrusted?'RELEASE_REVOKED_OR_UNTRUSTED':
+       suspiciousSteps.length?'UNCERTAIN_STEP_REVIEW_REQUIRED':
+       workflow.status==='BLOCKED'?'BLOCKED_MANUAL_REVIEW':
+       workflow.status==='WAITING_APPROVAL'?'PENDING_INDEPENDENT_APPROVAL':
+       workflow.status==='RUNNING'&&leaseExpired?'LEASE_EXPIRED_INSPECT_FIRST':
+       workflow.status==='RUNNING'?'ACTIVE_LEASE_DO_NOT_TAKE_OVER':
+       workflow.status==='COMPLETED'?'NO_REPLAY_REQUIRED':
+       'UNEXPECTED_STATE_MANUAL_REVIEW';
+      return{
+       workflowExecutionId:id,organizationId,status:workflow.status,
+       correlationId:workflow.correlationId,revision:meta.revision??null,
+       release:{deploymentId:meta.deploymentId??null,
+        digest:meta.releaseDigest??null,
+        status:release?.status??'MISSING',signatureTrusted:releaseTrusted},
+       lease:{generation:workflow.leaseGeneration,
+        leaseHeld:!!workflow.leaseOwner&&!leaseExpired,
+        expired:leaseExpired,expiresAt:workflow.leaseExpiresAt},
+       steps:steps.map(step=>({stepKey:step.stepKey,status:step.status,
+        startedAt:step.startedAt,completedAt:step.completedAt})),
+       approvals:approvalRows,agentProofs:agentRows,
+       evidenceStatus:code,unresolvedSteps:suspiciousSteps.length,
+       truncated:{steps:steps.length>=40,agents:agentRows.length>=100},
+       automaticReplayAllowed:false,directStepResumeAllowed:false,
+       outputCertified:false,externalEffectsAuthorized:false,
+       requiredOperatorAction:code==='NO_REPLAY_REQUIRED'?
+        'Review completed workflow evidence; no recovery needed':
+        'Investigate authoritative step and agent execution evidence; no automatic replay or manual SQL rewrite'
+      };
+    });
+  }
+
   /** Called by the canonical ApprovalService only after its own durable human decision. */
   private async dagReconcileApproval(organizationId:string,approvalId:string,
    decision:'APPROVED'|'REJECTED'){
