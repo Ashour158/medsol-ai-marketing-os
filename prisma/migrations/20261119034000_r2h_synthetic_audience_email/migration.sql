@@ -46,7 +46,7 @@ CREATE UNIQUE INDEX "SyntheticConsent_tenant_contact_ref_uq"
  ON "MarketingSyntheticConsent"("organizationId","contactId","evidenceRef");
 CREATE UNIQUE INDEX "MarketingSyntheticConsent_organizationId_contactId_sequence_key"
  ON "MarketingSyntheticConsent"("organizationId","contactId","sequence");
-CREATE INDEX "MarketingSyntheticConsent_organizationId_contactId_createdAt_idx"
+CREATE INDEX "SyntheticConsent_org_contact_time_idx"
  ON "MarketingSyntheticConsent"("organizationId","contactId","createdAt");
 ALTER TABLE "MarketingSyntheticConsent" ADD CONSTRAINT "MarketingSyntheticConsent_org_fk"
  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
@@ -84,7 +84,7 @@ CREATE UNIQUE INDEX "MarketingEmailSimulation_organizationId_id_key"
  ON "MarketingEmailSimulation"("organizationId","id");
 CREATE UNIQUE INDEX "MarketingEmailSimulation_organizationId_requestKey_key"
  ON "MarketingEmailSimulation"("organizationId","requestKey");
-CREATE INDEX "MarketingEmailSimulation_organizationId_campaignId_createdAt_idx"
+CREATE INDEX "EmailSim_org_campaign_time_idx"
  ON "MarketingEmailSimulation"("organizationId","campaignId","createdAt");
 ALTER TABLE "MarketingEmailSimulation" ADD CONSTRAINT "MarketingEmailSimulation_org_fk"
  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
