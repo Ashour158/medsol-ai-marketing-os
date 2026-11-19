@@ -36,7 +36,7 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
   if(method==='GET'&&path==='/marketing/agents/manifests')return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/agents/manifests'||
-    /^\\/marketing\\/agents\\/manifests\\/[^/]+\\/(approve|activate|revoke|rollback)$/.test(path)))
+    /^\/marketing\/agents\/manifests\/[^/]+\/(approve|activate|revoke|rollback)$/.test(path)))
    return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/tools/registrations')return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/tools/registrations'||
