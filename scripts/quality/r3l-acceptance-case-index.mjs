@@ -69,6 +69,7 @@ const databaseCases=[
  {id:'T01-003',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-004',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-005',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
+ {id:'T01-009',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-006',testSource:'apps/api/src/postgres-r2-publication-rls.integration.test.ts'},
  {id:'T01-007',testSource:'apps/api/src/postgres-r2e-signed-webhook.integration.test.ts'},
  {id:'T01-008',testSource:'apps/api/src/postgres-tenant-brand-agency.integration.test.ts'},
@@ -99,8 +100,8 @@ for(const {id,testSource} of databaseCases){
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==136)
- throw new Error('Expected precisely 136 mapped offline cases, got '+active.size);
+if(active.size!==137)
+ throw new Error('Expected precisely 137 mapped offline cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
@@ -131,10 +132,10 @@ const result={
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:111,
- mappedPostgresIntegrationCases:25,
- mappedEngineeringAssertions:136,
- unmappedPlannedCases:364,
- referenceCasesAssertedInThisCi:verifiedInCi?136:0,
+ mappedPostgresIntegrationCases:26,
+ mappedEngineeringAssertions:137,
+ unmappedPlannedCases:363,
+ referenceCasesAssertedInThisCi:verifiedInCi?137:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,
