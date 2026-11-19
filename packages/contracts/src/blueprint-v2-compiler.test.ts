@@ -52,6 +52,31 @@ describe('Blueprint v2 static graph safety baseline',()=>{
   expect(codes).toContain('NO_END');
   expect(lintBlueprintDraft(null).validDraft).toBe(false);
  });
+ it('denies dangling branches, hidden roots and unknown effectful configuration',()=>{
+  const detached=sample();
+  detached.nodes.push({id:'orphan',type:'TRANSFORM'} as any);
+  const detachedCodes=lintBlueprintDraft(detached).issues.map(x=>x.code);
+  expect(detachedCodes).toContain('UNREACHABLE_NODE');
+  expect(detachedCodes).toContain('NO_TERMINAL_PATH');
+  const dangling=sample();
+  dangling.nodes.push({id:'forgotten',type:'TRANSFORM'} as any);
+  dangling.edges.push({from:'assess',to:'forgotten'});
+  expect(lintBlueprintDraft(dangling).issues.map(x=>x.code))
+   .toContain('NO_TERMINAL_PATH');
+  const roots=sample();
+  roots.nodes.push({id:'second',type:'TRIGGER'} as any);
+  expect(lintBlueprintDraft(roots).issues.map(x=>x.code))
+   .toContain('SINGLE_TRIGGER_REQUIRED');
+  const smuggled=sample() as any;
+  smuggled.nodes[1].httpUrl='https://evil.example/publish';
+  expect(lintBlueprintDraft(smuggled).issues.map(x=>x.code))
+   .toContain('UNRECOGNIZED_NODE_FIELD');
+  smuggled.nodes[1].sideEffect='NONE';
+  smuggled.nodes[1].maxIterations=5;
+  expect(lintBlueprintDraft(smuggled).issues.map(x=>x.code))
+   .toContain('LOOP_BOUND_MISMATCH');
+  expect(lintBlueprintDraft(smuggled).deployAuthorized).toBe(false);
+ });
  it('proves no draft can ever authorize deployment',()=>{
   const variants=[sample(),{...sample(),nodes:sample().nodes.slice(0,2)},
    {...sample(),edges:[{from:'start',to:'finish'}]}];

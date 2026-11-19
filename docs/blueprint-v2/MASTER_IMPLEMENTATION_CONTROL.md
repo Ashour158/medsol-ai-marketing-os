@@ -204,3 +204,8 @@ The existing Blueprint v2 draft compiler is now paired with a bounded pure DAG s
 [Read the R2H authoritative Reuse Map, append-only synthetic consent data, immutable no-send audience snapshots and full PostgreSQL acceptance](R2H_SYNTHETIC_CONSENT_EMAIL.md).
 
 A narrowly bounded **synthetic-only** Audience/Consent owner now creates random anonymous recipient references (no email, name, phone or PII) and appends opt-in, withdrawal and irreversible complaint events. The Email owner builds idempotent SHA-256 consent+campaign+content audience snapshots for a real human-approved Campaign but explicitly never sends any messages. Three additive tenant FORCE-RLS tables, immutable triggers, SQL constraints forbidding SENT/provider receipts, canonical AuditEvent and OutboxEvent integration, OIDC tenant-admin API/Next BFF and a full simulation Studio provide end-to-end verification. E29/E30/WF16/WF17 remain PARTIAL, not commercially complete or legally verified. Real mailing and broader R2/R3 work remain pending and no account connection is required.
+
+
+## R2/R3 combined hardening tranche — graph safety and remaining acceptance
+
+[Reuse Map, adversarial blueprint graph validation, outstanding R2/R3 functional capabilities and acceptance sequence](R2_R3_BIG_TRANCHE_GAP_AND_GRAPH_SAFETY.md). The existing Blueprint compiler now rejects unreachable nodes, branches without terminal paths, multiple roots and unknown configuration fields. Canonical virtual workflow simulation remains non-executable and cannot send messages or call providers. **Neither R2 nor R3 is declared complete.**

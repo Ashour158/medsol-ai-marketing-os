@@ -62,7 +62,7 @@ describe('R3 canonical blueprint DAG virtual simulator',()=>{
  it('blocks disconnected nodes and multiple triggers without executing tasks',()=>{
   const d=draft();d.nodes.push({id:'orphan',type:'TRANSFORM'} as any);
   expect(simulateBlueprintDraft(d).issues.map(x=>x.code))
-   .toContain('UNREACHABLE_NODES');
+   .toContain('UNREACHABLE_NODE');
   const multiple=draft();
   multiple.nodes.push({id:'another-trigger',type:'TRIGGER'} as any);
   expect(simulateBlueprintDraft(multiple).issues.map(x=>x.code))
