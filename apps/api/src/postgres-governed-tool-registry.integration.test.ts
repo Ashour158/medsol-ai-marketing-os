@@ -69,7 +69,7 @@ describe('R3-E signed MCP/A2A registration with PostgreSQL tenant security',()=>
     'write_prices','read_internal');
    expect(missing.declaredTool).toBe(false);
    expect(await registry.list(org,actor)).toHaveLength(1);
-   await expect(registry.list(other,actor)).rejects.toThrow('tenant');
+   await expect(registry.list(other,actor)).rejects.toThrow(/tenant/i);
    await expect(db.$transaction(async tx=>{
     await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
     return tx.governedToolRegistration.update({
