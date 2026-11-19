@@ -93,10 +93,17 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "campaigns" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id)))) ||
       (resource === "brand" && !(path.length===2 && ((request.method==="GET"&&(id==="active"||id==="revisions"))||(request.method==="POST"&&(id==="propose"||id==="decide"))))) ||
-      (resource === "learning" && !((path.length === 3 && id === "skills" && (action === "evaluate" || action === "decide") && request.method === "POST") || (path.length === 2 && (
-        (request.method === "GET" && (id === "signals" || id === "proposals" || id === "trends")) ||
-        (request.method === "POST" && (id === "signals" || id === "verify" || id === "proposals" || id === "discover"))
-      )))) ||
+      (resource === "learning" && !(
+        (path.length===2&&id==="knowledge"&&["GET","POST"].includes(request.method))||
+        (path.length===3&&id==="knowledge"&&action==="search"&&request.method==="POST")||
+        (path.length===4&&id==="knowledge"&&!!action&&
+         ["review","revoke","promote"].includes(operation??"")&&request.method==="POST")||
+        (path.length === 3 && id === "skills" && (action === "evaluate" || action === "decide") && request.method === "POST") ||
+        (path.length === 2 && (
+         (request.method === "GET" && (id === "signals" || id === "proposals" || id === "trends")) ||
+         (request.method === "POST" && (id === "signals" || id === "verify" || id === "proposals" || id === "discover"))
+        ))
+      )) ||
       (resource === "brain" && !(
         (path.length === 2 && ((id === "plan" && request.method === "GET") || (id === "assess" && request.method === "POST") || (id === "runs" && (request.method === "GET" || request.method === "POST")))) ||
         (path.length === 3 && id === "runs" && request.method === "GET") ||
