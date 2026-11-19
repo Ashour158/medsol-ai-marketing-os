@@ -3,7 +3,7 @@
 -- Historical R2H snapshots without syntheticTransport remain immutable/valid.
 ALTER TABLE "MarketingEmailSimulation"
  ADD CONSTRAINT "MarketingEmailSimulation_synthetic_transport_no_egress" CHECK (
-  NOT ("result" ? 'syntheticTransport') OR (
+  NOT ("result" ? 'syntheticTransport') OR COALESCE((
    jsonb_typeof("result"->'syntheticTransport')='object'
    AND "result"->'syntheticTransport'->>'scenario'
        = "result"->>'syntheticTransportScenario'
@@ -19,5 +19,5 @@ ALTER TABLE "MarketingEmailSimulation"
    AND "result"->'syntheticTransport'->>'automaticRetryAllowed'='false'
    AND "result"->'syntheticTransport'->>'virtualRequestRef'
        ~ '^internal:synthetic-esp/[a-f0-9]{64}$'
-  )
+  ), FALSE)
  );
