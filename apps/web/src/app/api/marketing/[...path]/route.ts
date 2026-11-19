@@ -31,6 +31,9 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
           request.method==="POST")
       )) ||
       (resource === "integrations" && !(
+        (path.length===3&&id==="trials"&&(
+          (action==="catalog"&&request.method==="GET")||
+          (action==="run"&&request.method==="POST"))) ||
         (path.length===1&&(request.method==="GET"||request.method==="POST")) ||
         (path.length===2&&request.method==="GET"&&!!id) ||
         (path.length===3&&request.method==="GET"&&!!id&&action==="health") ||

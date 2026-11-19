@@ -7,6 +7,7 @@ import SyntheticEmailStudio from "./synthetic-email-studio";
 import IntegrationGovernanceStudio from "./integration-governance-studio";
 import {BlueprintVirtualStudio} from "./blueprint-virtual-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
+import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -124,6 +125,7 @@ export default function Home() {
     <CampaignPublicationStudio identity={identity}/>
     <SyntheticEmailStudio identity={identity}/>
     <GovernedToolRegistryStudio identity={identity}/>
+    <ProviderContractTrialStudio identity={identity}/>
     <IntegrationGovernanceStudio identity={identity}/>
     <OperationsConsole identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
