@@ -377,7 +377,10 @@ export class MarketingLearningService {
  async trendBrief(organizationId:string,sector?:string){
   const normalized=typeof sector==='string'&&sector.trim()?sector.trim().slice(0,120):undefined;
   const signals=await this.db.learningSignal.findMany({
-   where:{organizationId,status:'REVIEWED',...(normalized?{sector:normalized}:{})},
+   where:{organizationId,status:'REVIEWED',...(normalized?{sector:normalized}:{}),
+    OR:[{knowledgeDocumentId:null},{knowledgeDocument:{status:'REVIEWED',
+      expiresAt:null}},{knowledgeDocument:{status:'REVIEWED',
+      expiresAt:{gt:new Date()}}}]},
    orderBy:{observedAt:'desc'},take:200,
    select:{id:true,topic:true,sector:true,sourceUrl:true,sourceTitle:true,sourcePublishedAt:true,observedAt:true}
   });
@@ -411,12 +414,33 @@ export class MarketingLearningService {
   const signal=await this.db.learningSignal.findFirst({where:{id:signalId,organizationId}});
   if(!signal)throw new NotFoundException('Evidence signal not found in tenant');
   if(signal.status!=='REVIEWED')throw new ConflictException('Evidence must be reviewed before skill proposal');
+  if(signal.knowledgeDocumentId){
+   const parent=await this.db.knowledgeDocument.findFirst({where:{
+    organizationId,id:signal.knowledgeDocumentId,status:'REVIEWED',
+    OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
+   }});
+   if(!parent)throw new ConflictException('Learning source has expired or been revoked');
+  }
   const existing=await this.db.agentSkillProposal.findUnique({where:{organizationId_agentId_skillKey_version:{organizationId,agentId,skillKey,version:1}}});
   if(existing)return existing;
   return this.db.agentSkillProposal.create({data:{id:randomUUID(),organizationId,agentId,skillKey,rationale,evidenceSignalId:signal.id,version:1,status:'PROPOSED',evaluation:{evaluationStatus:'NOT_RUN',proposedBy:actorId}}});
  }
  async verify(organizationId:string,actorId:string,signalId:string){
   return this.db.$transaction(async tx=>{
+   const signal=await tx.learningSignal.findFirst({where:{
+    id:signalId,organizationId,status:'QUARANTINED'
+   }});
+   if(!signal)throw new ConflictException('Evidence not found or already reviewed');
+   if(signal.knowledgeDocumentId){
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+    const document=await tx.knowledgeDocument.findFirst({where:{
+     id:signal.knowledgeDocumentId,organizationId,status:'REVIEWED',
+     OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
+    }});
+    if(!document)throw new ConflictException('Knowledge source no longer reviewable');
+    if(actorId===document.createdBy)
+     throw new ForbiddenException('Source creator cannot independently attest a linked signal');
+   }
    const changed=await tx.learningSignal.updateMany({where:{id:signalId,organizationId,status:'QUARANTINED'},data:{status:'REVIEWED'}});
    if(changed.count!==1)throw new ConflictException('Evidence not found or already reviewed');
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,action:'LEARNING_SIGNAL_REVIEWED',objectType:'LearningSignal',objectId:signalId,correlationId:randomUUID(),after:{status:'REVIEWED',verification:'NOT_INDEPENDENTLY_VERIFIED'}}});
