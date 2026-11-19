@@ -10,7 +10,7 @@ function fixture() {
   return { db, service: new ModelReconciliationService(db) };
 }
 describe('provider billing reconciliation', () => {
-  it('records provider evidence and settles only tenant-owned usage', async () => {
+  it('T14-001 records provider evidence and settles only tenant-owned usage', async () => {
     const { db, service } = fixture();
     await expect(service.reconcile(evidence)).resolves.toMatchObject({ status: 'SETTLED', evidenceReference: 'invoice-1' });
     expect(db.modelUsage.findFirst).toHaveBeenCalledWith({ where: { id: 'usage', organizationId: 'tenant' } });
