@@ -9,7 +9,10 @@ export const PLATFORM_CATALOG=[
  {key:'META_GRAPH',label:'Meta (Facebook/Instagram)',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]},
  {key:'TIKTOK',label:'TikTok',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]},
  {key:'YOUTUBE',label:'YouTube',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]},
- {key:'X_API',label:'X',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]}
+ {key:'X_API',label:'X',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]},
+ {key:'INSTAGRAM',label:'Instagram Professional (Instagram Login)',category:'SOCIAL',connectionLive:false,verifiedCapabilities:[]},
+ {key:'CANVA',label:'Canva Connect (editable designs)',category:'CREATIVE',connectionLive:false,verifiedCapabilities:[]},
+ {key:'ADOBE_FIREFLY',label:'Adobe Firefly Services (server-to-server)',category:'CREATIVE',connectionLive:false,verifiedCapabilities:[]}
 ] as const;
 const PROVIDERS=new Set<string>(PLATFORM_CATALOG.map(x=>x.key));
 /**
