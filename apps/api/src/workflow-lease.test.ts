@@ -8,6 +8,7 @@ function fixture() {
       updateMany: vi.fn().mockResolvedValue({ count: 1 })
     }
   };
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction = vi.fn(async (callback: (tx: any) => Promise<any>) => callback(db));
   return { db, service: new WorkflowLeaseService(db) };
 }
