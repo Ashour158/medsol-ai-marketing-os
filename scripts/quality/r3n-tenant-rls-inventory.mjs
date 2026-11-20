@@ -48,7 +48,9 @@ const protectedTables=[
  'AgencyGrant','Brand','AuthSession','MarketingMetricObservation',
  'TenantRoleDefinition','CreativeAsset','CreativeAssetRevision',
  'CampaignPublication','PublicationAttempt','KnowledgeDocument',
- 'KnowledgeChunk','KnowledgeRelation','AgentKnowledgeMemory'
+ 'KnowledgeChunk','KnowledgeRelation','AgentKnowledgeMemory',
+ 'MarketingObjective','MarketingProduct','Campaign',
+ 'BrandMasterRevision','LearningSignal','AgentSkillProposal'
 ];
 const byName=new Map(rows.map(x=>[x.name,x]));
 const missing=protectedTables.filter(name=>{
