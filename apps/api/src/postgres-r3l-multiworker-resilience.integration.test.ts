@@ -42,8 +42,18 @@ describe.skipIf(!enabled)('R3-L offline cross-tenant multi-worker resilience acc
     }
    }
    const consumer=new BrainHandoffConsumer(db as any);
-   const publisherA=new OutboxPublisherService(db as any);
-   const publisherB=new OutboxPublisherService(db as any);
+   // Real transaction/CAS operations still use PostgreSQL. Restrict only
+   // organization enumeration to this fixture's two synthetic tenants: the
+   // shared CI database contains unrelated pending internal events that
+   // must not perturb assertions about this specific outbox episode.
+   const testTenants=[...organizations].sort();
+   const dispatcherDb:any={
+    $transaction:db.$transaction.bind(db),
+    organization:{findMany:async({where,take}:any)=>testTenants.filter(id=>
+     !where?.id?.gt||id>where.id).slice(0,take).map(id=>({id}))}
+   };
+   const publisherA=new OutboxPublisherService(dispatcherDb);
+   const publisherB=new OutboxPublisherService(dispatcherDb);
    // Simulate an accepted consumer transaction followed by a lost
    // outbox acknowledgement (worker process SIGKILL window).
    const precommitted=await db.outboxEvent.findFirstOrThrow({where:{
