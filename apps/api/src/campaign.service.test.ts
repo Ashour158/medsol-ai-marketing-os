@@ -21,11 +21,11 @@ function fixture(status: string, version = 4) {
       findUniqueOrThrow: vi.fn().mockResolvedValue({ ...campaign, status: 'PROPOSED', version: version + 1 })
     },
     approval: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn() },
-    commandReceipt: { create: vi.fn() },
+    commandReceipt: { findUnique:vi.fn().mockResolvedValue(null),create: vi.fn() },
     auditEvent: { create: vi.fn() }
   };
   const db = {
-    commandReceipt: { findUnique: vi.fn().mockResolvedValue(null) },
+    commandReceipt: tx.commandReceipt,
     $transaction: async (fn: (transaction: any) => Promise<unknown>) => fn(tx)
   };
   const outbox = { enqueue: vi.fn() };
