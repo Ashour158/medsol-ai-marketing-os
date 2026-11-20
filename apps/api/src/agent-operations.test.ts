@@ -9,6 +9,8 @@ function setup() {
     findMany: vi.fn().mockResolvedValue([{ id: 'e1', agentId: 'MKT-CMO-001', status: 'COMPLETED' }]),
     findFirst: vi.fn().mockResolvedValue({ id: 'e1', organizationId: 'tenant-a', status: 'COMPLETED' })
   } };
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   return { db, service: new MarketingReadService(db) };
 }
 describe('agent operations tenant boundary', () => {
