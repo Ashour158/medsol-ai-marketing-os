@@ -68,7 +68,7 @@ export class MarketingReadService {
     const workflowId=campaignApprovals.find(x=>x.workflowExecutionId)?.workflowExecutionId;
     const workflow=workflowId?await tx.workflowExecution.findFirst({
      where:{organizationId,id:workflowId},
-     select:{id:true,status:true,currentStep:true,createdAt:true,
+     select:{id:true,status:true,currentStep:true,startedAt:true,
       steps:{select:{stepKey:true,status:true,startedAt:true,completedAt:true}}}
     }):null;
     const relevantAudits=audits.filter(e=>e.objectType==='Campaign'||
