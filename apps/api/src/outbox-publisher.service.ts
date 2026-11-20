@@ -74,7 +74,10 @@ export class OutboxPublisherService{
    where:this.tenantCursor?{id:{gt:this.tenantCursor}}:{},
    orderBy:{id:'asc'},take:50,select:{id:true}
   });
-  if(!tenants.length){this.tenantCursor=null;return null;}
+  if(!tenants.length){
+   if(this.tenantCursor){this.tenantCursor=null;return this.claimOne(eventTypes);}
+   return null;
+  }
   for(const tenant of tenants){
    this.tenantCursor=tenant.id;
    const claimed=await withMarketingTenant(this.db,tenant.id,async tx=>{

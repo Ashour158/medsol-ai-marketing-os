@@ -1,5 +1,5 @@
 import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {OutboxService} from './outbox.service.js';
 import {assertCampaignTransition} from '@medsol/domain';
 import {CreateCampaignCommand,TransitionCampaignCommand} from '@medsol/contracts';
@@ -8,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 @Injectable() export class CampaignService{
  constructor(private readonly db:PrismaService,private readonly outbox:OutboxService){}
  async create(cmd:CreateCampaignCommand,actorId?:string){
-  const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
+  const prior=await withMarketingTenant(this.db,cmd.organizationId,tx=>tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}}));if(prior)return prior.response;
   return this.db.$transaction(async tx=>{
    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${cmd.organizationId}, true)`;
    const objective=await tx.marketingObjective.findFirst({where:{id:cmd.objectiveId,organizationId:cmd.organizationId}});if(!objective)throw new NotFoundException('Objective not found in tenant');
@@ -24,7 +24,7 @@ import {randomUUID} from 'node:crypto';
   });
  }
  async transition(cmd:TransitionCampaignCommand,actorId?:string){
-  const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
+  const prior=await withMarketingTenant(this.db,cmd.organizationId,tx=>tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}}));if(prior)return prior.response;
   return this.db.$transaction(async tx=>{
    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${cmd.organizationId}, true)`;
    const c=await tx.campaign.findFirst({where:{id:cmd.campaignId,organizationId:cmd.organizationId}});if(!c)throw new NotFoundException('Campaign not found in tenant');
