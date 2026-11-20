@@ -26,6 +26,7 @@ import {randomUUID} from 'node:crypto';
  async transition(cmd:TransitionCampaignCommand,actorId?:string){
   const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior)return prior.response;
   return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${cmd.organizationId}, true)`;
    const c=await tx.campaign.findFirst({where:{id:cmd.campaignId,organizationId:cmd.organizationId}});if(!c)throw new NotFoundException('Campaign not found in tenant');
    if(cmd.expectedVersion!==undefined && c.version!==cmd.expectedVersion)throw new ConflictException('Campaign version is stale; refresh the authoritative campaign state before retrying');
    try{assertCampaignTransition(c.status,cmd.to)}catch(e){throw new BadRequestException((e as Error).message)}
