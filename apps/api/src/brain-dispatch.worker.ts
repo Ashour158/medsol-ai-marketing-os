@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import { BrainRunExecutorService } from './brain-run-executor.service.js';
 import { OutboxPublisherService,type PublishedEvent } from './outbox-publisher.service.js';
 import { BrainHandoffConsumer, BRAIN_INTERNAL_EVENTS } from './brain-handoff-consumer.service.js';
@@ -21,6 +21,9 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
  private workerId:string|undefined;
  private alertTransport:MarketingIncidentWebhookTransport|undefined;
  private incidentBusy=false;
+ // Round-robin through canonical Organization tenants without ever querying
+ // protected BrainRun rows outside their transaction-local tenant context.
+ private tenantScanCursor:string|null=null;
  private busy = false;
  private stopping = false;
  constructor(private readonly db:PrismaService, private readonly executor:BrainRunExecutorService,
@@ -99,7 +102,19 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
   if(this.busy)return {claimed:false,status:'BUSY'};
   this.busy=true;
   try{
-   const run=await this.db.brainRun.findFirst({where:{status:'PENDING'},orderBy:{createdAt:'asc'},select:{id:true,organizationId:true}});
+   const tenants=await this.db.organization.findMany({
+    where:this.tenantScanCursor?{id:{gt:this.tenantScanCursor}}:{},
+    orderBy:{id:'asc'},take:50,select:{id:true}
+   });
+   if(!tenants.length)this.tenantScanCursor=null;
+   let run:{id:string;organizationId:string}|null=null;
+   for(const tenant of tenants){
+    this.tenantScanCursor=tenant.id;
+    const pending=await withMarketingTenant(this.db,tenant.id,tx=>
+     tx.brainRun.findFirst({where:{organizationId:tenant.id,status:'PENDING'},
+      orderBy:{createdAt:'asc'},select:{id:true,organizationId:true}}));
+    if(pending){run=pending;break;}
+   }
    if(!run){await this.deliverBrainEvents();
     if(this.workerId&&this.workerHealth)void this.workerHealth.heartbeat(this.workerId,'EMPTY').catch(()=>{});
     return {claimed:false,status:'EMPTY'};}

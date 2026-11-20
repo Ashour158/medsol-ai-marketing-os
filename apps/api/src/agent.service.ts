@@ -2,7 +2,7 @@ import {validateAgentInput} from '@medsol/agent-runtime';
 import {agentReleaseDigest,agentReleaseTrustConfig,baselineAgentReleaseManifest,
  parseAgentReleaseManifest,verifyTrustedAgentReleaseSignature}
  from './agent-manifest-release.js';
-import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
+import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService,withMarketingTenant} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
  constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
@@ -11,12 +11,12 @@ import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {G
  if(!manifest||!i.organizationId||!i.correlationId)throw new ForbiddenException('Unknown agent or incomplete execution identity');
  // A manifest is one logical agent. Its installed record is tenant-owned and cannot be
  // borrowed by another organization. Retain PAUSED / RETIRED administrative states.
- const installed=await this.db.agent.upsert({
+ const installed=await withMarketingTenant(this.db,i.organizationId,tx=>tx.agent.upsert({
    where:{organizationId_id:{organizationId:i.organizationId,id:agentId}},
    create:{id:agentId,organizationId:i.organizationId,name:manifest.name,version:1,
      capabilities:[...manifest.capabilities]},
    update:{}
- });
+ }));
  if(installed.status!=='ACTIVE')throw new ForbiddenException('Agent is administratively paused or retired');
  // Agent.version is the authoritative active release pointer; no second roster.
  // Signed revisions may only narrow the built-in identity and capabilities.
@@ -47,7 +47,7 @@ import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {G
  const releaseEvidence={version:installed.version,digest:agentReleaseDigest(activeManifest),
   trustedRelease:installed.version>1,modelCallsAuthorized:false,
   toolCallsAuthorized:false,externalEffectsAuthorized:false};
- const executionId=randomUUID();const started=await this.db.agentExecution.create({data:{id:executionId,organizationId:i.organizationId,agentId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input as any,status:'RUNNING'}});try{const decision=await this.runtime.execute(agentId,{executionId,organizationId:i.organizationId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input,capabilities:i.capabilities});let approvedDraft=decision;
+ const executionId=randomUUID();const started=await withMarketingTenant(this.db,i.organizationId,tx=>tx.agentExecution.create({data:{id:executionId,organizationId:i.organizationId,agentId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input as any,status:'RUNNING'}}));try{const decision=await this.runtime.execute(agentId,{executionId,organizationId:i.organizationId,correlationId:i.correlationId,...(i.causationId ? {causationId:i.causationId} : {}),input:i.input,capabilities:i.capabilities});let approvedDraft=decision;
  if(process.env.MARKETING_AI_REASONING_ENABLED==='true' && decision.executionAllowed){
    if(!this.model)throw new Error('Governed model service not configured');
    const budget=Number(process.env.MARKETING_MODEL_RESERVATION_MICROS);
@@ -69,7 +69,7 @@ import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {G
    }}};
  }
  const pinnedDecision={...approvedDraft,releaseEvidence};
- await this.db.agentExecution.update({where:{id:started.id},data:{decision:pinnedDecision as any,status:pinnedDecision.executionAllowed?'COMPLETED':'BLOCKED',completedAt:new Date()}});
- return{executionId,decision:pinnedDecision}}catch(error){await this.db.agentExecution.update({where:{id:started.id},data:{status:'FAILED',completedAt:new Date(),decision:{error:error instanceof Error?error.message:'Unknown error'} as any}});throw error}}
+ await withMarketingTenant(this.db,i.organizationId,tx=>tx.agentExecution.update({where:{id:started.id},data:{decision:pinnedDecision as any,status:pinnedDecision.executionAllowed?'COMPLETED':'BLOCKED',completedAt:new Date()}}));
+ return{executionId,decision:pinnedDecision}}catch(error){await withMarketingTenant(this.db,i.organizationId,tx=>tx.agentExecution.update({where:{id:started.id},data:{status:'FAILED',completedAt:new Date(),decision:{error:error instanceof Error?error.message:'Unknown error'} as any}}));throw error}}
  list(){return AGENT_ROSTER.map(m=>({id:m.id,name:m.name,mission:m.mission,capabilities:m.capabilities,registered:this.registry.list().some(a=>a.id===m.id)}))}
 }

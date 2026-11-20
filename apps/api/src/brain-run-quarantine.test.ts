@@ -8,6 +8,7 @@ function fixture(options?: {status?:string;ageMinutes?:number;changed?:number;mi
  const updatedAt=new Date(Date.now()-(options?.ageMinutes??30)*60_000);
  const run={id:'run-1',organizationId:'tenant-a',status,updatedAt,correlationId:'corr-1',currentAgentId:'MKT-CMO-001'};
  const tx={
+  $queryRaw:vi.fn().mockResolvedValue([]),
   brainRun:{
    findFirst:vi.fn().mockResolvedValue(options?.missing?null:run),
    updateMany:vi.fn().mockResolvedValue({count:options?.changed??1})

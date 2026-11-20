@@ -1,5 +1,5 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
@@ -11,7 +11,7 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
 
 @Injectable() export class ApprovalService{
  constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService){}
- async listPending(organizationId:string){return this.db.approval.findMany({where:{organizationId,decision:'PENDING'},orderBy:{createdAt:'asc'},select:{id:true,objectType:true,objectId:true,requiredAuthority:true,riskLevel:true,workflowExecutionId:true,scopeDigest:true,scopeExpiresAt:true,createdAt:true}})}
+ async listPending(organizationId:string){return withMarketingTenant(this.db,organizationId,tx=>tx.approval.findMany({where:{organizationId,decision:'PENDING'},orderBy:{createdAt:'asc'},select:{id:true,objectType:true,objectId:true,requiredAuthority:true,riskLevel:true,workflowExecutionId:true,scopeDigest:true,scopeExpiresAt:true,createdAt:true}}))}
  private async reconcile(organizationId:string,result:{approvalId:string;decision:string;workflowExecutionId:string|null}){
   if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(result.workflowExecutionId,organizationId,result);
   if(result.decision==='REJECTED') await this.workflows.blockAfterApprovalRejection(result.approvalId,organizationId,'Rejected by authorized reviewer');

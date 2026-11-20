@@ -11,6 +11,8 @@ const db:any={
  approval:{count:vi.fn().mockResolvedValue(2)},
  agentSkillProposal:{count:vi.fn().mockResolvedValue(1)}
 };
+db.$queryRaw=vi.fn().mockResolvedValue([]);
+db.$transaction=vi.fn(async(fn:any)=>fn(db));
 const reads:any={overview:vi.fn().mockResolvedValue({campaigns:4,failedAgentExecutions:2}),
  agentOperations:vi.fn().mockResolvedValue({total:8,byStatus:{COMPLETED:6,FAILED:2},recent:[]})};
 const delivery:any={summary:vi.fn().mockResolvedValue({pending:1,retrying:1,deadLetters:1,oldestDeadLetters:[

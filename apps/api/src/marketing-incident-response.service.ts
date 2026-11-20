@@ -1,7 +1,7 @@
 import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
 import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import type {PublishedEvent} from './outbox-publisher.service.js';
 
 export const INCIDENT_KINDS=['BRAIN_STALE','BRAIN_NEEDS_INTERVENTION','OUTBOX_DEAD_LETTER'] as const;
@@ -24,9 +24,10 @@ function alertKey(s:Source,level:number):string{
 /** Authoritative response/notification metadata only. Source incidents remain BrainRun/OutboxEvent. */
 @Injectable()
 export class MarketingIncidentResponseService{
- private cursors:Record<IncidentKind,string|null>={
-  BRAIN_STALE:null,BRAIN_NEEDS_INTERVENTION:null,OUTBOX_DEAD_LETTER:null
- };
+ // Monotonic per-tenant cursor: a global cursor could starve other clients
+ // when one tenant fills the incident queue.
+ private readonly cursors=new Map<string,Record<IncidentKind,string|null>>();
+ private tenantScanCursor:string|null=null;
  constructor(private readonly db:PrismaService){}
  private async active(tx:Prisma.TransactionClient,organizationId:string,kind:IncidentKind,sourceId:string):Promise<Source>{
   if(kind==='OUTBOX_DEAD_LETTER'){
@@ -46,9 +47,9 @@ export class MarketingIncidentResponseService{
  }
  async batch(organizationId:string,kind:IncidentKind,sourceIds:readonly string[]){
   if(!sourceIds.length)return new Map<string,{occurrenceAt:Date;acknowledgedAt:Date|null;acknowledgedBy:string|null;lastNotifiedLevel:number}>();
-  const rows=await this.db.incidentResponse.findMany({where:{
+  const rows=await withMarketingTenant(this.db,organizationId,tx=>tx.incidentResponse.findMany({where:{
    organizationId,kind,sourceId:{in:[...new Set(sourceIds)].slice(0,100)}
-  },select:{sourceId:true,occurrenceAt:true,acknowledgedAt:true,acknowledgedBy:true,lastNotifiedLevel:true}});
+  },select:{sourceId:true,occurrenceAt:true,acknowledgedAt:true,acknowledgedBy:true,lastNotifiedLevel:true}}));
   return new Map(rows.map(r=>[r.sourceId,r]));
  }
  /** Idempotent human acknowledgement of the current source occurrence. */
@@ -58,7 +59,7 @@ export class MarketingIncidentResponseService{
   if(typeof reasonInput!=='string'||reasonInput.trim().length<12||reasonInput.length>500)
    throw new BadRequestException('Specific acknowledgement rationale (12 to 500 characters) required');
   const reason=reasonInput.trim(),kind=kindInput,sourceId=idInput;
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
    const source=await this.active(tx,organizationId,kind,sourceId);
    const key={organizationId_kind_sourceId:{organizationId,kind,sourceId}};
    const prior=await tx.incidentResponse.findUnique({where:key});
@@ -90,7 +91,7 @@ export class MarketingIncidentResponseService{
   * access to social channels, provider models, or customer contact information.
   */
  private async queueOne(source:Source,now:Date){
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,source.organizationId,async tx=>{
    const current=await this.active(tx,source.organizationId,source.kind,source.sourceId);
    const key={organizationId_kind_sourceId:{
     organizationId:source.organizationId,kind:source.kind,sourceId:source.sourceId}};
@@ -143,13 +144,13 @@ export class MarketingIncidentResponseService{
      !INCIDENT_KINDS.includes(payload.kind as IncidentKind)||
      typeof payload.sourceId!=='string'||typeof payload.occurrenceAt!=='string')return false;
   const kind=payload.kind as IncidentKind,sourceId=payload.sourceId;
-  const response=await this.db.incidentResponse.findUnique({where:{organizationId_kind_sourceId:{
+  const response=await withMarketingTenant(this.db,event.organizationId,tx=>tx.incidentResponse.findUnique({where:{organizationId_kind_sourceId:{
    organizationId:event.organizationId,kind,sourceId
-  }},select:{acknowledgedAt:true,occurrenceAt:true}});
+  }},select:{acknowledgedAt:true,occurrenceAt:true}}));
   if(!response||response.acknowledgedAt||response.occurrenceAt.toISOString()!==payload.occurrenceAt)
    return false;
   try{
-   const source=await this.db.$transaction(tx=>this.active(tx,event.organizationId,kind,sourceId));
+   const source=await withMarketingTenant(this.db,event.organizationId,tx=>this.active(tx,event.organizationId,kind,sourceId));
    return source.occurrenceAt.toISOString()===payload.occurrenceAt;
   }catch(error){
    if(error instanceof ConflictException)return false;
@@ -161,6 +162,27 @@ export class MarketingIncidentResponseService{
   // production worker omits it and scans all visible tenant incidents.
   if(!Number.isInteger(limitPerKind)||limitPerKind<1||limitPerKind>100)
    throw new BadRequestException('Invalid incident scan batch');
+  // Production worker discovers tenants from the one Organization authority,
+  // never by bypassing protected BrainRun rows. Bounded batches rotate across
+  // tenants; explicit scoped scans are also used by operator integration tests.
+  if(!organizationId){
+   const tenants=await this.db.organization.findMany({
+    where:this.tenantScanCursor?{id:{gt:this.tenantScanCursor}}:{},
+    orderBy:{id:'asc'},take:25,select:{id:true}
+   });
+   if(!tenants.length)this.tenantScanCursor=null;
+   let inspected=0,queued=0,conflicts=0;
+   for(const tenant of tenants){
+    this.tenantScanCursor=tenant.id;
+    const result=await this.scan(limitPerKind,tenant.id);
+    inspected+=result.inspected;queued+=result.queued;conflicts+=result.conflicts;
+   }
+   return {inspected,queued,conflicts,
+    automatedAgentReplay:false,externalPublishingAuthorized:false};
+  }
+  const cursors=this.cursors.get(organizationId)??{
+   BRAIN_STALE:null,BRAIN_NEEDS_INTERVENTION:null,OUTBOX_DEAD_LETTER:null
+  };
   const now=new Date(),cutoff=new Date(now.getTime()-15*60_000);
   const definitions:[
    IncidentKind,Prisma.BrainRunWhereInput|Prisma.OutboxEventWhereInput
@@ -171,24 +193,24 @@ export class MarketingIncidentResponseService{
   ];
   let inspected=0,queued=0,conflicts=0;
   for(const [kind,base] of definitions){
-   const cursor=this.cursors[kind];
+   const cursor=cursors[kind];
    const where={...base,...(organizationId?{organizationId}:{}),...(cursor?{id:{gt:cursor}}:{})};
-   const rows=kind==='OUTBOX_DEAD_LETTER'?
-    await this.db.outboxEvent.findMany({where:where as Prisma.OutboxEventWhereInput,
+   const rows=await withMarketingTenant(this.db,organizationId,async tx=>
+    kind==='OUTBOX_DEAD_LETTER'?
+    tx.outboxEvent.findMany({where:where as Prisma.OutboxEventWhereInput,
      orderBy:{id:'asc'},take:limitPerKind,
      select:{id:true,organizationId:true}}):
-    await this.db.brainRun.findMany({where:where as Prisma.BrainRunWhereInput,
+    tx.brainRun.findMany({where:where as Prisma.BrainRunWhereInput,
      orderBy:{id:'asc'},take:limitPerKind,
-     select:{id:true,organizationId:true}});
-   this.cursors[kind]=rows.length===limitPerKind?rows[rows.length-1]!.id:null;
+     select:{id:true,organizationId:true}}));
+   cursors[kind]=rows.length===limitPerKind?rows[rows.length-1]!.id:null;
+   this.cursors.set(organizationId,cursors);
    for(const row of rows){
     inspected++;
     try{
      // Resolve again within the transaction; a stale run may have completed mid-scan.
-     const didQueue=await this.db.$transaction(async tx=>{
-      const verified=await this.active(tx,row.organizationId,kind,row.id);
-      return verified;
-     });
+     const didQueue=await withMarketingTenant(this.db,row.organizationId,async tx=>
+      this.active(tx,row.organizationId,kind,row.id));
      if(await this.queueOne(didQueue,now))queued++;
     }catch(error){
      if(error instanceof ConflictException ||

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID, createHash } from 'node:crypto';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import { getBrainPlan, validateBrainCommand } from '@medsol/agent-runtime';
 
 function requiredQuarantineReason(value:unknown):string {
@@ -14,19 +14,19 @@ export class BrainRunLedgerService {
   if(typeof commandKey!=='string'||!/^[-a-zA-Z0-9_]{8,128}$/.test(commandKey))throw new BadRequestException('Stable command key required');
   const command=validateBrainCommand(raw);
   if(command.organizationId!==organizationId)throw new BadRequestException('Tenant mismatch');
-  const existing=await this.db.brainRun.findUnique({where:{organizationId_commandKey:{organizationId,commandKey}},include:{steps:{orderBy:{ordinal:'asc'}}}});
+  const existing=await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findUnique({where:{organizationId_commandKey:{organizationId,commandKey}},include:{steps:{orderBy:{ordinal:'asc'}}}}));
   if(existing){this.assertSameCommand(existing,command);return existing;}
   const plan=getBrainPlan();
   const stages=plan.stages.flatMap(s=>s.agents.map(agentId=>({agentId,stage:s.stage})));
   try{
-   return await this.db.brainRun.create({data:{
+   return await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.create({data:{
     id:randomUUID(),organizationId,commandKey,correlationId:command.correlationId,
     input:command as any,status:'PENDING',
     steps:{create:stages.map((s,ordinal)=>({id:randomUUID(),agentId:s.agentId,stage:s.stage,ordinal,status:'PENDING'}))}
-   },include:{steps:{orderBy:{ordinal:'asc'}}}});
+   },include:{steps:{orderBy:{ordinal:'asc'}}}}));
   }catch(error){
    if((error as {code?:string})?.code==='P2002'){
-    const winner=await this.db.brainRun.findUnique({where:{organizationId_commandKey:{organizationId,commandKey}},include:{steps:{orderBy:{ordinal:'asc'}}}});
+    const winner=await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findUnique({where:{organizationId_commandKey:{organizationId,commandKey}},include:{steps:{orderBy:{ordinal:'asc'}}}}));
     if(winner){this.assertSameCommand(winner,command);return winner;}
    }
    throw error;
@@ -39,11 +39,11 @@ export class BrainRunLedgerService {
   if(left!==right)throw new ConflictException('Command key already used for a different brain request');
  }
  async get(organizationId:string,id:string){
-  const run=await this.db.brainRun.findFirst({where:{id,organizationId},include:{steps:{orderBy:{ordinal:'asc'}}}});
+  const run=await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findFirst({where:{id,organizationId},include:{steps:{orderBy:{ordinal:'asc'}}}}));
   if(!run)throw new NotFoundException('Brain run not found');
   return run;
  }
- async list(organizationId:string){return this.db.brainRun.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:50,select:{id:true,commandKey:true,correlationId:true,status:true,currentAgentId:true,createdAt:true,updatedAt:true,completedAt:true}});}
+ async list(organizationId:string){return withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:50,select:{id:true,commandKey:true,correlationId:true,status:true,currentAgentId:true,createdAt:true,updatedAt:true,completedAt:true}}));}
  /**
   * Explicit operator quarantine for an abandoned execution.
   * This never retries steps: a remote execution may have succeeded before the checkpoint.
@@ -51,7 +51,7 @@ export class BrainRunLedgerService {
  async quarantineAbandoned(organizationId:string,runId:string,actorId:string,reason:string){
   const rationale=requiredQuarantineReason(reason);
   const staleBefore=new Date(Date.now()-15*60*1000);
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
    const run=await tx.brainRun.findFirst({where:{id:runId,organizationId}});
    if(!run)throw new NotFoundException('Brain run not found in tenant');
    if(run.status!=='RUNNING')throw new ConflictException('Only RUNNING brain runs can be quarantined');
@@ -72,7 +72,7 @@ export class BrainRunLedgerService {
  }
  async checkpoint(organizationId:string,runId:string,agentId:string,executionId:string){
   if(!executionId)throw new BadRequestException('Execution id required');
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
    const run=await tx.brainRun.findFirst({where:{id:runId,organizationId},include:{steps:{orderBy:{ordinal:'asc'}}}});
    if(!run)throw new NotFoundException('Brain run not found');
    if(run.status!=='RUNNING')throw new ConflictException('Brain run not eligible for checkpoint');
@@ -135,18 +135,18 @@ export class BrainRunLedgerService {
    operatorAction:'Review authoritative run and prior human decisions; no recovery execution required'};
   const previous=next.ordinal===0?null:run.steps.find(s=>s.ordinal===next.ordinal-1);
   const expectedCausation=previous?.executionId??null;
-  const rows=await this.db.agentExecution.findMany({where:{
+  const rows=await withMarketingTenant(this.db,organizationId,tx=>tx.agentExecution.findMany({where:{
    organizationId,agentId:next.agentId,correlationId:run.correlationId,
    input:{path:['brainRunId'],equals:runId}
   },select:{id:true,status:true,causationId:true,startedAt:true,completedAt:true},
-   orderBy:[{startedAt:'desc'},{id:'desc'}],take:101});
+   orderBy:[{startedAt:'desc'},{id:'desc'}],take:101}));
   const overflow=rows.length>100;
   const bounded=rows.slice(0,100);
   const requests=bounded.map(r=>r.id+':draft');
-  const usages=requests.length?await this.db.modelUsage.findMany({
+  const usages=requests.length?await withMarketingTenant(this.db,organizationId,tx=>tx.modelUsage.findMany({
    where:{organizationId,requestId:{in:requests}},
    select:{requestId:true,status:true,billingStatus:true}
-  }):[];
+  })):[];
   const byRequest=new Map(usages.map(u=>[u.requestId,u]));
   const candidateExecutions=bounded.map(e=>({
    executionId:e.id,status:e.status,

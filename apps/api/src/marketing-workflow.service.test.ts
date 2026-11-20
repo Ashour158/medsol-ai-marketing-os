@@ -9,12 +9,14 @@ function fixture(status: string, overrides: Record<string, unknown> = {}) {
     input: { organizationId: 'tenant-a', requestedOutcome: 'Generate demand' },
     output: null, ...overrides
   };
-  const db = {
+  const db: any = {
     workflowExecution: {
       findFirst: vi.fn().mockResolvedValue(workflow),
       updateMany: vi.fn().mockResolvedValue({ count: 1 })
     }
   };
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const service = new MarketingWorkflowService(db as any, {} as any, {} as any, {} as any);
   return { service, db, workflow };
 }

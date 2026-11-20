@@ -6,7 +6,7 @@ const event={eventId:'brain:run1:step:0',organizationId:'tenant',eventType:'BRAI
  payload:{agentId:'MKT-CMO-001',executionId:'ex',externalEffectsAuthorized:false}};
 
 function fixture(prior:any=null,run:any={id:'run1'}){
- const tx:any={brainRun:{findFirst:vi.fn().mockResolvedValue(run)},
+ const tx:any={$queryRaw:vi.fn().mockResolvedValue([]),brainRun:{findFirst:vi.fn().mockResolvedValue(run)},
   inboxEvent:{findUnique:vi.fn().mockResolvedValue(prior),create:vi.fn().mockResolvedValue({id:'in1'})},
   auditEvent:{create:vi.fn().mockResolvedValue({id:'a1'})}};
  const db:any={$transaction:vi.fn((callback:any)=>callback(tx))};

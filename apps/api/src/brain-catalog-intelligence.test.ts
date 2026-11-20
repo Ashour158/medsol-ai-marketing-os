@@ -30,6 +30,8 @@ describe('authoritative catalogue data for the marketing Brain',()=>{
  it('uses authoritative data in agent handoff without pretending literature is verified',async()=>{
   const run:any={status:'PENDING',organizationId:'tenant-a',correlationId:'corr',input:{requestedOutcome:'Launch',productId:'p1'},steps:[{agentId:'MKT-CMO-001',status:'PENDING'}]};
   const db:any={brainRun:{updateMany:vi.fn().mockResolvedValue({count:1})}};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const agents:any={execute:vi.fn().mockResolvedValue({executionId:'agent-ex',decision:{executionAllowed:true}})};
   const ledger:any={get:vi.fn().mockResolvedValueOnce(run).mockResolvedValueOnce({status:'REVIEW_REQUIRED'}),checkpoint:vi.fn().mockResolvedValue({completed:true})};
   const learning:any={

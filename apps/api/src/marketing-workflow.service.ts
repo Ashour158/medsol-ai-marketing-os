@@ -6,7 +6,7 @@ import { Prisma } from '@prisma/client';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash,randomUUID } from 'node:crypto';
 import { MarketingRequest, MarketingRequestSchema,simulateBlueprintDraft,type BlueprintSimulationResult } from '@medsol/contracts';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import { AgentService } from './agent.service.js';
 import { CampaignService } from './campaign.service.js';
 import { WorkflowLeaseService, type WorkflowLease } from './workflow-lease.service.js';
@@ -814,21 +814,21 @@ export class MarketingWorkflowService {
 
   async start(request: MarketingRequest): Promise<WorkflowResult> {
     const correlationId = randomUUID();
-    const workflow = await this.db.workflowExecution.create({ data: { organizationId: request.organizationId, workflowType: 'MARKETING_CAMPAIGN_LIFECYCLE', currentStep: 'CMO_ASSESSMENT', correlationId, input: request as any } });
+    const workflow = await withMarketingTenant(this.db,request.organizationId,tx=>tx.workflowExecution.create({ data: { organizationId: request.organizationId, workflowType: 'MARKETING_CAMPAIGN_LIFECYCLE', currentStep: 'CMO_ASSESSMENT', correlationId, input: request as any } }));
     return this.runWithLease(workflow.id, request, correlationId);
   }
 
   async resume(id: string, organizationId: string): Promise<WorkflowResult> {
-    const workflow = await this.db.workflowExecution.findFirst({ where: { id, organizationId } });
+    const workflow = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findFirst({ where: { id, organizationId } }));
     if (!workflow) throw new NotFoundException('Workflow execution not found in tenant');
     if (['WAITING_APPROVAL', 'COMPLETED', 'BLOCKED', 'CANCELLED'].includes(workflow.status)) {
       return { workflowExecutionId: workflow.id, status: workflow.status, currentStep: workflow.currentStep, correlationId: workflow.correlationId, output: workflow.output ?? undefined };
     }
     if (workflow.status === 'RUNNING') throw new ConflictException('RUNNING recovery is disabled until all external side effects are fenced');
-    const claimed = await this.db.workflowExecution.updateMany({
+    const claimed = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.updateMany({
       where: { id, organizationId, status: 'FAILED', version: workflow.version },
       data: { status: 'RUNNING', currentStep: 'RECOVERING', completedAt: null, version: { increment: 1 } }
-    });
+    }));
     if (claimed.count !== 1) throw new ConflictException('Workflow recovery already claimed');
     return this.runWithLease(workflow.id, MarketingRequestSchema.parse(workflow.input), workflow.correlationId);
   }
@@ -853,18 +853,18 @@ export class MarketingWorkflowService {
         last = await this.step(workflowId, lease, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: (campaign as {campaignId:string}).campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
       }
       await this.leases.assertActive(lease);
-      const waiting = await this.db.workflowExecution.updateMany({ where: { id: workflowId, organizationId: request.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } });
+      const waiting = await withMarketingTenant(this.db,request.organizationId,tx=>tx.workflowExecution.updateMany({ where: { id: workflowId, organizationId: request.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } }));
       if (waiting.count !== 1) throw new ConflictException('Workflow lease lost before approval transition');
       return { workflowExecutionId: workflowId, status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', correlationId, output: { campaign: last, message: 'Campaign is waiting for human approval.' } };
     } catch (error) {
-      await this.db.workflowExecution.updateMany({ where: { id: workflowId, organizationId: request.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'FAILED', currentStep: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date(), version: { increment: 1 } } });
+      await withMarketingTenant(this.db,request.organizationId,tx=>tx.workflowExecution.updateMany({ where: { id: workflowId, organizationId: request.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'FAILED', currentStep: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date(), version: { increment: 1 } } }));
       throw error;
     }
   }
 
   async completeAfterApproval(workflowExecutionId: string | null, organizationId: string, approval: unknown): Promise<void> {
     if (!workflowExecutionId) return;
-    const workflow = await this.db.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
+    const workflow = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } }));
     if (!workflow) return;
     if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
       const approvalId=(approval as {approvalId?:unknown})?.approvalId;
@@ -872,62 +872,63 @@ export class MarketingWorkflowService {
       await this.dagReconcileApproval(organizationId,approvalId,'APPROVED');
       return;
     }
-    await this.completeWorkflow(workflow.id, 'APPROVAL_COMPLETED', approval, 'COMPLETED');
+    await this.completeWorkflow(organizationId,workflow.id, 'APPROVAL_COMPLETED', approval, 'COMPLETED');
   }
 
   async blockAfterApprovalRejection(approvalId: string, organizationId: string, rationale: string): Promise<void> {
-    const approval = await this.db.approval.findFirst({ where: { id: approvalId, organizationId } });
+    const approval = await withMarketingTenant(this.db,organizationId,tx=>tx.approval.findFirst({ where: { id: approvalId, organizationId } }));
     if (!approval?.workflowExecutionId) return;
-    const workflow = await this.db.workflowExecution.findFirst({ where: { id: approval.workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } });
+    const workflowExecutionId=approval.workflowExecutionId;
+    const workflow = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } }));
     if (!workflow) return;
     if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
       await this.dagReconcileApproval(organizationId,approvalId,'REJECTED');
       return;
     }
-    await this.completeWorkflow(workflow.id, 'APPROVAL_REJECTED', { approvalId, rationale, blocked: true }, 'BLOCKED');
+    await this.completeWorkflow(organizationId,workflow.id, 'APPROVAL_REJECTED', { approvalId, rationale, blocked: true }, 'BLOCKED');
   }
 
-  private async completeWorkflow(id: string, stepKey: string, output: unknown, status: 'COMPLETED' | 'BLOCKED'): Promise<void> {
-    await this.db.$transaction(async tx => {
-      const workflow = await tx.workflowExecution.findFirst({ where: { id, status: 'WAITING_APPROVAL' } });
+  private async completeWorkflow(organizationId:string,id: string, stepKey: string, output: unknown, status: 'COMPLETED' | 'BLOCKED'): Promise<void> {
+    await withMarketingTenant(this.db,organizationId,async tx => {
+      const workflow = await tx.workflowExecution.findFirst({ where: { id, organizationId, status: 'WAITING_APPROVAL' } });
       if (!workflow) return;
-      await tx.workflowExecution.updateMany({ where: { id: workflow.id, status: 'WAITING_APPROVAL' }, data: { status, currentStep: stepKey, output: output as any, completedAt: new Date(), version: { increment: 1 } } });
-      await tx.workflowStepExecution.updateMany({ where: { workflowExecutionId: workflow.id, stepKey: 'APPROVAL_GATE', status: 'RUNNING' }, data: { status: 'COMPLETED', output: output as any, completedAt: new Date() } });
+      await tx.workflowExecution.updateMany({ where: { id: workflow.id, organizationId, status: 'WAITING_APPROVAL' }, data: { status, currentStep: stepKey, output: output as any, completedAt: new Date(), version: { increment: 1 } } });
+      await tx.workflowStepExecution.updateMany({ where: { organizationId,workflowExecutionId: workflow.id, stepKey: 'APPROVAL_GATE', status: 'RUNNING' }, data: { status: 'COMPLETED', output: output as any, completedAt: new Date() } });
     });
   }
 
   async get(id: string, organizationId: string): Promise<unknown> {
-    const workflow = await this.db.workflowExecution.findFirst({ where: { id, organizationId }, include: { steps: { orderBy: { startedAt: 'asc' } } } });
+    const workflow = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findFirst({ where: { id, organizationId }, include: { steps: { orderBy: { startedAt: 'asc' } } } }));
     if (!workflow) throw new NotFoundException('Workflow execution not found in tenant');
     return workflow;
   }
 
   private async step<T>(workflowId: string, lease: WorkflowLease, stepKey: string, input: unknown, run: () => Promise<T>): Promise<T> {
     await this.leases.assertActive(lease);
-    const existing = await this.db.workflowStepExecution.findUnique({ where: { workflowExecutionId_stepKey: { workflowExecutionId: workflowId, stepKey } } });
+    const existing = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowStepExecution.findUnique({ where: { workflowExecutionId_stepKey: { workflowExecutionId: workflowId, stepKey } } }));
     if (existing?.status === 'COMPLETED') return existing.output as T;
-    if (existing?.status === 'FAILED') await this.db.workflowStepExecution.update({ where: { id: existing.id }, data: { status: 'RUNNING', attempt: { increment: 1 }, error: Prisma.DbNull, completedAt: null } });
-    const workflow = await this.db.workflowExecution.findUniqueOrThrow({ where: { id: workflowId } });
-    const step = existing ?? await this.db.workflowStepExecution.create({ data: { workflowExecutionId: workflowId, organizationId: workflow.organizationId, stepKey, status: 'RUNNING', input: input as any } });
-    const advanced = await this.db.workflowExecution.updateMany({ where: { id: workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { currentStep: stepKey } });
+    if (existing?.status === 'FAILED') await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowStepExecution.update({ where: { id: existing.id }, data: { status: 'RUNNING', attempt: { increment: 1 }, error: Prisma.DbNull, completedAt: null } }));
+    const workflow = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.findUniqueOrThrow({ where: { id: workflowId } }));
+    const step = existing ?? await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowStepExecution.create({ data: { workflowExecutionId: workflowId, organizationId: workflow.organizationId, stepKey, status: 'RUNNING', input: input as any } }));
+    const advanced = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.updateMany({ where: { id: workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { currentStep: stepKey } }));
     if (advanced.count !== 1) throw new ConflictException('Workflow lease lost before step');
     try {
       await this.leases.assertActive(lease);
       const output = await run();
       await this.leases.assertActive(lease);
-      await this.db.workflowStepExecution.update({ where: { id: step.id }, data: { status: 'COMPLETED', output: output as any, completedAt: new Date() } });
+      await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowStepExecution.update({ where: { id: step.id }, data: { status: 'COMPLETED', output: output as any, completedAt: new Date() } }));
       return output;
     } catch (error) {
-      await this.db.workflowStepExecution.update({ where: { id: step.id }, data: { status: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date() } });
+      await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowStepExecution.update({ where: { id: step.id }, data: { status: 'FAILED', error: { message: error instanceof Error ? error.message : 'Unknown error' } as any, completedAt: new Date() } }));
       throw error;
     }
   }
 
   private async finish(workflowId: string, lease: WorkflowLease, step: string, output: unknown): Promise<WorkflowResult> {
     await this.leases.assertActive(lease);
-    const changed = await this.db.workflowExecution.updateMany({ where: { id: workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'COMPLETED', currentStep: step, output: output as any, completedAt: new Date(), version: { increment: 1 } } });
+    const changed = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.updateMany({ where: { id: workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'COMPLETED', currentStep: step, output: output as any, completedAt: new Date(), version: { increment: 1 } } }));
     if (changed.count !== 1) throw new ConflictException('Workflow lease lost before completion');
-    const workflow = await this.db.workflowExecution.findUniqueOrThrow({ where: { id: workflowId } });
+    const workflow = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.findUniqueOrThrow({ where: { id: workflowId } }));
     return { workflowExecutionId: workflow.id, status: workflow.status, currentStep: workflow.currentStep, correlationId: workflow.correlationId, output };
   }
 }

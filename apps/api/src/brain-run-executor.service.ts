@@ -3,7 +3,7 @@ import { MarketingLearningService } from './marketing-learning.service.js';
 import { MarketingReadService } from './marketing-read.service.js';
 import { BrandMasterService } from './brand-master.service.js';
 import {MarketingPerformanceService} from './marketing-performance.service.js';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import { AgentService } from './agent.service.js';
 import { BrainRunLedgerService } from './brain-run-ledger.service.js';
 import { nextAgentCapability } from '@medsol/agent-runtime';
@@ -16,7 +16,7 @@ export class BrainRunExecutorService {
   const run=await this.ledger.get(organizationId,runId);
   if(run.status==='REVIEW_REQUIRED')return run;
   if(run.status!=='PENDING')throw new ConflictException('Brain run already claimed or requires operator intervention');
-  const claimed=await this.db.brainRun.updateMany({where:{id:runId,organizationId,status:'PENDING'},data:{status:'RUNNING'}});
+  const claimed=await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.updateMany({where:{id:runId,organizationId,status:'PENDING'},data:{status:'RUNNING'}}));
   if(claimed.count!==1)throw new ConflictException('Concurrent brain run claim');
   let causationId:string|undefined;
   try{
@@ -69,7 +69,7 @@ export class BrainRunExecutorService {
    return this.ledger.get(organizationId,runId);
   }catch(error){
    // Failure is not retried automatically: a side effect or execution may have succeeded before its checkpoint.
-   await this.db.brainRun.updateMany({where:{id:runId,organizationId,status:'RUNNING'},data:{status:'NEEDS_INTERVENTION',lastError:error instanceof Error?error.message.slice(0,1000):'Unknown failure'}});
+   await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.updateMany({where:{id:runId,organizationId,status:'RUNNING'},data:{status:'NEEDS_INTERVENTION',lastError:error instanceof Error?error.message.slice(0,1000):'Unknown failure'}}));
    throw error;
   }
  }

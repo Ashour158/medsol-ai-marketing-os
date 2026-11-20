@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import type { EventTransport, PublishedEvent } from './outbox-publisher.service.js';
 
 export const BRAIN_INTERNAL_EVENTS = ['BRAIN_AGENT_STEP_COMPLETED','BRAIN_RUN_REVIEW_REQUIRED'] as const;
@@ -17,7 +17,7 @@ export class BrainHandoffConsumer implements EventTransport {
  async publish(event:PublishedEvent):Promise<void> {
   if(!allowed.has(event.eventType)||event.aggregateType!=='BrainRun'||event.version!==1||
      !event.organizationId||!event.eventId||!event.aggregateId||!event.correlationId)throw new Error('Invalid brain handoff event');
-  await this.db.$transaction(async tx=>{
+  await withMarketingTenant(this.db,event.organizationId,async tx=>{
     const run=await tx.brainRun.findFirst({where:{id:event.aggregateId,organizationId:event.organizationId},select:{id:true}});
     if(!run)throw new Error('Handoff owner not found in tenant');
     const prior=await tx.inboxEvent.findUnique({where:{
