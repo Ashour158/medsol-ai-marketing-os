@@ -7,6 +7,13 @@ const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const [resource, id, action, operation] = path;
+  // URL normalization can turn untrusted "..", separators or encoded
+  // slashes into another endpoint after allowlisting. Reject them first.
+  if (!Array.isArray(path) || path.some(segment =>
+       typeof segment !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(segment)))
+    return NextResponse.json({ error: "Invalid route segment" }, { status: 404 });
+  if (request.nextUrl.search.length > 2048)
+    return NextResponse.json({ error: "Query too long" }, { status: 414 });
   if (!resource || !routes.has(resource) || (path.length > 5 && !(resource==="tenancy" && request.method==="GET" &&
        [6,7].includes(path.length))) ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
@@ -105,7 +112,11 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "overview" && (path.length !== 1 || request.method !== "GET")) ||
       (resource === "objectives" && (path.length !== 1 || !["GET", "POST"].includes(request.method))) ||
       (resource === "products" && (path.length !== 1 || request.method !== "GET")) ||
-      (resource === "campaigns" && !(request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id)))) ||
+      (resource === "campaigns" && !(
+        (request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id))) ||
+        (request.method === "POST" && (path.length === 1 ||
+          (path.length === 2 && id === "transition")))
+      )) ||
       (resource === "brand" && !(path.length===2 && ((request.method==="GET"&&(id==="active"||id==="revisions"))||(request.method==="POST"&&(id==="propose"||id==="decide"))))) ||
       (resource === "learning" && !(
         (path.length===2&&id==="graph"&&request.method==="POST")||
@@ -159,11 +170,17 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   if (request.method !== "GET" && !sameOrigin(request)) return NextResponse.json({ error: "Origin validation failed" }, { status: 403 });
   const authorization = "Bearer " + session.accessToken;
   const organizationId = session.organizationId;
+  // The offline raster owner accepts at most 1 MiB raw PNG (~1.4 MiB
+  // encoded). Bound the *actual* incoming body, not the spoofable header.
+  // Larger requests must never reach upstream or consume the API quota.
+  const postBody = request.method === "POST" ? await request.text() : undefined;
+  if (postBody !== undefined && new TextEncoder().encode(postBody).byteLength > 1_500_000)
+    return NextResponse.json({ error: "Marketing request too large" }, { status: 413 });
   try {
     const response = await fetch(new URL("/marketing/" + path.map(encodeURIComponent).join("/") + (request.nextUrl.searchParams.toString()?"?"+request.nextUrl.searchParams.toString():""), apiBase), {
       method: request.method,
       headers: { authorization, "x-organization-id": organizationId, "x-marketing-session-id": session.sessionId, ...(request.method === "POST" ? { "content-type": "application/json" } : {}) },
-      ...(request.method === "POST" ? { body: await request.text() } : {}),
+      ...(postBody !== undefined ? { body: postBody } : {}),
       cache: "no-store",
       signal: AbortSignal.timeout(15000)
     });
