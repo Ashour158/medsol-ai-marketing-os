@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-U authenticated BFF/API boundary and PostgreSQL guard acceptance extends the authoritative R3-L 500-case blueprint evidence index.
+ * R3-V Chromium UI acceptance atop R3-U authenticated BFF/API boundary and PostgreSQL guard acceptance extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -135,12 +135,28 @@ for(const {id,testSource} of databaseCases){
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==177)
- throw new Error('Expected precisely 177 mapped engineering cases, got '+active.size);
+
+const chromiumSource='apps/web/e2e/marketing-journey.pw.ts';
+const chromiumCode=existsSync(chromiumSource)?readFileSync(chromiumSource,'utf8'):'';
+const chromiumCases=["T16-009","T16-010","T16-011","T16-012","T16-013","T16-014","T16-015","T16-016","T16-017","T16-018","T16-019","T16-020","T01-021","T01-022","T10-002","T07-027","T09-002"];
+for(const id of chromiumCases){
+ if(active.has(id)||!(chromiumCode.includes("test('"+id+" ")||
+                        chromiumCode.includes('test("'+id+' ')))
+  throw new Error('Executable Chromium browser acceptance marker missing: '+id);
+ active.set(id,{kind:'CHROMIUM_BROWSER_ASSERTION',testSource:chromiumSource,
+  contractEngine:'Real Chromium + encrypted Next session + localhost-only synthetic API',
+  operatorSignoff:false,providerUatVerified:false});
+}
+if(!existsSync('apps/web/playwright.config.ts')||
+ !existsSync('apps/web/e2e/fixtures/simulated-upstream.mjs'))
+ throw new Error('Actual browser runner and offline upstream fixture missing');
+if(active.size!==194)
+ throw new Error('Expected precisely 194 mapped engineering cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3U_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3U_TEST_GATE_PASSED==='true'&&
+ process.env.MARKETING_R3V_BROWSER_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
@@ -178,9 +194,9 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3u-app-boundary-500-case-acceptance-index-v1',
+ schema:'medsol-r3v-chromium-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
- evidenceScope:'CI_OFFLINE_UNIT_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
+ evidenceScope:'CI_OFFLINE_UNIT_CHROMIUM_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
  releaseVerdict:'NOT_CERTIFIED',
  tenantRlsInventory,
@@ -188,9 +204,10 @@ const result={
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:123,
  mappedPostgresIntegrationCases:54,
- mappedEngineeringAssertions:177,
- unmappedPlannedCases:323,
- referenceCasesAssertedInThisCi:verifiedInCi?177:0,
+ mappedChromiumBrowserCases:17,
+ mappedEngineeringAssertions:194,
+ unmappedPlannedCases:306,
+ referenceCasesAssertedInThisCi:verifiedInCi?194:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,
