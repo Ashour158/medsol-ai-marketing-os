@@ -1,9 +1,9 @@
 import {describe,it,expect} from "vitest";
 import {readFileSync} from "node:fs";
-import {fileURLToPath} from "node:url";
+import {resolve} from "node:path";
 import {permissionForMarketingRoute,hasMarketingPermission} from "./marketing-permissions.js";
 import type {VerifiedIdentity} from "./oidc-identity.js";
-const source=readFileSync(fileURLToPath(new URL("./main.ts",import.meta.url)),"utf8");
+const source=readFileSync(resolve(process.cwd(),"src/main.ts"),"utf8");
 const endpoints=[...source.matchAll(/@(Get|Post)\('([^']+)'\)/g)]
  .map(m=>({method:m[1]==="Get"?"GET":"POST",pattern:"/"+m[2]!,
   route:"/"+m[2]!.replace(/:([A-Za-z]+)/g,(_,key:string)=>
