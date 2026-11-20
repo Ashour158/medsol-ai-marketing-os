@@ -136,6 +136,32 @@ export class CreativeAssetService{
    return {...result,replayed:false};
   });
  }
+ async offlinePreview(organizationId:string,revisionInput:unknown){
+  const id=ident(revisionInput,'revision');
+  return this.scoped(organizationId,async tx=>{
+   const revision=await tx.creativeAssetRevision.findFirst({
+    where:{id,organizationId,
+     sourceRef:{startsWith:'internal:creative-source/offline/'}
+    },select:{assetId:true,id:true,version:true,sourceKind:true,sourceRef:true,
+      renditionDigest:true,offlineRasterBase64:true,offlineEditableCopy:true}
+   });
+   if(!revision?.offlineRasterBase64||!revision.offlineEditableCopy)
+    throw new NotFoundException('Offline creative raster not found in tenant');
+   const asset=await tx.creativeAsset.findFirst({where:{
+    organizationId,id:revision.assetId,status:'ACTIVE'
+   },select:{brandId:true,title:true,version:true}});
+   if(!asset)throw new NotFoundException('Active offline creative asset not found');
+   return {
+    assetId:revision.assetId,revisionId:id,version:revision.version,
+    current:asset.version===revision.version,brandId:asset.brandId,
+    title:asset.title,editableCopy:revision.offlineEditableCopy,
+    imageDataUrl:'data:image/png;base64,'+revision.offlineRasterBase64,
+    renditionDigest:revision.renditionDigest,
+    imageSourceKind:'FLATTENED_EXPORT' as const,editableImageLayers:false as const,
+    offlineOnly:true as const,externalEffectsAuthorized:false as const
+   };
+  });
+ }
  async list(organizationId:string,brandIdInput?:unknown){
   const brandId=brandIdInput===undefined?undefined:ident(brandIdInput,'brand');
   return this.scoped(organizationId,tx=>tx.creativeAsset.findMany({
