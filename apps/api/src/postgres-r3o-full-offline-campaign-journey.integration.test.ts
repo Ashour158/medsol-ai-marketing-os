@@ -127,6 +127,8 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     brandId,title:'Offline approved research image',editableCopy:copy,
     pngBase64:raster.toString('base64'),rightsExpiresAt:later(60),requestKey
    });
+   const revisionId=draft.revisionId;
+   if(!revisionId)throw new Error('Offline DAM must return immutable revision');
    expect(draft).toMatchObject({
     sourceKind:'FLATTENED_EXPORT',offlineOnly:true,
     layeredEditableImage:false,externalEffectsAuthorized:false,replayed:false
@@ -138,30 +140,30 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    // A rights date changes the command scope; fail closed rather than
    // returning a forged replay after another time-based input.
    expect(replay).toBeInstanceOf(Error);
-   const p=await creatives.offlinePreview(org,draft.revisionId);
+   const p=await creatives.offlinePreview(org,revisionId);
    expect(p.imageDataUrl).toContain('data:image/png;base64,');
    expect(p.editableImageLayers).toBe(false);
-   await expect(creatives.offlinePreview(other,draft.revisionId))
+   await expect(creatives.offlinePreview(other,revisionId))
     .rejects.toThrow('not found');
-   const verified=await media.verifyOfflineRaster(org,draft.revisionId);
+   const verified=await media.verifyOfflineRaster(org,revisionId);
    expect(verified).toMatchObject({evidenceOrigin:'OFFLINE_DB_RASTER',
     malwareScanStatus:'NOT_SCANNED',externalEffectsAuthorized:false});
-   expect(await media.verifyOfflineRaster(org,draft.revisionId))
+   expect(await media.verifyOfflineRaster(org,revisionId))
     .toMatchObject({replayed:true});
    await expect(withMarketingTenant(db,org,tx=>tx.creativeAssetRevision.update({
-    where:{id:draft.revisionId},data:{offlineEditableCopy:'Forged post-review content'}
+    where:{id:revisionId},data:{offlineEditableCopy:'Forged post-review content'}
    }))).rejects.toThrow();
    await expect(withMarketingTenant(db,org,tx=>tx.verifiedMediaEvidence.update({
     where:{organizationId_creativeAssetRevisionId:{
-     organizationId:org,creativeAssetRevisionId:draft.revisionId}},
+     organizationId:org,creativeAssetRevisionId:revisionId}},
     data:{evidenceOrigin:'VERSIONED_OBJECT_STORE'}
    }))).rejects.toThrow();
-   await creatives.reviewRights(org,reviewer,draft.revisionId,
+   await creatives.reviewRights(org,reviewer,revisionId,
     'Reviewed original synthetic artwork with independent human reviewer');
    const destination=await hub.register(org,reviewer,{
     brandId,providerKey:'META_GRAPH',destinationLabel:'OFFLINE ONLY no account registered'
    });
-   const scope=await creatives.submitForApproval(org,creator,draft.revisionId,{
+   const scope=await creatives.submitForApproval(org,creator,revisionId,{
     channel:'SOCIAL',destinationRef:destination.destinationRef,
     audienceRef:'internal:audience-snapshot/offline',
     policyVersion:'v1',scheduledAt:later(2),expiresAt:later(4)
@@ -221,7 +223,7 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    expect(timeline.offlineSimulationOnly).toBe(true);
    expect(timeline.externalEffectsAuthorized).toBe(false);
    expect(timeline.observations).toEqual([]);
-   expect(timeline.publications[0].attempts[0].mode).toBe('SANDBOX');
+   expect(timeline.publications[0]!.attempts[0]!.mode).toBe('SANDBOX');
    expect(await db.providerCredential.count({where:{organizationId:org}})).toBe(0);
    expect(await db.modelUsage.count({where:{organizationId:org}})).toBe(0);
    expect(await db.publicationAttempt.count({where:{
