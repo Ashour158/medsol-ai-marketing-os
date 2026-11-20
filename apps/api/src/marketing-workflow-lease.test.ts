@@ -16,8 +16,6 @@ function fixture() {
   } };
   db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction=vi.fn(async(fn:any)=>fn(db));
-  db.$queryRaw=vi.fn().mockResolvedValue([]);
-  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const agents: any = { execute: vi.fn().mockImplementation(async (id: string) => ({ executionId: id, decision: { payload: { status: 'draft' } } })) };
   const service = new MarketingWorkflowService(db, agents, {} as any, leases);
   return { service, leases, db, agents };
