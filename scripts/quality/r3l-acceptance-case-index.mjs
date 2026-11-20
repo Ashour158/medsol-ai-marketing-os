@@ -62,9 +62,9 @@ const extendedUnitCases=[
  }))
 ];
 for(const {id,testSource} of extendedUnitCases){
- if(active.has(id)||!existsSync(testSource)||
-  !new RegExp("\\\\bit\\\\s*\\\\(\\\\s*['\\\"]"+id+"\\\\s")
-    .test(readFileSync(testSource,'utf8')))
+ const testCode=existsSync(testSource)?readFileSync(testSource,'utf8'):'';
+ if(active.has(id)||!(testCode.includes("it('"+id+" ")||
+    testCode.includes('it("'+id+' ')))
   throw new Error('Executable offline/BFF acceptance marker missing: '+id);
  active.set(id,{kind:testSource.startsWith('apps/web/')?
    'SIMULATED_BFF_HANDLER_ASSERTION':'OFFLINE_UNIT_ASSERTION',testSource,
