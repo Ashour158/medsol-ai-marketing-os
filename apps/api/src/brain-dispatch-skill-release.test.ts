@@ -12,7 +12,9 @@ describe('brain worker dispatch authority',()=>{
   const executor:any={execute:vi.fn().mockResolvedValue({status:'REVIEW_REQUIRED'})};
   const worker=new BrainDispatchWorker(db,executor);
   expect(await worker.tick()).toEqual({claimed:true,runId:'run-a',status:'REVIEW_REQUIRED'});
-  expect(db.brainRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({where:{status:'PENDING'}}));
+  expect(db.brainRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+   where:{status:'PENDING',organizationId:'tenant'}
+  }));
   expect(executor.execute).toHaveBeenCalledWith('tenant','run-a');
   worker.onModuleDestroy();
  });
@@ -25,7 +27,9 @@ describe('brain worker dispatch authority',()=>{
   const executor:any={execute:vi.fn()};
   const worker=new BrainDispatchWorker(db,executor);
   expect(await worker.tick()).toEqual({claimed:false,status:'EMPTY'});
-  expect(db.brainRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({where:{status:'PENDING'}}));
+  expect(db.brainRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+   where:{status:'PENDING',organizationId:'tenant'}
+  }));
   expect(executor.execute).not.toHaveBeenCalled();
   worker.onModuleDestroy();
   expect(await worker.tick()).toEqual({claimed:false,status:'STOPPING'});
