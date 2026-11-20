@@ -46,6 +46,10 @@ export class ProviderSecretEnvelope{
     throw new Error('Incompatible envelope');
    const nonce=Buffer.from(parts[2]!,'base64url'),tag=Buffer.from(parts[3]!,'base64url');
    const ciphertext=Buffer.from(parts[4]!,'base64url');
+   // Reject noncanonical base64url aliases: changing discarded padding bits must
+   // never leave the decoded ciphertext unchanged while altering the envelope.
+   if(nonce.toString('base64url')!==parts[2]||tag.toString('base64url')!==parts[3]||
+      ciphertext.toString('base64url')!==parts[4])throw new Error('Noncanonical secret envelope');
    if(nonce.length!==12||tag.length!==16||!ciphertext.length||ciphertext.length>8192)
     throw new Error('Invalid envelope fields');
    const decipher=createDecipheriv('aes-256-gcm',this.key,nonce);

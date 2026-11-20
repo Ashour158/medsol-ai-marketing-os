@@ -4,7 +4,7 @@ import {ModelBudgetService} from './model-budget.service.js';
 const evidence={organizationId:'tenant',usageId:'usage',providerRequestId:'provider-id',evidenceReference:'invoice-2026-11',
  actualCostMicros:900,model:'approved-model',inputTokens:50,outputTokens:25};
 function fixture(){
- const db:any={modelUsage:{
+ const db:any={$queryRaw:vi.fn().mockResolvedValue([]),modelUsage:{
    findFirst:vi.fn().mockResolvedValue({id:'usage',organizationId:'tenant',requestId:'req',
      status:'SETTLED',billingStatus:'ESTIMATED',actualMicros:800n,reservedMicros:1000n,model:'approved-model'}),
    updateMany:vi.fn().mockResolvedValue({count:1}),

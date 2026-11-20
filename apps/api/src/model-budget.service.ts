@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma, type ModelUsage } from '@prisma/client';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService, withMarketingTenant } from './prisma.service.js';
 
 @Injectable()
 export class ModelBudgetService {
@@ -8,7 +8,7 @@ export class ModelBudgetService {
   async reserve(input: { organizationId: string; requestId: string; agentId: string; costMicros: number }) {
     const { organizationId, requestId, agentId, costMicros } = input;
     if (!organizationId || !requestId || !agentId || !Number.isSafeInteger(costMicros) || costMicros < 0 || costMicros > 100000000) throw new ForbiddenException('Invalid model reservation');
-    return this.db.$transaction(async tx => {
+    return withMarketingTenant(this.db, organizationId, async tx => {
       const prior = await tx.modelUsage.findUnique({ where: { organizationId_requestId: { organizationId, requestId } } });
       if (prior) {
         if (prior.agentId !== agentId || prior.reservedMicros !== BigInt(costMicros)) throw new ConflictException('Idempotency key reused with different model request');
@@ -24,7 +24,7 @@ export class ModelBudgetService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
   async settle(organizationId: string, id: string, result: { actualCostMicros: number; model: string; inputTokens: number; outputTokens: number } | null) {
-    return this.db.$transaction(async tx => {
+    return withMarketingTenant(this.db, organizationId, async tx => {
       const usage = await tx.modelUsage.findFirst({ where: { id, organizationId } });
       if (!usage) throw new ForbiddenException('Model reservation not found in tenant');
       if (usage.status !== 'RESERVED') return { id: usage.id, status: usage.status, replay: true };
@@ -42,22 +42,24 @@ export class ModelBudgetService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
   async summary(organizationId: string) {
-    const budget = await this.db.modelBudget.findUnique({ where: { organizationId } });
-    if (!budget) return { enabled: false };
-    const [confirmed, awaitingConfirmation] = await Promise.all([
-      this.db.modelUsage.aggregate({where:{organizationId,billingStatus:'VERIFIED'},_sum:{verifiedBilledMicros:true},_count:{_all:true}}),
-      this.db.modelUsage.count({where:{organizationId,status:'SETTLED',billingStatus:{not:'VERIFIED'}}})
-    ]);
-    return { enabled: true,
-      limitMicros: budget.limitMicros.toString(),
-      spentMicros: budget.spentMicros.toString(),
-      estimatedSpentMicros: budget.spentMicros.toString(),
-      reservedMicros: budget.reservedMicros.toString(),
-      verifiedBilledMicros:(confirmed._sum.verifiedBilledMicros??0n).toString(),
-      verifiedInvoiceCount:confirmed._count._all,
-      awaitingInvoiceCount:awaitingConfirmation,
-      accountingStatus:'ESTIMATES_NOT_INVOICES',
-      requiresExternalBillingReconciliation:awaitingConfirmation>0
-    };
+    return withMarketingTenant(this.db, organizationId, async tx => {
+      const budget = await tx.modelBudget.findUnique({ where: { organizationId } });
+      if (!budget) return { enabled: false as const };
+      const [confirmed, awaitingConfirmation] = await Promise.all([
+        tx.modelUsage.aggregate({where:{organizationId,billingStatus:'VERIFIED'},_sum:{verifiedBilledMicros:true},_count:{_all:true}}),
+        tx.modelUsage.count({where:{organizationId,status:'SETTLED',billingStatus:{not:'VERIFIED'}}})
+      ]);
+      return { enabled: true as const,
+        limitMicros: budget.limitMicros.toString(),
+        spentMicros: budget.spentMicros.toString(),
+        estimatedSpentMicros: budget.spentMicros.toString(),
+        reservedMicros: budget.reservedMicros.toString(),
+        verifiedBilledMicros:(confirmed._sum.verifiedBilledMicros??0n).toString(),
+        verifiedInvoiceCount:confirmed._count._all,
+        awaitingInvoiceCount:awaitingConfirmation,
+        accountingStatus:'ESTIMATES_NOT_INVOICES',
+        requiresExternalBillingReconciliation:awaitingConfirmation>0
+      };
+    });
   }
 }
