@@ -63,8 +63,9 @@ const extendedUnitCases=[
 ];
 for(const {id,testSource} of extendedUnitCases){
  if(active.has(id)||!existsSync(testSource)||
-  !readFileSync(testSource,'utf8').includes("it('"+id+' '))
-  throw new Error('Model billing acceptance marker missing: '+id);
+  !new RegExp("\\\\bit\\\\s*\\\\(\\\\s*['\\\"]"+id+"\\\\s")
+    .test(readFileSync(testSource,'utf8')))
+  throw new Error('Executable offline/BFF acceptance marker missing: '+id);
  active.set(id,{kind:testSource.startsWith('apps/web/')?
    'SIMULATED_BFF_HANDLER_ASSERTION':'OFFLINE_UNIT_ASSERTION',testSource,
   contractEngine:testSource.includes('r3u-route')?
