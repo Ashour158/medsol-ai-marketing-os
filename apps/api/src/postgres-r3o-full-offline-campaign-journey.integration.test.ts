@@ -21,7 +21,7 @@ import {CampaignPublicationService} from './campaign-publication.service.js';
 import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.js';
 import {withMarketingTenant} from './prisma.service.js';
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
-const later=days=>new Date(Date.now()+days*86400_000).toISOString();
+const later=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 function crc32(bytes:Buffer){
  let c=0xffffffff;
  for(const b of bytes){c^=b;for(let i=0;i<8;i++)c=(c>>>1)^((c&1)?0xedb88320:0);}
