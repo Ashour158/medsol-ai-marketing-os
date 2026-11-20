@@ -74,32 +74,41 @@ export class OutboxPublisherService{
    publishedAt:null,deadLetteredAt:null,attempts:{lt:MAX_DELIVERY_ATTEMPTS},
    AND:[{OR:[{nextAttemptAt:null},{nextAttemptAt:{lte:now}}]},
     {OR:[{publishingAt:null},{publishingAt:{lt:leaseCutoff}}]}]};
-  let tenants=await this.db.organization.findMany({
-   where:this.tenantCursor?{id:{gt:this.tenantCursor}}:{},
-   orderBy:{id:'asc'},take:50,select:{id:true}
-  });
-  if(!tenants.length&&this.tenantCursor){
-   this.tenantCursor=null;
-   tenants=await this.db.organization.findMany({
+  // Scan every page rather than stopping after the first 50 tenants:
+  // a late-queued incident must not starve simply because earlier tenants
+  // currently have no eligible events. One complete cursor wrap per claim.
+  // The 100-page bound protects worker resources on very large fleets; the
+  // cursor persists for the next poll if more than 5000 tenants exist.
+  const start=this.tenantCursor;
+  let wrapped=false;
+  for(let page=0;page<100;page++){
+   const tenants=await this.db.organization.findMany({
+    where:this.tenantCursor?{id:{gt:this.tenantCursor}}:{},
     orderBy:{id:'asc'},take:50,select:{id:true}
    });
-  }
-  if(!tenants.length)return null;
-  for(const tenant of tenants){
-   this.tenantCursor=tenant.id;
-   const claimed=await withMarketingTenant(this.db,tenant.id,async tx=>{
-    const event=await tx.outboxEvent.findFirst({
-     where:{organizationId:tenant.id,...eligible},
-     orderBy:{occurredAt:'asc'}});
-    if(!event)return null;
-    const claimedAt=new Date();
-    const update=await tx.outboxEvent.updateMany({
-     where:{id:event.id,organizationId:tenant.id,...eligible},
-     data:{publishingAt:claimedAt,attempts:{increment:1}}});
-    if(update.count!==1)return null;
-    return{...event,publishingAt:claimedAt};
-   });
-   if(claimed)return claimed;
+   if(!tenants.length){
+    if(wrapped||start===null)return null;
+    this.tenantCursor=null;
+    wrapped=true;
+    continue;
+   }
+   for(const tenant of tenants){
+    if(wrapped&&start!==null&&tenant.id>start)return null;
+    this.tenantCursor=tenant.id;
+    const claimed=await withMarketingTenant(this.db,tenant.id,async tx=>{
+     const event=await tx.outboxEvent.findFirst({
+      where:{organizationId:tenant.id,...eligible},
+      orderBy:{occurredAt:'asc'}});
+     if(!event)return null;
+     const claimedAt=new Date();
+     const update=await tx.outboxEvent.updateMany({
+      where:{id:event.id,organizationId:tenant.id,...eligible},
+      data:{publishingAt:claimedAt,attempts:{increment:1}}});
+     if(update.count!==1)return null;
+     return{...event,publishingAt:claimedAt};
+    });
+    if(claimed)return claimed;
+   }
   }
   return null;
  }
