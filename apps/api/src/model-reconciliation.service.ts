@@ -1,6 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 
 export type BillingEvidence = {
   organizationId: string; usageId: string; providerRequestId: string;
@@ -19,7 +19,7 @@ export class ModelReconciliationService {
     }
     // Internal service only: caller must independently authenticate the provider billing record.
     // No public endpoint or unverified agent-provided billing evidence is accepted.
-    return this.db.$transaction(async tx => {
+    return withMarketingTenant(this.db,evidence.organizationId,async tx => {
       const usage = await tx.modelUsage.findFirst({ where: { id: evidence.usageId, organizationId: evidence.organizationId } });
       if (!usage) throw new ForbiddenException('Usage not found in tenant');
       if (usage.status !== 'RESERVED') return { id: usage.id, status: usage.status, replay: true };
@@ -52,7 +52,7 @@ export class ModelReconciliationService {
         !Number.isSafeInteger(evidence.inputTokens) || evidence.inputTokens < 0 ||
         !Number.isSafeInteger(evidence.outputTokens) || evidence.outputTokens < 0 ||
         !evidence.model) throw new ForbiddenException('Authenticated provider invoice evidence required');
-    return this.db.$transaction(async tx => {
+    return withMarketingTenant(this.db,evidence.organizationId,async tx => {
       const usage = await tx.modelUsage.findFirst({where:{id:evidence.usageId,organizationId:evidence.organizationId}});
       if (!usage) throw new ForbiddenException('Model usage not found in tenant');
       if (usage.status !== 'SETTLED') throw new ConflictException('Only settled estimates can be invoice verified');
