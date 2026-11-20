@@ -35,7 +35,7 @@ export type PublicationPreflight={
  integrationEvidence:{
   destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
   mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
-  mediaMalwareScanClean:boolean;
+  mediaMalwareScanClean:boolean;mediaSyntheticOnly:boolean;
   encryptedTokenReceivedPendingAttestation:boolean;
   accountReadbackObserved:boolean;accountReadbackFresh:boolean;
   customerDestinationBound:false;
@@ -136,6 +136,7 @@ export class CampaignPublicationService{
     mediaBytesReadbackVerified:matchingEvidence,
     mediaObjectVersion:matchingEvidence?evidence!.objectVersion:null,
     mediaMalwareScanClean:matchingEvidence&&evidence?.malwareScanStatus==='CLEAN',
+    mediaSyntheticOnly:evidence?.evidenceOrigin==='OFFLINE_DB_RASTER',
     encryptedTokenReceivedPendingAttestation:connection?.status==='PENDING_VERIFICATION'&&
       pendingCredential?.status==='PENDING_ATTESTATION'&&
       pendingCredential.tokenExpiresAt>new Date(),
@@ -157,7 +158,7 @@ export class CampaignPublicationService{
   id(actorId,'authenticated actor');
   const campaignId=id(raw?.campaignId,'campaign'),approvalId=id(raw?.approvalId,'approval');
   const requestKey=id(raw?.requestKey,'idempotency key',160);
-  return this.scoped(organizationId,async tx=>{
+  const oneAttempt=()=>this.scoped(organizationId,async tx=>{
    const existing=await tx.campaignPublication.findUnique({where:{
     organizationId_requestKey:{organizationId,requestKey}}});
    if(existing){
@@ -195,6 +196,17 @@ export class CampaignPublicationService{
     throw e;
    }
   });
+  // Only internal creation is retried: no provider invocation, uncertain remote
+  // outcome, approval decision or irreversible effect occurs in this scope.
+  // PostgreSQL SSI can abort a valid serializable transaction under concurrent
+  // readers/workers. Existing requestKey+approval uniqueness provides replay fence.
+  for(let attempt=0;attempt<3;attempt++){
+   try{return await oneAttempt();}
+   catch(error){
+    if((error as {code?:string})?.code!=='P2034'||attempt===2)throw error;
+   }
+  }
+  throw new ConflictException('Internal publication prepare exhausted safe retry budget');
  }
  async list(organizationId:string,campaignIdInput?:unknown){
   const campaignId=campaignIdInput===undefined?undefined:id(campaignIdInput,'campaign');
@@ -383,6 +395,7 @@ export class CampaignPublicationService{
    const now=Date.now();
    const cleanMedia=!!media&&!!revision&&!!exactScope&&
     media.status==='VERIFIED_READBACK'&&
+    media.evidenceOrigin==='VERSIONED_OBJECT_STORE'&&
     media.malwareScanStatus==='CLEAN'&&
     media.sourceRef===revision.sourceRef&&
     media.sha256Digest===revision.renditionDigest&&
@@ -455,6 +468,8 @@ export class CampaignPublicationService{
    const blockers=[...new Set([
     ...preflight.reasons,...gate.missing,...commercial.reasons,
     ...(isObserved?[]:['trusted_provider_observation_not_current']),
+    ...(media?.evidenceOrigin==='OFFLINE_DB_RASTER'?
+       ['synthetic_db_raster_cannot_authorize_real_provider_delivery']:[]),
     'real_provider_dispatch_and_receipt_adapter_not_activated'
    ])];
    return{

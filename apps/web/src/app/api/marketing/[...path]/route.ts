@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, sameOrigin, unseal, type Session } from "../../../../lib/marketing-auth";
 
-const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products", "me", "brain", "operations", "learning", "brand", "command-center", "performance", "architecture", "tenancy", "assets", "publications", "integrations", "media", "audience", "email", "tools"]);
+const routes = new Set(["agents", "requests", "workflows", "approvals", "overview", "campaigns", "objectives", "products", "me", "brain", "operations", "learning", "brand", "command-center", "performance", "architecture", "tenancy", "assets", "publications", "integrations", "media", "audience", "email", "tools", "journeys"]);
 const apiBase = process.env.MARKETING_API_INTERNAL_URL ?? "http://localhost:3001";
 
 async function forward(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
@@ -10,6 +10,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   if (!resource || !routes.has(resource) || (path.length > 5 && !(resource==="tenancy" && request.method==="GET" &&
        [6,7].includes(path.length))) ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
+      (resource === "journeys" && !(path.length === 2 && !!id &&
+        /^[A-Za-z0-9_-]{1,128}$/.test(id) && request.method === "GET")) ||
       (resource === "architecture" && !(
         (path.length===2&&id==="readiness"&&request.method==="GET")||
         (path.length===4&&id==="runs"&&!!action&&operation==="recovery"&&request.method==="GET")||
@@ -51,7 +53,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "media" && !(
         (path.length===2&&id==="evidence"&&request.method==="GET") ||
         (path.length===3&&id==="evidence"&&!!action&&request.method==="GET") ||
-        (path.length===4&&id==="evidence"&&!!action&&operation==="revoke"&&
+        (path.length===4&&id==="evidence"&&!!action&&
+          ["revoke","verify-offline"].includes(operation??"")&&
           request.method==="POST")
       )) ||
       (resource === "publications" && !(
@@ -67,9 +70,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "assets" && !(
         (request.method==="GET" && (path.length===1 ||
           (path.length===2 && !!id) ||
-          (path.length===3 && id==="approvals" && !!action))) ||
+          (path.length===3 && id==="approvals" && !!action) ||
+          (path.length===4 && id==="revisions" && !!action &&
+            operation==="offline-preview"))) ||
         (request.method==="POST" && (
           path.length===1 ||
+          (path.length===2 && id==="offline-raster") ||
           (path.length===3 && !!id && id!=="revisions" && action==="revisions") ||
           (path.length===4 && id==="revisions" && !!action &&
              (operation==="rights-review" || operation==="submit-approval"))

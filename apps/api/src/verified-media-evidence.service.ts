@@ -48,7 +48,7 @@ export class VerifiedMediaEvidenceService{
     id:r.id,creativeAssetRevisionId:r.creativeAssetRevisionId,sha256Digest:r.sha256Digest,
     sizeBytes:r.sizeBytes,detectedMime:r.detectedMime,status:r.status,
     malwareScanStatus:r.malwareScanStatus,scannerId:r.scannerId,
-    objectVersion:r.objectVersion,verifiedAt:r.verifiedAt,
+    objectVersion:r.objectVersion,evidenceOrigin:r.evidenceOrigin,verifiedAt:r.verifiedAt,
     externalEffectsAuthorized:false
    }));
   });
@@ -62,7 +62,7 @@ export class VerifiedMediaEvidenceService{
    if(!row)throw new NotFoundException('Verified media evidence not found in tenant');
    return{id:row.id,creativeAssetRevisionId:revisionId,sha256Digest:row.sha256Digest,
     sizeBytes:row.sizeBytes,detectedMime:row.detectedMime,objectVersion:row.objectVersion,
-    verifiedAt:row.verifiedAt,status:row.status,
+    verifiedAt:row.verifiedAt,status:row.status,evidenceOrigin:row.evidenceOrigin,
     malwareScanStatus:row.malwareScanStatus,scannerId:row.scannerId,
     independentlyDecoded:false,remotePlatformMediaEligible:false,
     externalEffectsAuthorized:false};
@@ -71,8 +71,34 @@ export class VerifiedMediaEvidenceService{
  /** NO HTTP route: only a trusted, server-configured object reader can invoke.
   * A browser-supplied digest, URL or filename can never create evidence.
   */
+ /** Immutable synthetic raster readback: verification only from locally stored
+  * authoritative DAM bytes. NO caller-supplied source URL, reader, MIME or
+  * scan claim; this evidence is explicitly INELIGIBLE for real provider egress.
+  */
+ async verifyOfflineRaster(organizationId:string,revisionIdInput:unknown){
+  const revisionId=ident(revisionIdInput,'revision');
+  return this.verifyReadbackWithOrigin(organizationId,'offline-dam-raster-verifier',
+   revisionId,{readVersion:async input=>{
+    const row=await this.scoped(input.organizationId,tx=>
+     tx.creativeAssetRevision.findFirst({where:{
+      organizationId:input.organizationId,id:revisionId
+     },select:{sourceRef:true,offlineRasterBase64:true,sourceKind:true}}));
+    if(!row||!row.offlineRasterBase64||
+       row.sourceKind!=='FLATTENED_EXPORT'||row.sourceRef!==input.sourceRef||
+       !row.sourceRef.startsWith('internal:creative-source/offline/'))
+     throw new BadRequestException('Only authoritative offline DAM raster can be read back');
+    return{sourceRef:row.sourceRef,objectVersion:'offline-db-raster-v1',
+     bytes:Buffer.from(row.offlineRasterBase64,'base64')};
+   }},'OFFLINE_DB_RASTER');
+ }
  async verifyReadback(organizationId:string,verifierId:string,revisionIdInput:unknown,
   reader:VersionedMediaReader){
+  return this.verifyReadbackWithOrigin(organizationId,verifierId,revisionIdInput,
+   reader,'VERSIONED_OBJECT_STORE');
+ }
+ private async verifyReadbackWithOrigin(organizationId:string,verifierId:string,
+  revisionIdInput:unknown,reader:VersionedMediaReader,
+  evidenceOrigin:'VERSIONED_OBJECT_STORE'|'OFFLINE_DB_RASTER'){
   ident(verifierId,'verifier');const revisionId=ident(revisionIdInput,'revision');
   if(!reader||typeof reader.readVersion!=='function')
    throw new BadRequestException('Trusted versioned media reader required');
@@ -89,6 +115,8 @@ export class VerifiedMediaEvidenceService{
    throw new BadRequestException('Media byte size outside acceptance range');
   const detectedMime=identify(object.bytes);
   if(!detectedMime)throw new BadRequestException('Unsupported or unrecognized media signature');
+  if(evidenceOrigin==='OFFLINE_DB_RASTER'&&object.malwareScan)
+   throw new BadRequestException('Synthetic raster cannot claim independent malware scan');
   const scan=object.malwareScan;
   if(scan!==undefined&&(scan.status!=='CLEAN'||typeof scan.scannerId!=='string'||
       !/^[A-Za-z0-9_.-]{3,80}$/.test(scan.scannerId)))
@@ -111,6 +139,7 @@ export class VerifiedMediaEvidenceService{
     if(existing.status!=='VERIFIED_READBACK'||existing.sha256Digest!==actualDigest||
       existing.objectVersion!==object.objectVersion||existing.sizeBytes!==object.bytes.length||
       existing.detectedMime!==detectedMime||
+      existing.evidenceOrigin!==evidenceOrigin||
       existing.malwareScanStatus!==malwareScanStatus||existing.scannerId!==scannerId)
      throw new ConflictException('Media evidence differs from original immutable object version');
     return{evidenceId:existing.id,status:existing.status,replayed:true,
@@ -120,18 +149,20 @@ export class VerifiedMediaEvidenceService{
     id:randomUUID(),organizationId,creativeAssetRevisionId:revisionId,
     sourceRef:current.sourceRef,objectVersion:object.objectVersion,
     sha256Digest:actualDigest,sizeBytes:object.bytes.length,
-    detectedMime,verifiedBy:verifierId,malwareScanStatus,scannerId
+    detectedMime,verifiedBy:verifierId,malwareScanStatus,scannerId,
+    evidenceOrigin
    }});
    await tx.auditEvent.create({data:{organizationId,actorType:'SYSTEM',
     actorId:verifierId,action:'MEDIA_BYTES_READBACK_VERIFIED',
     objectType:'CreativeAssetRevision',objectId:revisionId,correlationId:created.id,
     after:{sha256Digest:actualDigest,sizeBytes:created.sizeBytes,
      objectVersion:created.objectVersion,detectedMime,
-     malwareScanStatus,scannerId,
+     malwareScanStatus,scannerId,evidenceOrigin,
+     syntheticOnly:evidenceOrigin==='OFFLINE_DB_RASTER',
      signatureOnly:true,fullMediaDecodeValidated:false,
      externalEffectsAuthorized:false}}});
    return{evidenceId:created.id,status:created.status,replayed:false,
-    sha256Digest:actualDigest,malwareScanStatus,
+    sha256Digest:actualDigest,malwareScanStatus,evidenceOrigin,
     externalEffectsAuthorized:false};
   });
  }

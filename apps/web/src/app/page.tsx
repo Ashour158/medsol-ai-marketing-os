@@ -12,6 +12,7 @@ import MemoryGraphStudio from "./memory-graph-studio";
 import R3AcceptanceStudio from "./r3-release-acceptance-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
+import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -125,6 +126,7 @@ export default function Home() {
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
+    <OfflineCampaignJourneyStudio identity={identity} />
     <CreativeGovernanceStudio identity={identity} />
     <CampaignPublicationStudio identity={identity}/>
     <SyntheticEmailStudio identity={identity}/>
