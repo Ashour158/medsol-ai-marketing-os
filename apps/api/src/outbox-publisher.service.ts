@@ -64,7 +64,11 @@ export class OutboxPublisherService{
  /** Round-robin of canonical Organization tenants. No global query may read
   * a protected OutboxEvent, and no pool-level SET may leak tenant scope.
   */
- private async claimOne(eventTypes?:readonly string[]){
+ private async claimOne(eventTypes?:readonly string[]):Promise<{
+  id:string;organizationId:string;eventId:string;eventType:string;
+  aggregateType:string;aggregateId:string;version:number;payload:unknown;
+  correlationId:string;causationId:string|null;publishingAt:Date;attempts:number
+ }|null>{
   const now=new Date(),leaseCutoff=new Date(now.getTime()-5*60*1000);
   const eligible={...(eventTypes?{eventType:{in:[...eventTypes]}}:{}),
    publishedAt:null,deadLetteredAt:null,attempts:{lt:MAX_DELIVERY_ATTEMPTS},
