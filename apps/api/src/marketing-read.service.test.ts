@@ -11,6 +11,8 @@ function fixture() {
     agentExecution: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
     auditEvent: { findMany: vi.fn().mockResolvedValue([]) }
   };
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async (fn:any)=>fn(db));
   return { db, service: new MarketingReadService(db) };
 }
 describe('marketing read model isolation', () => {

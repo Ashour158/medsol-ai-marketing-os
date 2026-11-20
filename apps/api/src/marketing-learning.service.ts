@@ -33,15 +33,21 @@ export class MarketingLearningService {
   const summary=required(raw.evidence?.summary,'evidence summary',3000);
   const excerpt=raw.evidence?.excerpt?required(raw.evidence.excerpt,'excerpt',2000):undefined;
   const fingerprint=createHash('sha256').update(JSON.stringify([sourceUrl,topic,sector,sourcePublishedAt?.toISOString()??''])).digest('hex');
-  const existing=await this.db.learningSignal.findUnique({where:{organizationId_fingerprint:{organizationId,fingerprint}}});
+  const existing=await this.knowledgeTx(organizationId,tx=>
+   tx.learningSignal.findUnique({where:{organizationId_fingerprint:{organizationId,fingerprint}}}));
   if(existing)return{signal:existing,replayed:true};
   try{
-   const signal=await this.db.learningSignal.create({data:{id:randomUUID(),organizationId,fingerprint,topic,sector,sourceUrl,sourceTitle,observedAt,...(sourcePublishedAt?{sourcePublishedAt}:{}),evidence:{summary,...(excerpt?{excerpt}:{})},status:'QUARANTINED'}});
+   const signal=await this.knowledgeTx(organizationId,tx=>tx.learningSignal.create({data:{
+     id:randomUUID(),organizationId,fingerprint,topic,sector,sourceUrl,sourceTitle,
+     observedAt,...(sourcePublishedAt?{sourcePublishedAt}:{}),
+     evidence:{summary,...(excerpt?{excerpt}:{})},status:'QUARANTINED'
+    }}));
    return{signal,replayed:false};
   }catch(error){
    // Preserve unique-key concurrency safety without treating arbitrary DB failures as duplicates.
    if((error as {code?:string})?.code==='P2002'){
-    const signal=await this.db.learningSignal.findUnique({where:{organizationId_fingerprint:{organizationId,fingerprint}}});
+    const signal=await this.knowledgeTx(organizationId,tx=>
+      tx.learningSignal.findUnique({where:{organizationId_fingerprint:{organizationId,fingerprint}}}));
     if(signal)return{signal,replayed:true};
    }
    throw error;
@@ -802,14 +808,14 @@ export class MarketingLearningService {
  }
  async trendBrief(organizationId:string,sector?:string){
   const normalized=typeof sector==='string'&&sector.trim()?sector.trim().slice(0,120):undefined;
-  const signals=await this.db.learningSignal.findMany({
+  const signals=await this.knowledgeTx(organizationId,tx=>tx.learningSignal.findMany({
    where:{organizationId,status:'REVIEWED',...(normalized?{sector:normalized}:{}),
     OR:[{knowledgeDocumentId:null},{knowledgeDocument:{status:'REVIEWED',
       expiresAt:null}},{knowledgeDocument:{status:'REVIEWED',
       expiresAt:{gt:new Date()}}}]},
    orderBy:{observedAt:'desc'},take:200,
    select:{id:true,topic:true,sector:true,sourceUrl:true,sourceTitle:true,sourcePublishedAt:true,observedAt:true}
-  });
+  }));
   const groups=new Map<string,{topic:string;sector:string;signals:typeof signals}>();
   for(const item of signals){
    const key=item.sector.toLowerCase()+'::'+item.topic.toLowerCase();
@@ -828,8 +834,16 @@ export class MarketingLearningService {
   return{organizationId,sector:normalized??null,topics,processed:signals.length,sourceType:'LEARNING_SIGNAL_REGISTRY',
    independentVerification:false,externalPublishingEnabled:false};
  }
- async signals(organizationId:string){return this.db.learningSignal.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:100});}
- async proposals(organizationId:string){return this.db.agentSkillProposal.findMany({where:{organizationId},orderBy:{createdAt:'desc'},take:100});}
+ async signals(organizationId:string){
+  return this.knowledgeTx(organizationId,tx=>tx.learningSignal.findMany({
+   where:{organizationId},orderBy:{createdAt:'desc'},take:100
+  }));
+ }
+ async proposals(organizationId:string){
+  return this.knowledgeTx(organizationId,tx=>tx.agentSkillProposal.findMany({
+   where:{organizationId},orderBy:{createdAt:'desc'},take:100
+  }));
+ }
  async propose(organizationId:string,actorId:string,raw:{signalId:string;agentId:string;skillKey:string;rationale:string}){
   const signalId=required(raw?.signalId,'signalId',200),agentId=required(raw?.agentId,'agentId',100);
   const skillKey=required(raw?.skillKey,'skillKey',120),rationale=required(raw?.rationale,'rationale',3000);
@@ -837,22 +851,24 @@ export class MarketingLearningService {
   if(!manifest)throw new BadRequestException('Unknown agent');
   // Learning may propose only existing declared capabilities; new executable capabilities require a code-reviewed manifest release.
   if(!manifest.capabilities.includes(skillKey))throw new ForbiddenException('Skill outside signed agent manifest');
-  const signal=await this.db.learningSignal.findFirst({where:{id:signalId,organizationId}});
+  return this.knowledgeTx(organizationId,async tx=>{
+  const signal=await tx.learningSignal.findFirst({where:{id:signalId,organizationId}});
   if(!signal)throw new NotFoundException('Evidence signal not found in tenant');
   if(signal.status!=='REVIEWED')throw new ConflictException('Evidence must be reviewed before skill proposal');
   if(signal.knowledgeDocumentId){
-   const parent=await this.db.knowledgeDocument.findFirst({where:{
+   const parent=await tx.knowledgeDocument.findFirst({where:{
     organizationId,id:signal.knowledgeDocumentId,status:'REVIEWED',
     OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
    }});
    if(!parent)throw new ConflictException('Learning source has expired or been revoked');
   }
-  const existing=await this.db.agentSkillProposal.findUnique({where:{organizationId_agentId_skillKey_version:{organizationId,agentId,skillKey,version:1}}});
+  const existing=await tx.agentSkillProposal.findUnique({where:{organizationId_agentId_skillKey_version:{organizationId,agentId,skillKey,version:1}}});
   if(existing)return existing;
-  return this.db.agentSkillProposal.create({data:{id:randomUUID(),organizationId,agentId,skillKey,rationale,evidenceSignalId:signal.id,version:1,status:'PROPOSED',evaluation:{evaluationStatus:'NOT_RUN',proposedBy:actorId}}});
+  return tx.agentSkillProposal.create({data:{id:randomUUID(),organizationId,agentId,skillKey,rationale,evidenceSignalId:signal.id,version:1,status:'PROPOSED',evaluation:{evaluationStatus:'NOT_RUN',proposedBy:actorId}}});
+  });
  }
  async verify(organizationId:string,actorId:string,signalId:string){
-  return this.db.$transaction(async tx=>{
+  return this.knowledgeTx(organizationId,async tx=>{
    const signal=await tx.learningSignal.findFirst({where:{
     id:signalId,organizationId,status:'QUARANTINED'
    }});

@@ -409,10 +409,12 @@ model LearningSignal {
   evidence Json
   knowledgeDocumentId String?
   knowledgeDocument KnowledgeDocument? @relation(fields:[organizationId,knowledgeDocumentId],references:[organizationId,id],onDelete:Restrict)
+  skillProposals AgentSkillProposal[]
   status String @default("QUARANTINED")
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
   @@unique([organizationId,fingerprint])
+  @@unique([organizationId,id])
   @@unique([organizationId,knowledgeDocumentId])
   @@index([organizationId,sector,status,observedAt])
 }
@@ -424,6 +426,7 @@ model AgentSkillProposal {
   version Int @default(1)
   rationale String
   evidenceSignalId String
+  evidenceSignal LearningSignal @relation(fields:[organizationId,evidenceSignalId],references:[organizationId,id],onDelete:Restrict)
   evaluation Json?
   status String @default("PROPOSED")
   decidedBy String?

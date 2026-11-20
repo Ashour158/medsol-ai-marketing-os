@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-O extends the authoritative R3-L 500-case blueprint evidence index.
+ * R3-P extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -71,7 +71,11 @@ const databaseCases=[
  {id:'T01-005',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-009',testSource:'apps/api/src/postgres-r3m-tenant-links-delegated-campaign.integration.test.ts'},
  {id:'T01-010',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
+ {id:'T01-011',testSource:'apps/api/src/postgres-r3p-campaign-catalog-learning-rls.integration.test.ts'},
+ {id:'T01-012',testSource:'apps/api/src/postgres-r3p-campaign-catalog-learning-rls.integration.test.ts'},
  {id:'T13-002',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
+ {id:'T07-026',testSource:'apps/api/src/postgres-r3p-campaign-catalog-learning-rls.integration.test.ts'},
+ {id:'T08-032',testSource:'apps/api/src/postgres-r3p-campaign-catalog-learning-rls.integration.test.ts'},
  {id:'T13-003',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
  {id:'T08-031',testSource:'apps/api/src/postgres-r3o-full-offline-campaign-journey.integration.test.ts'},
  {id:'T15-022',testSource:'apps/api/src/postgres-r3n-session-metrics-rls.integration.test.ts'},
@@ -105,12 +109,12 @@ for(const {id,testSource} of databaseCases){
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==142)
- throw new Error('Expected precisely 142 mapped offline cases, got '+active.size);
+if(active.size!==146)
+ throw new Error('Expected precisely 146 mapped offline cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3O_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3P_TEST_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
@@ -148,7 +152,7 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3o-500-case-acceptance-index-v1',
+ schema:'medsol-r3p-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
  evidenceScope:'CI_OFFLINE_UNIT_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
@@ -157,10 +161,10 @@ const result={
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:111,
- mappedPostgresIntegrationCases:31,
- mappedEngineeringAssertions:142,
- unmappedPlannedCases:358,
- referenceCasesAssertedInThisCi:verifiedInCi?142:0,
+ mappedPostgresIntegrationCases:35,
+ mappedEngineeringAssertions:146,
+ unmappedPlannedCases:354,
+ referenceCasesAssertedInThisCi:verifiedInCi?146:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,

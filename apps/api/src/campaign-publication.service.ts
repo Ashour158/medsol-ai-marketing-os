@@ -612,7 +612,20 @@ export class CampaignPublicationService{
     authorizedRemoteAttempt:false,providerRequestsMade:0,
     automaticRetryAllowed:false,externalEffectsAuthorized:false};
   };
-  try{return await this.scoped(organizationId,work);}
+  // The reservation only writes the internal publication/attempt/audit/outbox
+  // ledgers; it does not call a provider or grant remote dispatch.
+  // PostgreSQL serializable SSI may abort a concurrent safe claim (P2034).
+  // Retry this exact idempotency key at most four times; never retry remote
+  // effects or unknown outcomes. Any winner's receipt is replayed instead.
+  try{
+   for(let attempt=0;attempt<4;attempt++){
+    try{return await this.scoped(organizationId,work);}
+    catch(error){
+     if((error as {code?:string})?.code!=='P2034'||attempt===3)throw error;
+    }
+   }
+   throw new ConflictException('Internal reservation retry budget exhausted');
+  }
   catch(error){
    const code=(error as {code?:string})?.code;
    if(code!=='P2002'&&code!=='P2034'&&!(error instanceof ConflictException))

@@ -1,6 +1,6 @@
 import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
 import {randomUUID} from 'node:crypto';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {AGENT_ROSTER,engineDecision,AgentRegistry,AgentRuntime,MarketingDomainAgent} from '@medsol/agent-runtime';
 
 /** A fixed, code-reviewed safety/regression corpus: proposal authors cannot submit fabricated tests. */
@@ -8,11 +8,12 @@ import {AGENT_ROSTER,engineDecision,AgentRegistry,AgentRuntime,MarketingDomainAg
 export class SkillReleaseService {
  constructor(private readonly db:PrismaService){}
  async evaluate(organizationId:string,actorId:string,proposalId:string){
-  const proposal=await this.db.agentSkillProposal.findFirst({where:{id:proposalId,organizationId}});
+  const proposal=await withMarketingTenant(this.db,organizationId,tx=>
+   tx.agentSkillProposal.findFirst({where:{id:proposalId,organizationId}}));
   if(!proposal)throw new NotFoundException('Skill proposal not found in tenant');
   if(proposal.status!=='PROPOSED')throw new ConflictException('Only proposed skills may enter evaluation');
-  const source=await this.db.learningSignal.findFirst({where:{
-   id:proposal.evidenceSignalId,organizationId}});
+  const source=await withMarketingTenant(this.db,organizationId,tx=>
+   tx.learningSignal.findFirst({where:{id:proposal.evidenceSignalId,organizationId}}));
   if(!source||source.status!=='REVIEWED')
    throw new ConflictException('Skill source is not reviewed or has been withdrawn');
   if(source.knowledgeDocumentId){
@@ -47,7 +48,7 @@ export class SkillReleaseService {
   }
   const passed=outcomes.every(x=>x.passed);
   const evaluation={evaluationStatus:passed?'PASSED':'FAILED',baseline:'DOMAIN_POLICY_SAFETY_V1',cases:outcomes,externalEffects:false,modelQualityEvaluated:false,independentEvidenceVerified:false,executedBy:actorId,executedAt:new Date().toISOString()};
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
    const changed=await tx.agentSkillProposal.updateMany({where:{id:proposalId,organizationId,status:'PROPOSED'},data:{status:passed?'EVALUATED':'REJECTED',evaluation}});
    if(changed.count!==1)throw new ConflictException('Skill proposal changed during evaluation');
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,action:'AGENT_SKILL_REGRESSION_EVALUATED',objectType:'AgentSkillProposal',objectId:proposalId,correlationId:randomUUID(),after:evaluation}});
@@ -56,7 +57,7 @@ export class SkillReleaseService {
  }
  async decide(organizationId:string,actorId:string,proposalId:string,decision:'APPROVE'|'REJECT',reason:string){
   if(!['APPROVE','REJECT'].includes(decision)||typeof reason!=='string'||reason.trim().length<12||reason.length>2000)throw new BadRequestException('Explicit decision and detailed rationale required');
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
    const proposal=await tx.agentSkillProposal.findFirst({where:{id:proposalId,organizationId}});
    if(!proposal)throw new NotFoundException('Skill proposal not found');
    if(proposal.status!=='EVALUATED')throw new ConflictException('Proposal must pass the fixed regression corpus');

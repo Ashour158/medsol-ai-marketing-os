@@ -1,7 +1,7 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 
 export type BrandRules={
  voice:string;
@@ -34,14 +34,14 @@ function parseRules(raw:unknown):BrandRules{
 export class BrandMasterService{
  constructor(private readonly db:PrismaService){}
  active(organizationId:string){
-  return this.db.brandMasterRevision.findFirst({
+  return withMarketingTenant(this.db,organizationId,tx=>tx.brandMasterRevision.findFirst({
     where:{organizationId,status:'APPROVED'},orderBy:{version:'desc'},
     select:{id:true,version:true,status:true,sourceReference:true,rules:true,approvedBy:true,approvedAt:true}
-  });
+  }));
  }
  revisions(organizationId:string){
-  return this.db.brandMasterRevision.findMany({where:{organizationId},orderBy:{version:'desc'},take:25,
-    select:{id:true,version:true,status:true,sourceReference:true,proposedBy:true,approvedBy:true,approvedAt:true,createdAt:true}});
+  return withMarketingTenant(this.db,organizationId,tx=>tx.brandMasterRevision.findMany({where:{organizationId},orderBy:{version:'desc'},take:25,
+    select:{id:true,version:true,status:true,sourceReference:true,proposedBy:true,approvedBy:true,approvedAt:true,createdAt:true}}));
  }
  async propose(organizationId:string,actorId:string,raw:{sourceReference?:unknown;rules?:unknown}){
   const sourceReference=textValue(raw?.sourceReference,'source reference',1000);
@@ -49,7 +49,7 @@ export class BrandMasterService{
   if(!sourceReference.startsWith('https://')&&!sourceReference.startsWith('internal:'))
     throw new BadRequestException('Provide an HTTPS reference or an internal approved document reference');
   const rules=parseRules(raw?.rules);
-  try{return await this.db.$transaction(async tx=>{
+  try{return await withMarketingTenant(this.db,organizationId,async tx=>{
     const latest=await tx.brandMasterRevision.findFirst({where:{organizationId},orderBy:{version:'desc'},select:{version:true}});
     const created=await tx.brandMasterRevision.create({data:{
       id:randomUUID(),organizationId,version:(latest?.version??0)+1,status:'DRAFT',
@@ -66,7 +66,7 @@ export class BrandMasterService{
   if(!['APPROVE','REJECT'].includes(decision))throw new BadRequestException('Invalid brand decision');
   const rationale=textValue(reason,'decision rationale',2000);
   if(rationale.length<12)throw new BadRequestException('Decision rationale must contain at least 12 characters');
-  return this.db.$transaction(async tx=>{
+  return withMarketingTenant(this.db,organizationId,async tx=>{
     const row=await tx.brandMasterRevision.findFirst({where:{id:revisionId,organizationId}});
     if(!row)throw new NotFoundException('Brand revision not found in tenant');
     if(row.status!=='DRAFT')throw new ConflictException('Brand revision already decided');

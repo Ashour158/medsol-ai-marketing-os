@@ -36,6 +36,7 @@ describe('brain worker dispatch authority',()=>{
 describe('skill evaluation release controls',()=>{
  it('rejects direct promotion before a regression result',async()=>{
   const db:any={$transaction:vi.fn(async(fn:any)=>fn({
+   $queryRaw:vi.fn().mockResolvedValue([]),
    agentSkillProposal:{findFirst:vi.fn().mockResolvedValue({id:'p',organizationId:'t',status:'PROPOSED'})}
   }))};
   const service=new SkillReleaseService(db);

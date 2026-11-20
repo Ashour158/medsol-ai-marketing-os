@@ -5,6 +5,7 @@ import {permissionForMarketingRoute} from './marketing-permissions.js';
 
 function setup(){
  const tx:any={
+  $queryRaw:vi.fn().mockResolvedValue([]),
   brandMasterRevision:{
    findFirst:vi.fn().mockResolvedValue(null),
    create:vi.fn().mockImplementation(async ({data}:any)=>data),
