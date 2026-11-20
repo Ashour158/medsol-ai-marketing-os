@@ -158,7 +158,7 @@ export class CampaignPublicationService{
   id(actorId,'authenticated actor');
   const campaignId=id(raw?.campaignId,'campaign'),approvalId=id(raw?.approvalId,'approval');
   const requestKey=id(raw?.requestKey,'idempotency key',160);
-  return this.scoped(organizationId,async tx=>{
+  const oneAttempt=()=>this.scoped(organizationId,async tx=>{
    const existing=await tx.campaignPublication.findUnique({where:{
     organizationId_requestKey:{organizationId,requestKey}}});
    if(existing){
@@ -196,6 +196,17 @@ export class CampaignPublicationService{
     throw e;
    }
   });
+  // Only internal creation is retried: no provider invocation, uncertain remote
+  // outcome, approval decision or irreversible effect occurs in this scope.
+  // PostgreSQL SSI can abort a valid serializable transaction under concurrent
+  // readers/workers. Existing requestKey+approval uniqueness provides replay fence.
+  for(let attempt=0;attempt<3;attempt++){
+   try{return await oneAttempt();}
+   catch(error){
+    if((error as {code?:string})?.code!=='P2034'||attempt===2)throw error;
+   }
+  }
+  throw new ConflictException('Internal publication prepare exhausted safe retry budget');
  }
  async list(organizationId:string,campaignIdInput?:unknown){
   const campaignId=campaignIdInput===undefined?undefined:id(campaignIdInput,'campaign');
