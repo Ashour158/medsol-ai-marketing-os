@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MarketingCatalogService } from './marketing-catalog.service.js';
 
 function fixture() {
-  const tx: any = { marketingObjective: { create: vi.fn().mockResolvedValue({ id: 'obj-1', name: 'Genomics', status: 'ACTIVE' }) }, auditEvent: { create: vi.fn() } };
+  const tx: any = { $queryRaw:vi.fn().mockResolvedValue([]),marketingObjective: { create: vi.fn().mockResolvedValue({ id: 'obj-1', name: 'Genomics', status: 'ACTIVE' }) }, auditEvent: { create: vi.fn() } };
   const db: any = { $transaction: vi.fn(async (fn: (t: any) => Promise<unknown>) => fn(tx)) };
   return { tx, service: new MarketingCatalogService(db) };
 }
