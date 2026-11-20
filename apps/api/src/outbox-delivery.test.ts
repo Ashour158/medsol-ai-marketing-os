@@ -13,6 +13,8 @@ function fixture(attempts = 0) {
     count: vi.fn().mockResolvedValue(1),
     findMany: vi.fn().mockResolvedValue([])
   } };
+  db.organization={findMany:vi.fn().mockResolvedValue([{id:'tenant'}])};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction = vi.fn(async (fn: (tx: any) => Promise<any>) => fn(db));
   return { db, publisher: new OutboxPublisherService(db), monitor: new DeliveryOperationsService(db) };
 }

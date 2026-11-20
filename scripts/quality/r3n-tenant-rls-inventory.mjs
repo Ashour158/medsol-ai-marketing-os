@@ -54,7 +54,7 @@ const protectedTables=[
  'User','Agent','AgentExecution','BrainRun','BrainRunStep',
  'WorkflowExecution','WorkflowStepExecution','Approval',
  'ModelBudget','ModelUsage',
- 'AuditEvent','CommandReceipt','InboxEvent','IncidentResponse'
+ 'AuditEvent','CommandReceipt','InboxEvent','IncidentResponse','OutboxEvent'
 ];
 const byName=new Map(rows.map(x=>[x.name,x]));
 const missing=protectedTables.filter(name=>{
@@ -93,6 +93,10 @@ const result={
 };
 if(result.tenantTableCount!==result.forceRlsTenantTableCount+
  result.uncoveredTenantTableCount)throw new Error('RLS accounting invariant violated');
+// Fail CI if *any* newly added tenant-owned table escapes the FORCE RLS census.
+// Explicit protected-table regression check alone cannot catch fresh table drift.
+if(result.uncoveredTenantTableCount!==0)
+ throw new Error('R3-T cannot accept unprotected tenant tables: '+uncovered.map(x=>x.name).join(','));
 if(process.argv[2]!=='--output'||typeof process.argv[3]!=='string'||
  !process.argv[3].endsWith('.json'))
  throw new Error('Explicit JSON evidence output required');
