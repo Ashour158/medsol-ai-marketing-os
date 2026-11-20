@@ -103,7 +103,8 @@ describe.skipIf(!enabled)("R3-U real PostgreSQL session/revocation/role guard ac
  });
  it("T15-030 refuses expired and missing server sessions, without activating any provider",async()=>{
   const past=await db.authSession.create({data:{
-   organizationId:a,userId:admin.userId,expiresAt:new Date(Date.now()-60000)}});
+   id:randomUUID(),organizationId:a,userId:admin.userId,
+   expiresAt:new Date(Date.now()-60000)}});
   oidc(admin);
   await expect(guard.canActivate(context(inbound(admin,past.id))))
    .rejects.toThrow("Session expired or revoked");
