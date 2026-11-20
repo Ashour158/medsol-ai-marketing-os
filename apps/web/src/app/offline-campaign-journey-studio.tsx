@@ -454,7 +454,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
    </div>
    <p style={{fontSize:12,color:"#92400e",marginTop:16}}>
     <strong>Release gate remains NOT CERTIFIED:</strong> No independent 500-case
-    operator acceptance, production pentest/PITR proof, complete 46-table tenant RLS,
+    operator acceptance, production pentest/PITR proof, independent production tenant-isolation validation,
     provider entitlement, real social post or real email delivery is implied.
    </p>
   </>}
