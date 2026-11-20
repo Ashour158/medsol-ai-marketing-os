@@ -105,7 +105,9 @@ describe.skipIf(!enabled)('R3-R real PostgreSQL tenant model budget / usage isol
     where:{id:receipt.id,organizationId:a}}));
    expect(usage.billingStatus).toBe('VERIFIED');
    expect(usage.providerRequestId).toMatch(/^offline-provider-/);
-   expect(await withMarketingTenant(db,b,tx=>tx.modelUsage.count({where:{id:receipt.id}}))).toBe(0);
+   // CI fixture uses a privileged migration role; always apply canonical tenant predicate here.
+   // T01-014 separately verifies actual FORCE RLS with a non-BYPASSRLS principal.
+   expect(await withMarketingTenant(db,b,tx=>tx.modelUsage.count({where:{id:receipt.id,organizationId:b}}))).toBe(0);
    expect(await db.publicationAttempt.count({where:{organizationId:a,mode:'REMOTE'}})).toBe(0);
   }finally{await db.$disconnect();}
  },90000);
