@@ -90,7 +90,7 @@ jobs:
           name: medsol-r3r-finops-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: r3q-acceptance-evidence.json
+          path: r3r-finops-acceptance-evidence.json
       - name: Reject forged production certification and fake independent 500-case signatures
         run: node --test scripts/quality/production-release-certification.test.mjs
       - name: Disposable PostgreSQL backup and restore rehearsal (not production DR certification)
