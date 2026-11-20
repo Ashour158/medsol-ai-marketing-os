@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-T final tenant outbox isolation extends the authoritative R3-L 500-case blueprint evidence index.
+ * R3-U authenticated BFF/API boundary and PostgreSQL guard acceptance extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -52,15 +52,25 @@ for(const item of reference.cases){
   operatorSignoff:false,providerUatVerified:false});
 }
 const extendedUnitCases=[
- {id:'T14-001',testSource:'apps/api/src/model-reconciliation.test.ts'}
+ {id:'T14-001',testSource:'apps/api/src/model-reconciliation.test.ts'},
+ ...['T03-025','T03-026','T03-027','T03-028'].map(id=>({
+  id,testSource:'apps/api/src/r3u-route-authorization-matrix.test.ts'
+ })),
+ ...Array.from({length:8},(_,n)=>({
+  id:'T16-'+String(n+1).padStart(3,'0'),
+  testSource:'apps/web/src/app/api/marketing/[...path]/route.test.ts'
+ }))
 ];
 for(const {id,testSource} of extendedUnitCases){
  if(active.has(id)||!existsSync(testSource)||
   !readFileSync(testSource,'utf8').includes("it('"+id+' '))
   throw new Error('Model billing acceptance marker missing: '+id);
- active.set(id,{kind:'OFFLINE_UNIT_ASSERTION',testSource,
-  contractEngine:'ModelReconciliationService',operatorSignoff:false,
-  providerUatVerified:false});
+ active.set(id,{kind:testSource.startsWith('apps/web/')?
+   'SIMULATED_BFF_HANDLER_ASSERTION':'OFFLINE_UNIT_ASSERTION',testSource,
+  contractEngine:testSource.includes('r3u-route')?
+   'Central MarketingPermission registry':testSource.startsWith('apps/web/')?
+   'Encrypted Next request handler + blocked internal egress':'ModelReconciliationService',
+  operatorSignoff:false,providerUatVerified:false});
 }
 const databaseCases=[
  {id:'T01-001',testSource:'apps/api/src/postgres-r3l-agency-e2e.integration.test.ts'},
@@ -77,6 +87,10 @@ const databaseCases=[
  {id:'T01-014',testSource:'apps/api/src/postgres-r3r-finops-rls.integration.test.ts'},
  {id:'T01-015',testSource:'apps/api/src/postgres-r3s-event-rls.integration.test.ts'},
  {id:'T01-016',testSource:'apps/api/src/postgres-r3t-outbox-rls.integration.test.ts'},
+ ...['T01-017','T01-018','T01-019','T01-020','T03-029','T03-030',
+  'T15-029','T15-030'].map(id=>({
+  id,testSource:'apps/api/src/postgres-r3u-authenticated-guard.integration.test.ts'
+ })),
  {id:'T15-027',testSource:'apps/api/src/postgres-r3t-outbox-rls.integration.test.ts'},
  {id:'T15-028',testSource:'apps/api/src/postgres-r3t-outbox-rls.integration.test.ts'},
  {id:'T03-023',testSource:'apps/api/src/postgres-r3s-event-rls.integration.test.ts'},
@@ -120,12 +134,12 @@ for(const {id,testSource} of databaseCases){
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==157)
- throw new Error('Expected precisely 157 mapped engineering cases, got '+active.size);
+if(active.size!==177)
+ throw new Error('Expected precisely 177 mapped engineering cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3T_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3U_TEST_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
@@ -163,7 +177,7 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3t-outbox-500-case-acceptance-index-v1',
+ schema:'medsol-r3u-app-boundary-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
  evidenceScope:'CI_OFFLINE_UNIT_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
@@ -171,11 +185,11 @@ const result={
  tenantRlsInventory,
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
- mappedOfflineUnitCases:111,
- mappedPostgresIntegrationCases:46,
- mappedEngineeringAssertions:157,
- unmappedPlannedCases:343,
- referenceCasesAssertedInThisCi:verifiedInCi?157:0,
+ mappedOfflineUnitCases:123,
+ mappedPostgresIntegrationCases:54,
+ mappedEngineeringAssertions:177,
+ unmappedPlannedCases:323,
+ referenceCasesAssertedInThisCi:verifiedInCi?177:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,
