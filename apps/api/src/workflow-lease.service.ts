@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from './prisma.service.js';
+import { PrismaService,withMarketingTenant } from './prisma.service.js';
 import { randomUUID } from 'node:crypto';
 
 export type WorkflowLease = { workflowId: string; organizationId: string; owner: string; generation: number; expiresAt: Date };
@@ -11,7 +11,7 @@ export class WorkflowLeaseService {
     const owner = randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs);
-    const result = await this.db.$transaction(async tx => {
+    const result = await withMarketingTenant(this.db,organizationId,async tx => {
       const workflow = await tx.workflowExecution.findFirst({ where: { id: workflowId, organizationId } });
       if (!workflow) throw new NotFoundException('Workflow not found in tenant');
       if (!['RUNNING','FAILED'].includes(workflow.status)) throw new ConflictException('Workflow is not executable');
@@ -30,27 +30,27 @@ export class WorkflowLeaseService {
     if (!Number.isSafeInteger(ttlMs) || ttlMs < 1000 || ttlMs > 300000) throw new ForbiddenException('Invalid lease extension');
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs);
-    const changed = await this.db.workflowExecution.updateMany({
+    const changed = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.updateMany({
       where: { id: lease.workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner,
         leaseGeneration: lease.generation, leaseExpiresAt: { gt: now }, status: 'RUNNING' },
       data: { leaseExpiresAt: expiresAt }
-    });
+    }));
     if (changed.count !== 1) throw new ConflictException('Workflow lease lost or expired');
     return { ...lease, expiresAt };
   }
   async release(lease: WorkflowLease) {
-    const changed = await this.db.workflowExecution.updateMany({
+    const changed = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.updateMany({
       where: { id: lease.workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation },
       data: { leaseOwner: null, leaseExpiresAt: null }
-    });
+    }));
     if (changed.count !== 1) throw new ConflictException('Workflow lease was superseded');
   }
   async assertActive(lease: WorkflowLease) {
-    const found = await this.db.workflowExecution.findFirst({
+    const found = await withMarketingTenant(this.db,lease.organizationId,tx=>tx.workflowExecution.findFirst({
       where: { id: lease.workflowId, organizationId: lease.organizationId, leaseOwner: lease.owner,
         leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() } },
       select: { id: true }
-    });
+    }));
     if (!found) throw new ConflictException('Workflow execution fencing token is stale');
   }
 }
