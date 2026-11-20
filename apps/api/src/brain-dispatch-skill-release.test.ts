@@ -6,6 +6,9 @@ import {SkillReleaseService} from './skill-release.service.js';
 describe('brain worker dispatch authority',()=>{
  it('queries pending runs and delegates to CAS-owned executor',async()=>{
   const db:any={brainRun:{findFirst:vi.fn().mockResolvedValue({id:'run-a',organizationId:'tenant'})}};
+  db.organization={findMany:vi.fn().mockResolvedValue([{id:'tenant'}])};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const executor:any={execute:vi.fn().mockResolvedValue({status:'REVIEW_REQUIRED'})};
   const worker=new BrainDispatchWorker(db,executor);
   expect(await worker.tick()).toEqual({claimed:true,runId:'run-a',status:'REVIEW_REQUIRED'});
@@ -16,6 +19,9 @@ describe('brain worker dispatch authority',()=>{
  it('does not reclaim a RUNNING run on process restart, and does not process after shutdown',async()=>{
   // A restarted process selects only PENDING; stale RUNNING belongs to the operator incident queue.
   const db:any={brainRun:{findFirst:vi.fn().mockResolvedValue(null)}};
+  db.organization={findMany:vi.fn().mockResolvedValue([{id:'tenant'}])};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const executor:any={execute:vi.fn()};
   const worker=new BrainDispatchWorker(db,executor);
   expect(await worker.tick()).toEqual({claimed:false,status:'EMPTY'});
@@ -27,6 +33,9 @@ describe('brain worker dispatch authority',()=>{
  });
  it('never silently retries failed execution in the same tick',async()=>{
   const db:any={brainRun:{findFirst:vi.fn().mockResolvedValue({id:'run-a',organizationId:'tenant'})}};
+  db.organization={findMany:vi.fn().mockResolvedValue([{id:'tenant'}])};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const executor:any={execute:vi.fn().mockRejectedValue(new Error('uncertain completion'))};
   const worker=new BrainDispatchWorker(db,executor);
   expect((await worker.tick()).status).toBe('CLAIMED_ELSEWHERE_OR_NEEDS_INTERVENTION');
