@@ -138,12 +138,12 @@ describe.skipIf(!enabled)('R3-P real PostgreSQL FORCE tenant RLS on six canonica
     commandId:randomUUID(),correlationId:randomUUID(),organizationId:client,
     objectiveId:objective.id,brandId:alpha.id,
     code:'ALPHA-'+randomUUID(),name:'Alpha proof',riskLevel:'R1'
-   });
+   }) as {campaignId:string};
    const c2=await campaignSvc.create({
     commandId:randomUUID(),correlationId:randomUUID(),organizationId:client,
     objectiveId:objective.id,brandId:beta.id,
     code:'BETA-'+randomUUID(),name:'Beta not delegated',riskLevel:'R1'
-   });
+   }) as {campaignId:string};
    const grant=await svc.grantAgency(client,'client-admin',{
     agencyOrganizationId:agency,brandId:alpha.id,
     actions:['CAMPAIGN_READ'],expiresAt:future()
@@ -252,7 +252,7 @@ describe.skipIf(!enabled)('R3-P real PostgreSQL FORCE tenant RLS on six canonica
    const cmd={commandId:randomUUID(),correlationId:randomUUID(),
     organizationId:org,objectiveId:objective.id,brandId:brand.id,
     code:'R3P-'+randomUUID(),name:'Offline scientific campaign',riskLevel:'R1' as const};
-   const created=await campaigns.create(cmd,admin);
+   const created=await campaigns.create(cmd,admin) as {campaignId:string};
    const read=new MarketingReadService(db as any);
    const listed=await read.campaigns(org);
    expect(listed.some(c=>c.id===created.campaignId)).toBe(true);
@@ -261,7 +261,7 @@ describe.skipIf(!enabled)('R3-P real PostgreSQL FORCE tenant RLS on six canonica
    expect((await read.objectives(org)).some(x=>x.id===objective.id)).toBe(true);
    await expect(read.campaign(other,created.campaignId)).rejects.toThrow('not found in tenant');
    const t=await campaigns.transition({commandId:randomUUID(),correlationId:randomUUID(),
-    organizationId:org,campaignId:created.campaignId,to:'ASSESSMENT',expectedVersion:1},admin);
+    organizationId:org,campaignId:created.campaignId,to:'ASSESSMENT',expectedVersion:1},admin) as {status:string};
    expect(t.status).toBe('ASSESSMENT');
   }finally{await db.$disconnect();}
  },90000);
