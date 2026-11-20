@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-S evidentiary event and incident isolation extends the authoritative R3-L 500-case blueprint evidence index.
+ * R3-T full outbox tenant isolation extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -76,6 +76,8 @@ const databaseCases=[
  {id:'T01-013',testSource:'apps/api/src/postgres-r3q-iam-brain-workflow-rls.integration.test.ts'},
  {id:'T01-014',testSource:'apps/api/src/postgres-r3r-finops-rls.integration.test.ts'},
  {id:'T01-015',testSource:'apps/api/src/postgres-r3s-event-rls.integration.test.ts'},
+ {id:'T01-016',testSource:'apps/api/src/postgres-r3t-outbox-rls.integration.test.ts'},
+ {id:'T15-026',testSource:'apps/api/src/postgres-r3t-outbox-rls.integration.test.ts'},
  {id:'T03-023',testSource:'apps/api/src/postgres-r3s-event-rls.integration.test.ts'},
  {id:'T15-025',testSource:'apps/api/src/postgres-r3s-event-rls.integration.test.ts'},
  {id:'T14-002',testSource:'apps/api/src/postgres-r3r-finops-rls.integration.test.ts'},
@@ -117,12 +119,12 @@ for(const {id,testSource} of databaseCases){
   contractEngine:'Real PostgreSQL transactions and canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==154)
- throw new Error('Expected precisely 154 mapped engineering cases, got '+active.size);
+if(active.size!==156)
+ throw new Error('Expected precisely 156 mapped engineering cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
- process.env.MARKETING_R3S_TEST_GATE_PASSED==='true';
+ process.env.MARKETING_R3T_TEST_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
@@ -160,7 +162,7 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3s-events-500-case-acceptance-index-v1',
+ schema:'medsol-r3t-events-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
  evidenceScope:'CI_OFFLINE_UNIT_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
@@ -169,10 +171,10 @@ const result={
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:111,
- mappedPostgresIntegrationCases:43,
- mappedEngineeringAssertions:154,
- unmappedPlannedCases:346,
- referenceCasesAssertedInThisCi:verifiedInCi?154:0,
+ mappedPostgresIntegrationCases:45,
+ mappedEngineeringAssertions:156,
+ unmappedPlannedCases:344,
+ referenceCasesAssertedInThisCi:verifiedInCi?156:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,

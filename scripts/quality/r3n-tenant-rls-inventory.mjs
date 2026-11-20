@@ -54,7 +54,7 @@ const protectedTables=[
  'User','Agent','AgentExecution','BrainRun','BrainRunStep',
  'WorkflowExecution','WorkflowStepExecution','Approval',
  'ModelBudget','ModelUsage',
- 'AuditEvent','CommandReceipt','InboxEvent','IncidentResponse'
+ 'AuditEvent','CommandReceipt','InboxEvent','IncidentResponse','OutboxEvent'
 ];
 const byName=new Map(rows.map(x=>[x.name,x]));
 const missing=protectedTables.filter(name=>{
@@ -97,5 +97,6 @@ if(process.argv[2]!=='--output'||typeof process.argv[3]!=='string'||
  !process.argv[3].endsWith('.json'))
  throw new Error('Explicit JSON evidence output required');
 writeFileSync(resolve(process.argv[3]),JSON.stringify(result,null,2)+'\n');
+if(uncovered.length)throw new Error('Tenant FORCE RLS gaps: '+uncovered.map(x=>x.name).join(','));
 process.stdout.write(JSON.stringify({...result,pendingRlsCoverage:
  'See exact tables in the immutable CI evidence artifact'},null,2)+'\n');
