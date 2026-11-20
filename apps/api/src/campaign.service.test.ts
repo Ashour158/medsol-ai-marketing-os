@@ -21,7 +21,7 @@ function fixture(status: string, version = 4) {
       findUniqueOrThrow: vi.fn().mockResolvedValue({ ...campaign, status: 'PROPOSED', version: version + 1 })
     },
     approval: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn() },
-    commandReceipt: { create: vi.fn() },
+    commandReceipt: { create: vi.fn(),findUnique:vi.fn().mockResolvedValue(null) },
     auditEvent: { create: vi.fn() }
   };
   const db = {
@@ -54,7 +54,7 @@ describe('campaign authority and concurrency', () => {
 
   it('replays a command receipt without mutating campaign state', async () => {
     const { service, db, tx } = fixture('ASSESSMENT');
-    db.commandReceipt.findUnique.mockResolvedValue({ response: { campaignId: 'campaign-1', status: 'PROPOSED', version: 5 } });
+    tx.commandReceipt.findUnique.mockResolvedValue({ response: { campaignId: 'campaign-1', status: 'PROPOSED', version: 5 } });
     await expect(service.transition({ ...command, to: 'PROPOSED' })).resolves.toEqual({ campaignId: 'campaign-1', status: 'PROPOSED', version: 5 });
     expect(tx.campaign.findFirst).not.toHaveBeenCalled();
   });

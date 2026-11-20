@@ -52,7 +52,9 @@ const protectedTables=[
  'MarketingObjective','MarketingProduct','Campaign',
  'BrandMasterRevision','LearningSignal','AgentSkillProposal',
  'User','Agent','AgentExecution','BrainRun','BrainRunStep',
- 'WorkflowExecution','WorkflowStepExecution','Approval'
+ 'WorkflowExecution','WorkflowStepExecution','Approval',
+ 'AuditEvent','CommandReceipt','InboxEvent','OutboxEvent',
+ 'ModelBudget','ModelUsage','IncidentResponse'
 ];
 const byName=new Map(rows.map(x=>[x.name,x]));
 const missing=protectedTables.filter(name=>{
@@ -65,6 +67,8 @@ const fullyProtected=rows.filter(x=>x.rls&&x.forced&&x.policyCount>0);
 const uncovered=rows.filter(x=>!x.rls||!x.forced||x.policyCount<1)
  .map(x=>({name:x.name,enabled:x.rls,forced:x.forced,policyCount:x.policyCount}));
 const rlsButNotForced=rows.filter(x=>x.rls&&!x.forced).map(x=>x.name);
+if(uncovered.length!==0||rows.length!==fullyProtected.length)
+ throw new Error('R3-Q2 FULL TENANT FORCE RLS GATE DENIED: '+uncovered.map(x=>x.name).join(','));
 const result={
  schema:'medsol-r3n-postgresql-tenant-rls-inventory-v1',
  runId:run,status:'DISPOSABLE_CI_INVENTORY_PASSED',

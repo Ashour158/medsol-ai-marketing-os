@@ -6,6 +6,7 @@ function fixture() {
     findFirst: vi.fn().mockResolvedValue({ id: 'usage', organizationId: 'tenant', status: 'RESERVED', reservedMicros: 1000n }),
     updateMany: vi.fn().mockResolvedValue({ count: 1 })
   }, modelBudget: { update: vi.fn().mockResolvedValue({}) } };
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction = vi.fn(async (fn: (tx: any) => Promise<any>) => fn(db));
   return { db, service: new ModelReconciliationService(db) };
 }
