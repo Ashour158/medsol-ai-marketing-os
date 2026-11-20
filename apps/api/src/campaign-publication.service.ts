@@ -35,7 +35,7 @@ export type PublicationPreflight={
  integrationEvidence:{
   destinationRegistered:boolean;destinationStatus:string|null;providerKey:string|null;
   mediaBytesReadbackVerified:boolean;mediaObjectVersion:string|null;
-  mediaMalwareScanClean:boolean;
+  mediaMalwareScanClean:boolean;mediaSyntheticOnly:boolean;
   encryptedTokenReceivedPendingAttestation:boolean;
   accountReadbackObserved:boolean;accountReadbackFresh:boolean;
   customerDestinationBound:false;
@@ -136,6 +136,7 @@ export class CampaignPublicationService{
     mediaBytesReadbackVerified:matchingEvidence,
     mediaObjectVersion:matchingEvidence?evidence!.objectVersion:null,
     mediaMalwareScanClean:matchingEvidence&&evidence?.malwareScanStatus==='CLEAN',
+    mediaSyntheticOnly:evidence?.evidenceOrigin==='OFFLINE_DB_RASTER',
     encryptedTokenReceivedPendingAttestation:connection?.status==='PENDING_VERIFICATION'&&
       pendingCredential?.status==='PENDING_ATTESTATION'&&
       pendingCredential.tokenExpiresAt>new Date(),
@@ -383,6 +384,7 @@ export class CampaignPublicationService{
    const now=Date.now();
    const cleanMedia=!!media&&!!revision&&!!exactScope&&
     media.status==='VERIFIED_READBACK'&&
+    media.evidenceOrigin==='VERSIONED_OBJECT_STORE'&&
     media.malwareScanStatus==='CLEAN'&&
     media.sourceRef===revision.sourceRef&&
     media.sha256Digest===revision.renditionDigest&&
@@ -455,6 +457,8 @@ export class CampaignPublicationService{
    const blockers=[...new Set([
     ...preflight.reasons,...gate.missing,...commercial.reasons,
     ...(isObserved?[]:['trusted_provider_observation_not_current']),
+    ...(media?.evidenceOrigin==='OFFLINE_DB_RASTER'?
+       ['synthetic_db_raster_cannot_authorize_real_provider_delivery']:[]),
     'real_provider_dispatch_and_receipt_adapter_not_activated'
    ])];
    return{
