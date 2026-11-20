@@ -67,7 +67,7 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
-      - name: Audit all tenant tables with 34 mandatory FORCE RLS authorities (zero uncovered allowed)
+      - name: Audit all 46 tenant-owned PostgreSQL tables for FORCE RLS (zero uncovered allowed)
         env:
           MARKETING_R3N_RLS_CI_ONLY: '1'
         run: node scripts/quality/r3n-tenant-rls-inventory.mjs --output r3n-rls-inventory.json
@@ -85,6 +85,16 @@ jobs:
         run: pnpm --filter @medsol/web exec playwright install --with-deps chromium
       - name: Run 17 Chromium browser journeys with local-only synthetic API and encrypted session
         run: pnpm --filter @medsol/web test:browser
+      - name: Preserve R3-V Chromium browser traces and HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-r3v-chromium-browser-report-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
       - name: Validate 194 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
         env:
           MARKETING_R3U_TEST_GATE_PASSED: 'true'

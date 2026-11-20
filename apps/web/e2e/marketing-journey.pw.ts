@@ -139,7 +139,7 @@ test('T16-020 browser refuses direct social sends and external email delivery ro
 });
 test('T01-021 a separately sealed foreign-tenant session cannot read tenant A',async({page})=>{
  await login(page,'admin','tenant-b');
- await expect(page.getByRole('alert').filter({hasText:'Request failed (403)'})).toBeVisible();
+ await expect(page.getByRole('alert').filter({hasText:'Cross-tenant access denied'})).toBeVisible();
  await expect(page.getByText('Signed in as')).toHaveCount(0);
 });
 test('T01-022 forged browser tenant and authorization headers cannot override sealed identity',async({page})=>{
