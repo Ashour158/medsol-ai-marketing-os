@@ -8,6 +8,8 @@ describe('authoritative catalogue data for the marketing Brain',()=>{
     marketingProduct:{findFirst:vi.fn().mockResolvedValue({id:'p1',code:'SEQ-001',name:'Research platform',vendor:'Vendor',lifecycle:'ACTIVE'})},
     marketingObjective:{findFirst:vi.fn().mockResolvedValue({id:'o1',name:'Expand awareness',description:'Plan',status:'ACTIVE'})}
   };
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const read=new MarketingReadService(db);
   const context=await read.brainAuthorityContext('tenant-a',{productId:'p1',objectiveId:'o1'});
   expect(context.product?.code).toBe('SEQ-001');
@@ -20,6 +22,8 @@ describe('authoritative catalogue data for the marketing Brain',()=>{
  });
  it('fails closed when product does not belong to the tenant',async()=>{
   const db:any={marketingProduct:{findFirst:vi.fn().mockResolvedValue(null)}};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const read=new MarketingReadService(db);
   await expect(read.brainAuthorityContext('other',{productId:'p1'})).rejects.toThrow('not found in tenant');
  });
