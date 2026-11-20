@@ -1,7 +1,7 @@
 import {BadRequestException,Injectable,Optional} from '@nestjs/common';
 import {MarketingWorkerHealthService} from './marketing-worker-health.service.js';
 import {MarketingIncidentResponseService,type IncidentKind} from './marketing-incident-response.service.js';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {MarketingReadService} from './marketing-read.service.js';
 import {DeliveryOperationsService} from './delivery-operations.service.js';
 import {ModelBudgetService} from './model-budget.service.js';
@@ -126,17 +126,17 @@ export class MarketingCommandCenterService {
     this.reads.overview(organizationId),this.reads.agentOperations(organizationId),
     this.delivery.summary(organizationId),this.budgets.summary(organizationId),
     this.learning.trendBrief(organizationId),this.brand.active(organizationId),
-    this.db.brainRun.findMany({where:{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}},
-      take:20,orderBy:{updatedAt:'asc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true}}),
-    this.db.brainRun.findMany({where:{organizationId,status:'NEEDS_INTERVENTION'},
-      take:30,orderBy:{updatedAt:'asc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true,lastError:true}}),
-    this.db.brainRun.count({where:{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}}}),
-    this.db.brainRun.count({where:{organizationId,status:'NEEDS_INTERVENTION'}}),
-    this.db.approval.count({where:{organizationId,decision:'PENDING'}}),
-    this.db.agentSkillProposal.count({where:{organizationId,status:{in:['PROPOSED','EVALUATED']}}}),
-    this.db.brainRun.findMany({where:{organizationId},take:20,orderBy:{createdAt:'desc'},
-      select:{id:true,status:true,currentAgentId:true,updatedAt:true,createdAt:true,commandKey:true}}),
-    this.db.brainRun.count({where:{organizationId}})
+    withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findMany({where:{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}},
+      take:20,orderBy:{updatedAt:'asc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findMany({where:{organizationId,status:'NEEDS_INTERVENTION'},
+      take:30,orderBy:{updatedAt:'asc'},select:{id:true,status:true,updatedAt:true,currentAgentId:true,lastError:true}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.count({where:{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.count({where:{organizationId,status:'NEEDS_INTERVENTION'}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.approval.count({where:{organizationId,decision:'PENDING'}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.agentSkillProposal.count({where:{organizationId,status:{in:['PROPOSED','EVALUATED']}}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findMany({where:{organizationId},take:20,orderBy:{createdAt:'desc'},
+      select:{id:true,status:true,currentAgentId:true,updatedAt:true,createdAt:true,commandKey:true}})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.count({where:{organizationId}}))
   ]);
   const incidents=[
     ...intervention.map(r=>({id:'brain-intervention:'+r.id,severity:'CRITICAL' as const,
@@ -215,13 +215,13 @@ export class MarketingCommandCenterService {
   const where=rawKind==='BRAIN_STALE'
    ?{organizationId,status:'RUNNING',updatedAt:{lte:staleBefore}}
    :{organizationId,status:'NEEDS_INTERVENTION'};
-  if(cursor&&!(await this.db.brainRun.findFirst({where:{...where,id:cursor},select:{id:true}})))
+  if(cursor&&!(await withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findFirst({where:{...where,id:cursor},select:{id:true}}))))
    throw new BadRequestException('Incident cursor no longer belongs to this tenant and filter');
   const [total,rows]=await Promise.all([
-   this.db.brainRun.count({where}),
-   this.db.brainRun.findMany({where,orderBy:[{updatedAt:'asc'},{id:'asc'}],
+   withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.count({where})),
+   withMarketingTenant(this.db,organizationId,tx=>tx.brainRun.findMany({where,orderBy:[{updatedAt:'asc'},{id:'asc'}],
     take:limit+1,...(cursor?{cursor:{id:cursor},skip:1}:{}),
-    select:{id:true,updatedAt:true,currentAgentId:true,lastError:true}})
+    select:{id:true,updatedAt:true,currentAgentId:true,lastError:true}}))
   ]);
   const visible=rows.slice(0,limit);
   const responses=this.responses?await this.responses.batch(organizationId,rawKind as IncidentKind,visible.map(r=>r.id)):null;
