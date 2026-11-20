@@ -21,8 +21,31 @@ export function withMarketingTenant<T>(
  },options);
 }
 
+/**
+ * Prevent deployment of a runtime database role that silently bypasses
+ * PostgreSQL FORCE RLS. Migrations use a separate privileged principal.
+ * This does not certify all tenant tables or operator network entitlements.
+ */
+export function assertRuntimeDatabaseRole(rows:readonly {
+ rolsuper:boolean;rolbypassrls:boolean;rolcreaterole:boolean;rolcreatedb:boolean
+}[]):void{
+ const role=rows[0];
+ if(rows.length!==1||!role||
+    role.rolsuper!==false||role.rolbypassrls!==false||
+    role.rolcreaterole!==false||role.rolcreatedb!==false)
+  throw new Error('Production marketing database role must be unprivileged and NON-BYPASSRLS');
+}
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit,OnModuleDestroy{
- async onModuleInit(){await this.$connect()}
+ async onModuleInit(){
+  await this.$connect();
+  if(process.env.NODE_ENV==='production'){
+   const rows=await this.$queryRaw<Array<{
+    rolsuper:boolean;rolbypassrls:boolean;rolcreaterole:boolean;rolcreatedb:boolean
+   }>>`SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb
+       FROM pg_roles r WHERE r.rolname=current_user`;
+   assertRuntimeDatabaseRole(rows);
+  }
+ }
  async onModuleDestroy(){await this.$disconnect()}
 }
