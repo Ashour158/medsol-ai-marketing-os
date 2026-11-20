@@ -74,14 +74,17 @@ export class OutboxPublisherService{
    publishedAt:null,deadLetteredAt:null,attempts:{lt:MAX_DELIVERY_ATTEMPTS},
    AND:[{OR:[{nextAttemptAt:null},{nextAttemptAt:{lte:now}}]},
     {OR:[{publishingAt:null},{publishingAt:{lt:leaseCutoff}}]}]};
-  const tenants=await this.db.organization.findMany({
+  let tenants=await this.db.organization.findMany({
    where:this.tenantCursor?{id:{gt:this.tenantCursor}}:{},
    orderBy:{id:'asc'},take:50,select:{id:true}
   });
-  if(!tenants.length){
-   if(this.tenantCursor){this.tenantCursor=null;return this.claimOne(eventTypes);}
-   return null;
+  if(!tenants.length&&this.tenantCursor){
+   this.tenantCursor=null;
+   tenants=await this.db.organization.findMany({
+    orderBy:{id:'asc'},take:50,select:{id:true}
+   });
   }
+  if(!tenants.length)return null;
   for(const tenant of tenants){
    this.tenantCursor=tenant.id;
    const claimed=await withMarketingTenant(this.db,tenant.id,async tx=>{
