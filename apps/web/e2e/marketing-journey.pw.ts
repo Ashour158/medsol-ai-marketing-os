@@ -1,7 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import {seal,SESSION_COOKIE} from '../src/lib/marketing-auth';
 
-const origin='http://localhost:3100';
+const origin='https://127.0.0.1:3443';
 const sessionId='11111111-1111-4111-8111-111111111111';
 type Actor='admin'|'viewer'|'reviewer';
 const actors:Record<Actor,string>={

@@ -8,7 +8,7 @@ const browserOnlyKey=createHash('sha256')
  .digest('base64url');
 process.env.MARKETING_SESSION_SECRET=browserOnlyKey;
 const tenantGuid='11111111-1111-4111-8111-111111111111';
-const origin='http://localhost:3100';
+const origin='https://127.0.0.1:3443';
 
 export default defineConfig({
  testDir:'./e2e',
@@ -22,7 +22,7 @@ export default defineConfig({
  outputDir:'test-results',
  use:{
   ...devices['Desktop Chrome'],browserName:'chromium',
-  baseURL:origin,trace:'retain-on-failure',screenshot:'only-on-failure'
+  baseURL:origin,ignoreHTTPSErrors:true,trace:'retain-on-failure',screenshot:'only-on-failure'
  },
  webServer:[
   {
@@ -31,8 +31,8 @@ export default defineConfig({
    timeout:30000,reuseExistingServer:false,
   },
   {
-   command:'pnpm exec next start --hostname localhost --port 3100',
-   url:origin,
+   command:'pnpm exec next start --hostname 127.0.0.1 --port 3100',
+   url:'http://127.0.0.1:3100',
    timeout:120000,reuseExistingServer:false,
    env:{
     ...process.env,
@@ -47,6 +47,12 @@ export default defineConfig({
     MARKETING_AUTH_MODE:'oidc',
     MARKETING_ENTRA_CLIENT_SECRET:'',
    }
+  },
+  {
+   command:'node e2e/fixtures/local-https-proxy.mjs',
+   url:origin,
+   ignoreHTTPSErrors:true,
+   timeout:40000,reuseExistingServer:false,
   }
  ]
 });
