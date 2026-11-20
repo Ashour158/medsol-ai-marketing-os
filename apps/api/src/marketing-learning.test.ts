@@ -14,7 +14,8 @@ function setup(){
   findUnique:vi.fn().mockResolvedValue(null),
   create:vi.fn().mockImplementation(async ({data}:any)=>data),
   findMany:vi.fn().mockResolvedValue([])
- },auditEvent:{create:vi.fn().mockResolvedValue({})}};
+ },auditEvent:{create:vi.fn().mockResolvedValue({})},$queryRaw:vi.fn().mockResolvedValue([])};
+ db.$transaction=vi.fn(async (fn:any)=>fn(db));
  return{db,service:new MarketingLearningService(db)};
 }
 describe('learning engine controls',()=>{
