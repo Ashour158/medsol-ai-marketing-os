@@ -56,6 +56,8 @@ describe('brain cannot fabricate brand or consent authority',()=>{
  it('overrides supplied brand and consent with approved authority',async()=>{
   const run={status:'PENDING',correlationId:'corr',input:{requestedOutcome:'Launch',brandMasterVersion:'v2',consentReference:'self-asserted'},steps:[{agentId:'MKT-CMO-001',status:'PENDING'}]};
   const db:any={brainRun:{updateMany:vi.fn().mockResolvedValue({count:1})}};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const agents:any={execute:vi.fn().mockResolvedValue({executionId:'ex',decision:{executionAllowed:true}})};
   const ledger:any={get:vi.fn().mockResolvedValueOnce(run).mockResolvedValueOnce({status:'REVIEW_REQUIRED'}),checkpoint:vi.fn().mockResolvedValue({})};
   const brand:any={active:vi.fn().mockResolvedValue({version:2,rules,sourceReference:'internal:approved',status:'APPROVED'})};
