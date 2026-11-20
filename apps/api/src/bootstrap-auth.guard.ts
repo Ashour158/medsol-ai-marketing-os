@@ -21,8 +21,15 @@ export class BootstrapAuthGuard implements CanActivate {
     if (req.url?.split('?')[0] === '/health' && req.method === 'GET') return true;
     const organizationId = process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
     if (!organizationId) throw new Error('MARKETING_BOOTSTRAP_ORGANIZATION_ID must be configured');
-    const requested = req.body?.organizationId ?? req.headers['x-organization-id'];
-    if (requested !== undefined && requested !== organizationId) throw new ForbiddenException('Cross-tenant access denied');
+    const bodyTenant = req.body?.organizationId;
+    const headerTenant = req.headers['x-organization-id'];
+    // Both independently supplied claims must agree with the provisioned
+    // organization. A legitimate body tenant must never mask a forged header
+    // (or vice versa) during authenticated request normalization.
+    if ((bodyTenant !== undefined && bodyTenant !== organizationId) ||
+        (headerTenant !== undefined && headerTenant !== organizationId))
+      throw new ForbiddenException('Cross-tenant access denied');
+    const requested = bodyTenant ?? headerTenant;
     const mode = process.env.MARKETING_AUTH_MODE ?? 'bootstrap';
     if (mode === 'oidc') {
       const identity = await verifyOidcIdentity(req.headers.authorization, organizationId, {

@@ -79,18 +79,18 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
           path: r3n-rls-inventory.json
-      - name: Validate 157 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
+      - name: Validate 177 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
         env:
-          MARKETING_R3T_TEST_GATE_PASSED: 'true'
-        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3t-outbox-acceptance-evidence.json
-      - name: Upload R3-T outbox non-certifying 500-case evidence coverage
+          MARKETING_R3U_TEST_GATE_PASSED: 'true'
+        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3u-app-boundary-acceptance-evidence.json
+      - name: Upload R3-U application boundary non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3t-outbox-acceptance-evidence-${{ github.run_id }}
+          name: medsol-r3u-app-boundary-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: r3t-outbox-acceptance-evidence.json
+          path: r3u-app-boundary-acceptance-evidence.json
       - name: Reject forged production certification and fake independent 500-case signatures
         run: node --test scripts/quality/production-release-certification.test.mjs
       - name: Disposable PostgreSQL backup and restore rehearsal (not production DR certification)
