@@ -112,7 +112,7 @@ export class CreativeAssetService{
    await tx.creativeAssetRevision.create({data:{
     id:revisionId,organizationId,assetId,version:1,
     sourceKind:'FLATTENED_EXPORT',sourceRef,renditionDigest,
-    offlineRasterBase64:v.pngBase64,offlineEditableCopy:copy,
+    offlineRasterBase64:v.pngBase64 as string,offlineEditableCopy:copy,
     rightsExpiresAt,createdBy:actorId
    }});
    const result={
