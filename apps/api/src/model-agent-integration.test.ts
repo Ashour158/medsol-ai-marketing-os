@@ -44,6 +44,8 @@ describe('all marketing agents produce optional model-assisted but unreleased dr
   vi.stubEnv('MARKETING_AI_REASONING_ENABLED','true');
   vi.stubEnv('MARKETING_MODEL_RESERVATION_MICROS','5000');
   const db:any={agent:{upsert:vi.fn().mockResolvedValue({status:'ACTIVE',version:1,capabilities:['EXTRACT_CLAIM','CHECK_EVIDENCE','BLOCK_UNSUPPORTED_CLAIM']})},agentExecution:{create:vi.fn().mockImplementation(async({data}:any)=>data),update:vi.fn().mockResolvedValue({})}};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const model:any={complete:vi.fn().mockResolvedValue({text:'DRAFT: test recommendations',model:'test',
     actualCostMicros:300,inputTokens:10,outputTokens:10})};
   const service=new AgentService(db,model);
