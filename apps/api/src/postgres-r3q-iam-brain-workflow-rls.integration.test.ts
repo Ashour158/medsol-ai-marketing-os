@@ -78,7 +78,7 @@ describe.skipIf(!enabled)('R3-Q real PostgreSQL guarded IAM, agents, workflows a
     await tx.$executeRawUnsafe('SET LOCAL ROLE "'+principal+'"');
     await tx.$queryRawUnsafe(
      "SELECT set_config('app.marketing_tenant_id',$1,true)",a);
-    return tx.$executeRawUnsafe('UPDATE "Agent" SET "status"=$1 WHERE "organizationId"=$2',
+    return tx.$executeRawUnsafe('UPDATE "Agent" SET "status"=$1::"AgentStatus" WHERE "organizationId"=$2',
      'PAUSED',b);
    });
    expect(foreignMutation).toBe(0);

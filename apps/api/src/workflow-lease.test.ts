@@ -9,6 +9,7 @@ function fixture() {
     }
   };
   db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction = vi.fn(async (callback: (tx: any) => Promise<any>) => callback(db));
   return { db, service: new WorkflowLeaseService(db) };
 }

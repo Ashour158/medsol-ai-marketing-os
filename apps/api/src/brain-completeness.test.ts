@@ -32,6 +32,8 @@ describe('durable brain run authority',()=>{
   }};
   db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction=vi.fn(async (fn:any)=>fn(db));
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async (fn:any)=>fn(db));
   const ledger=new BrainRunLedgerService(db);
   const command={organizationId:'tenant',correlationId:'corr',requestedOutcome:'Launch'};
   const created=await ledger.create('tenant',command,'command-123');
@@ -42,6 +44,8 @@ describe('durable brain run authority',()=>{
  });
  it('rejects cross-tenant access and restricts run routes',async()=>{
   const db:any={brainRun:{findFirst:vi.fn().mockResolvedValue(null)}};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async (fn:any)=>fn(db));
   db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction=vi.fn(async (fn:any)=>fn(db));
   const ledger=new BrainRunLedgerService(db);

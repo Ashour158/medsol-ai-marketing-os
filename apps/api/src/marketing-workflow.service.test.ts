@@ -17,6 +17,8 @@ function fixture(status: string, overrides: Record<string, unknown> = {}) {
   };
   db.$queryRaw=vi.fn().mockResolvedValue([]);
   db.$transaction=vi.fn(async(fn:any)=>fn(db));
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const service = new MarketingWorkflowService(db as any, {} as any, {} as any, {} as any);
   return { service, db, workflow };
 }

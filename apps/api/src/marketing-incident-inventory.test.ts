@@ -36,6 +36,8 @@ function fixture(){
  };
  db.$queryRaw=vi.fn().mockResolvedValue([]);
  db.$transaction=vi.fn(async(fn:any)=>fn(db));
+ db.$queryRaw=vi.fn().mockResolvedValue([]);
+ db.$transaction=vi.fn(async(fn:any)=>fn(db));
  const service=new MarketingCommandCenterService(db,{} as any,{} as any,{} as any,{} as any,{} as any);
  return{db,service};
 }
