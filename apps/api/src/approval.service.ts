@@ -17,7 +17,7 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
   if(result.decision==='REJECTED') await this.workflows.blockAfterApprovalRejection(result.approvalId,organizationId,'Rejected by authorized reviewer');
  }
  async approve(cmd:ApproveObjectCommand){
-  const prior=await this.db.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}});if(prior){await this.reconcile(cmd.organizationId,prior.response as any);return prior.response;}
+  const prior=await withMarketingTenant(this.db,cmd.organizationId,tx=>tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:cmd.organizationId,commandId:cmd.commandId}}}));if(prior){await this.reconcile(cmd.organizationId,prior.response as any);return prior.response;}
   const result=await this.db.$transaction(async tx=>{
    // Creative DAM tables are FORCE-RLS; trusted tenant context must be
    // transaction-local and cannot survive pool reuse between requests.
