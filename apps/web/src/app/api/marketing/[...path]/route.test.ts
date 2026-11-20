@@ -17,7 +17,7 @@ const endpoints=[...readFileSync(controllerFile,"utf8")
  .filter(x=>x[2]!=="health"&&!x[2]?.startsWith("marketing/sessions"))
  .map(x=>({method:x[1]==="Get"?"GET":"POST",
   template:"/"+x[2]!,path:"/"+x[2]!.replace(/:([A-Za-z]+)/g,(_,key:string)=>
-   key==="kind"?"BRAIN_STALE":"id-acceptance")}))];
+   key==="kind"?"BRAIN_STALE":"id-acceptance")}));
 const initial={...process.env};
 const origin="https://marketing.medsol.example";
 const sessionId="11111111-1111-4111-8111-111111111111";
