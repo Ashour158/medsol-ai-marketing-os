@@ -39,7 +39,7 @@ export class MarketingReadService {
         version:true,scopeDigest:true,createdAt:true,
         attempts:{take:10,orderBy:{sequence:'asc'},select:{
          id:true,mode:true,outcome:true,createdAt:true}}}
-       }}),
+       }),
       tx.marketingEmailSimulation.findMany({where:{organizationId,campaignId},
        orderBy:{createdAt:'desc'},take:20,
        select:{id:true,status:true,contentDigest:true,audienceDigest:true,
