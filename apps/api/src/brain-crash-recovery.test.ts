@@ -15,15 +15,18 @@ function readFixture(options?:{attempts?:Array<{id:string;status:string;causatio
  const run=runFixture(options?.stepOrdinal??0);run.status=options?.status??'RUNNING';
  const attempts=(options?.attempts??[]).map(a=>({...a,startedAt:new Date(),completedAt:new Date()}));
  const db:any={
+  $queryRaw:vi.fn().mockResolvedValue([]),
   brainRun:{findFirst:vi.fn().mockImplementation(async ({where}:any)=>where.organizationId==='tenant-a'?run:null)},
   agentExecution:{findMany:vi.fn().mockResolvedValue(attempts)},
   modelUsage:{findMany:vi.fn().mockResolvedValue(attempts.length?[{requestId:attempts[0]!.id+':draft',status:'RESERVED',billingStatus:'UNVERIFIED'}]:[])}
  };
+ db.$transaction=vi.fn(async(cb:any)=>cb(db));
  return {db,ledger:new BrainRunLedgerService(db)};
 }
 function checkpointFixture(options?:{runChanged?:number;proofFound?:boolean;stepChanged?:number;stepOrdinal?:number}){
  const run=runFixture(options?.stepOrdinal??0);
  const tx:any={
+  $queryRaw:vi.fn().mockResolvedValue([]),
   brainRun:{findFirst:vi.fn().mockResolvedValue(run),updateMany:vi.fn().mockResolvedValue({count:options?.runChanged??1})},
   agentExecution:{findFirst:vi.fn().mockResolvedValue(options?.proofFound===false?null:{id:'exec-1',startedAt:new Date()})},
   brainRunStep:{updateMany:vi.fn().mockResolvedValue({count:options?.stepChanged??1})},
