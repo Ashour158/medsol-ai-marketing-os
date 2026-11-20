@@ -22,7 +22,7 @@ describe('R2C provider secrets authenticated-encryption',()=>{
   const key=randomBytes(32),vault=new ProviderSecretEnvelope(key);
   const encoded=vault.encrypt('opaque-oauth-secret','tenant-a','connection-a','refresh-v1');
   const chunks=encoded.split('.');
-  const broken=[...chunks];broken[4]=broken[4]!.slice(0,-2)+'AA';
+  const broken=[...chunks];broken[4]=(broken[4]![0]==='A'?'B':'A')+broken[4]!.slice(1);
   expect(()=>vault.decrypt(broken.join('.'),'tenant-a','connection-a','refresh-v1')).toThrow();
   const wrongKey=new ProviderSecretEnvelope(randomBytes(32));
   expect(()=>wrongKey.decrypt(encoded,'tenant-a','connection-a','refresh-v1')).toThrow();
