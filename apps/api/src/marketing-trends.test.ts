@@ -10,6 +10,8 @@ describe('evidence-linked market trend intelligence',()=>{
    {id:'3',topic:'Protein sequencing',sector:'proteomics',sourceUrl:'https://source-a.org/c',sourceTitle:'C',sourcePublishedAt:null,observedAt:recent}
   ];
   const db:any={learningSignal:{findMany:vi.fn().mockResolvedValue(signals)}};
+  db.$queryRaw=vi.fn().mockResolvedValue([]);
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
   const service=new MarketingLearningService(db);
   const brief=await service.trendBrief('tenant','proteomics');
   expect(db.learningSignal.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({
