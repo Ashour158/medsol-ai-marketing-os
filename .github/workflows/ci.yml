@@ -67,7 +67,7 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
-      - name: Audit 27 mandatory PostgreSQL tenant FORCE RLS tables and all remaining gaps
+      - name: Audit 29 mandatory PostgreSQL tenant FORCE RLS tables and all remaining gaps
         env:
           MARKETING_R3N_RLS_CI_ONLY: '1'
         run: node scripts/quality/r3n-tenant-rls-inventory.mjs --output r3n-rls-inventory.json
@@ -79,15 +79,15 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
           path: r3n-rls-inventory.json
-      - name: Validate 149 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
+      - name: Validate 151 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
         env:
-          MARKETING_R3Q_TEST_GATE_PASSED: 'true'
-        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3q-acceptance-evidence.json
-      - name: Upload R3-Q non-certifying 500-case evidence coverage
+          MARKETING_R3R_TEST_GATE_PASSED: 'true'
+        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3r-finops-acceptance-evidence.json
+      - name: Upload R3-R FinOps non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3q-acceptance-evidence-${{ github.run_id }}
+          name: medsol-r3r-finops-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
           path: r3q-acceptance-evidence.json

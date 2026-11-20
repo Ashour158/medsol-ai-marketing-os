@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ModelReconciliationService } from './model-reconciliation.service.js';
 const evidence = { organizationId: 'tenant', usageId: 'usage', providerRequestId: 'provider-1', evidenceReference: 'invoice-1', actualCostMicros: 600, model: 'approved-model', inputTokens: 100, outputTokens: 20 };
 function fixture() {
-  const db: any = { modelUsage: {
+  const db: any = { $queryRaw:vi.fn().mockResolvedValue([]), modelUsage: {
     findFirst: vi.fn().mockResolvedValue({ id: 'usage', organizationId: 'tenant', status: 'RESERVED', reservedMicros: 1000n }),
     updateMany: vi.fn().mockResolvedValue({ count: 1 })
   }, modelBudget: { update: vi.fn().mockResolvedValue({}) } };

@@ -27,6 +27,7 @@ describe('governed model gateway', () => {
 describe('model budget authority', () => {
   function fixture() {
     const db: any = {
+      $queryRaw:vi.fn().mockResolvedValue([]),
       modelUsage: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'usage', status: 'RESERVED' }), findFirst: vi.fn().mockResolvedValue({ id: 'usage', organizationId: 'tenant', status: 'RESERVED', reservedMicros: 1000n }), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       modelBudget: { findUnique: vi.fn().mockResolvedValue({ limitMicros: 10000n, spentMicros: 100n, reservedMicros: 200n }), update: vi.fn().mockResolvedValue({}) },
       $transaction: vi.fn(async (callback: (tx: any) => Promise<any>) => callback(db))
