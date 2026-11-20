@@ -647,6 +647,10 @@ model CreativeAssetRevision {
   sourceKind String
   sourceRef String
   renditionDigest String
+  /** Offline-only PNG bytes stored only for disposable simulations; no remote asset rights. */
+  offlineRasterBase64 String?
+  /** Editable text copy; PNG remains a flattened export, never a layered design source. */
+  offlineEditableCopy String?
   rightsExpiresAt DateTime
   rightsReviewedBy String?
   rightsReviewedAt DateTime?
@@ -814,6 +818,7 @@ model VerifiedMediaEvidence {
   detectedMime String
   malwareScanStatus String @default("NOT_SCANNED")
   scannerId String?
+  evidenceOrigin String @default("VERSIONED_OBJECT_STORE")
   status String @default("VERIFIED_READBACK")
   verifiedAt DateTime @default(now())
   verifiedBy String
