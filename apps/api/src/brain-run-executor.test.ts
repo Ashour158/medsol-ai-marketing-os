@@ -4,7 +4,9 @@ import { permissionForMarketingRoute } from './marketing-permissions.js';
 describe('brain executor integration',()=>{
  it('claims exactly once and executes ordered 13 agent decisions with checkpoint causation',async()=>{
   const steps=Array.from({length:13},(_,ordinal)=>({agentId:'agent-'+ordinal,status:'PENDING',ordinal}));
-  const db:any={brainRun:{updateMany:vi.fn().mockResolvedValue({count:1})}};
+  const db:any={$queryRaw:vi.fn().mockResolvedValue([]),
+   brainRun:{updateMany:vi.fn().mockResolvedValue({count:1})}};
+  db.$transaction=vi.fn(async(cb:any)=>cb(db));
   const ledger:any={get:vi.fn().mockResolvedValueOnce({status:'PENDING',correlationId:'corr',input:{requestedOutcome:'launch'},steps}).mockResolvedValueOnce({status:'REVIEW_REQUIRED',steps}),checkpoint:vi.fn().mockResolvedValue({})};
   const agents:any={execute:vi.fn().mockImplementation(async (_id:string,input:any)=>({executionId:'e'+(input.input.upstreamExecutionId??'start'),decision:{executionAllowed:true}}))};
   const executor=new BrainRunExecutorService(db,agents,ledger);
