@@ -190,13 +190,13 @@ export class MarketingCommandCenterService {
    throw new BadRequestException('Incident limit must be 1 to 100');
   if(rawKind==='OUTBOX_DEAD_LETTER'){
    const where={organizationId,deadLetteredAt:{not:null}};
-   if(cursor&&!(await this.db.outboxEvent.findFirst({where:{...where,id:cursor},select:{id:true}})))
+   if(cursor&&!(await withMarketingTenant(this.db,organizationId,tx=>tx.outboxEvent.findFirst({where:{...where,id:cursor},select:{id:true}}))))
     throw new BadRequestException('Incident cursor no longer belongs to this tenant and filter');
    const [total,rows]=await Promise.all([
-    this.db.outboxEvent.count({where}),
-    this.db.outboxEvent.findMany({where,orderBy:[{deadLetteredAt:'asc'},{id:'asc'}],
+    withMarketingTenant(this.db,organizationId,tx=>tx.outboxEvent.count({where})),
+    withMarketingTenant(this.db,organizationId,tx=>tx.outboxEvent.findMany({where,orderBy:[{deadLetteredAt:'asc'},{id:'asc'}],
      take:limit+1,...(cursor?{cursor:{id:cursor},skip:1}:{}),
-     select:{id:true,deadLetteredAt:true,lastError:true,eventType:true,attempts:true}})
+     select:{id:true,deadLetteredAt:true,lastError:true,eventType:true,attempts:true}}))
    ]);
    const visible=rows.slice(0,limit);
    const responses=this.responses?await this.responses.batch(organizationId,rawKind as IncidentKind,visible.map(r=>r.id)):null;

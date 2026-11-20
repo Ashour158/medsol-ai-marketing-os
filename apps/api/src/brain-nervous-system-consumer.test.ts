@@ -46,7 +46,9 @@ describe('transactional Brain nervous-system inbox',()=>{
 describe('filtered outbox delivery reuses standard retry and dead letter policy',()=>{
  it('claims only approved internal Brain event types',async()=>{
   const db:any={outboxEvent:{findFirst:vi.fn().mockResolvedValue(null)},
-   $transaction:vi.fn((callback:any)=>callback({outboxEvent:db.outboxEvent}))};
+   organization:{findMany:vi.fn().mockResolvedValue([{id:'tenant'}])},
+   $queryRaw:vi.fn().mockResolvedValue([])};
+  db.$transaction=vi.fn((callback:any)=>callback(db));
   const publisher=new OutboxPublisherService(db);
   await publisher.publishBatch({publish:vi.fn()},5,BRAIN_INTERNAL_EVENTS);
   expect(db.outboxEvent.findFirst).toHaveBeenCalledWith(expect.objectContaining({
