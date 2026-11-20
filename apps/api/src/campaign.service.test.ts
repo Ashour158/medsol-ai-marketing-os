@@ -14,6 +14,7 @@ const command = {
 function fixture(status: string, version = 4) {
   const campaign = { id: 'campaign-1', organizationId: 'tenant-a', status, version, riskLevel: 'R2' };
   const tx = {
+    $queryRaw:vi.fn().mockResolvedValue([]),
     campaign: {
       findFirst: vi.fn().mockResolvedValue(campaign),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
