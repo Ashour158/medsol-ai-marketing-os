@@ -878,7 +878,8 @@ export class MarketingWorkflowService {
   async blockAfterApprovalRejection(approvalId: string, organizationId: string, rationale: string): Promise<void> {
     const approval = await withMarketingTenant(this.db,organizationId,tx=>tx.approval.findFirst({ where: { id: approvalId, organizationId } }));
     if (!approval?.workflowExecutionId) return;
-    const workflow = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findFirst({ where: { id: approval.workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } }));
+    const workflowExecutionId=approval.workflowExecutionId;
+    const workflow = await withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findFirst({ where: { id: workflowExecutionId, organizationId, status: 'WAITING_APPROVAL' } }));
     if (!workflow) return;
     if(workflow.workflowType==='BLUEPRINT_OFFLINE_DAG'){
       await this.dagReconcileApproval(organizationId,approvalId,'REJECTED');
