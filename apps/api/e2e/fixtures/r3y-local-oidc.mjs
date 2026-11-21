@@ -45,6 +45,9 @@ const kid='r3y-disposable-local-jwks-1';
 const publicJwks={keys:[{...jwk,alg:'RS256',kid,use:'sig'}]};
 const certDir='/tmp/medsol-r3y-jwks';
 const codes=new Map();
+// Only the disposable GitHub CI IdP can choose the next synthetic operator.
+// This state has NO production web or API equivalent.
+let nextInteractivePersona='admin';
 const json=(res,status,data)=>{res.writeHead(status,{
  'content-type':'application/json','cache-control':'no-store',
  'pragma':'no-cache','x-content-type-options':'nosniff'});
@@ -90,10 +93,12 @@ const tls=httpsServer({
   const code=randomBytes(30).toString('base64url');
   const hint=q.get('login_hint');
   if(hint&&!staged)return reject(res,'Non-staging login selector forbidden');
-  if(hint&&!Object.hasOwn(people,hint))return reject(res,'Unknown test-only persona');
+  const persona=staged?(hint??nextInteractivePersona):'admin';
+  nextInteractivePersona='admin'; // consume the selection before code is issued
+  if(!Object.hasOwn(people,persona))return reject(res,'Unknown test-only persona');
   codes.set(code,{challenge:q.get('code_challenge'),state:q.get('state'),
    nonce:q.get('nonce'),clientId,redirect,
-   oid:hint?people[hint]:people.admin,
+   oid:people[persona],
    expiresAt:Date.now()+90000});
   const target=new URL(redirect);target.searchParams.set('code',code);
   target.searchParams.set('state',q.get('state'));
@@ -129,6 +134,13 @@ const ctl=httpServer(async(req,res)=>{
  const url=new URL(req.url??'/', 'http://127.0.0.1:3216');
  if(url.pathname==='/__health')
   return json(res,200,{ok:true,testOnly:true});
+ if(url.pathname==='/__select-persona'&&req.method==='POST'&&staged){
+  const selected=url.searchParams.get('persona');
+  if(!selected||!Object.hasOwn(people,selected))
+   return reject(res,'Unknown disposable test persona');
+  nextInteractivePersona=selected;
+  return json(res,200,{selected,disposableCiOnly:true});
+ }
  if(url.pathname!=='/__issue'||req.method!=='POST')
   return json(res,404,{error:'not_found'});
  const persona=url.searchParams.get('persona');
