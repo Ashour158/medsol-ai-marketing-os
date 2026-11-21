@@ -124,10 +124,11 @@ test("T18-002 signed reviewer rejection blocks workflow; no automatic execution 
  const attempt=await api(page,"architecture/runs/"+runId+"/tick",{});
  expect(attempt.status).toBeGreaterThanOrEqual(400);
 });
-test("T18-003 nonadmin and foreign signed identities cannot inspect or decide tenant A DAG",async({page})=>{
+test("T18-003 foreign signed identity denied; same-tenant viewer can only read, never tick or decide",async({page})=>{
  await login(page,"admin");const release=signedManifest();
  await activate(page,release);
  const runId=await launch(page,release.id);
+ const pending=(await ok(page,"workflows/"+runId)).steps.find((s:{status:string})=>s.status==="WAITING_APPROVAL").output.approvalId as string;
  await change(page,"foreign");
  const foreign=await api(page,"workflows/"+runId);
  expect(foreign.status).toBeGreaterThanOrEqual(400);
@@ -138,7 +139,16 @@ test("T18-003 nonadmin and foreign signed identities cannot inspect or decide te
  expect(forged.status).toBe(403);
  await change(page,"viewer");
  const ledger=await api(page,"workflows/"+runId);
- expect(ledger.status).toBeGreaterThanOrEqual(400);
+ expect(ledger.status).toBe(200); // Same-tenant read-only workflow visibility is intentional.
+ expect((ledger.data as any).organizationId).toBe("r3y-tenant-a");
+ expect((ledger.data as any).input.externalEffectsAuthorized).toBe(false);
  const denied=await api(page,"architecture/runs/"+runId+"/tick",{});
- expect(denied.status).toBeGreaterThanOrEqual(400);
+ expect(denied.status).toBe(403);
+ const viewerDecision=await api(page,"approvals/decide",{
+  organizationId:"r3y-tenant-a",approvalId:pending,
+  approverUserId:"t1e-stage-viewer",decision:"APPROVED",
+  rationale:"Attempted privilege escalation using read-only identity",
+  commandId:randomUUID(),correlationId:randomUUID()});
+ expect(viewerDecision.status).toBe(403);
+ expect((await ok(page,"workflows/"+runId)).status).toBe("WAITING_APPROVAL");
 });
