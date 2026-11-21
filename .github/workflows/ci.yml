@@ -241,10 +241,16 @@ jobs:
           openssl genpkey -algorithm ED25519 -out /tmp/medsol-r3y-jwks/t3c-dag-private.pem
           chmod 600 /tmp/medsol-r3y-jwks/t3c-dag-private.pem
           openssl pkey -in /tmp/medsol-r3y-jwks/t3c-dag-private.pem -pubout -out /tmp/medsol-r3y-jwks/t3c-dag-public.pem
+      - name: Test T3C browser evidence verification rejection paths
+        run: node --test scripts/quality/t3c-offline-dag-evidence.test.mjs
       - name: Run T3C real-stack signed offline DAG maker-checker operator journeys
         env:
           MARKETING_R3Y_STAGING_CI_ONLY: '1'
         run: pnpm --filter @medsol/web exec playwright test --config playwright.offline-dag-operator.config.ts
+      - name: Record T3C runtime-bound signed-DAG browser evidence
+        env:
+          MARKETING_T3C_EVIDENCE_CI_ONLY: '1'
+        run: node scripts/quality/t3c-offline-dag-evidence.mjs --input apps/web/t3c-playwright-report/t3c-results.json --output t3c-dag-evidence.json
       - name: Preserve T3C actual browser runs (engineering only, no independent QA claim)
         if: always()
         uses: actions/upload-artifact@v4
@@ -255,6 +261,7 @@ jobs:
           path: |
             apps/web/t3c-playwright-report/
             apps/web/t3c-test-results/
+            t3c-dag-evidence.json
       - name: Upload R3-Y real-stack Chromium traces, role proof and non-certifying manifests
         if: always()
         uses: actions/upload-artifact@v4
