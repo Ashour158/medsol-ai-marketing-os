@@ -8,7 +8,7 @@
 - Existing studio components and current identity/role gates remain unchanged.
 
 ## Changes
-- Sticky, accessible named navigation index across 18 already-present surfaces.
+- Sticky, accessible named navigation index across 19 already-present surfaces.
 - Keyboard-accessible native links, search and functional grouping. Preserves all existing studio component state and owner APIs.
 - Stable anchor IDs on current sections and studio mount points; no tab hiding or lifecycle changes.
 - Focused registry tests for duplicate anchors and filtering.

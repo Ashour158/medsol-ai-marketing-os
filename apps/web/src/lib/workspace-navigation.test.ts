@@ -6,6 +6,7 @@ describe('T3A single-authority workspace directory',()=>{
   expect(new Set(ids).size).toBe(ids.length);
   expect(ids).toContain('journey');
   expect(ids).toContain('agent-brain');
+  expect(ids).toContain('agent-studio');
   expect(ids).toContain('acceptance');
   expect(ids.every(id=>/^[a-z][a-z0-9-]+$/.test(id))).toBe(true);
  });

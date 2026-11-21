@@ -148,7 +148,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (request.method === "GET" && (
           path.length === 1 ||
           (path.length === 2 && ["executions","operations","budget","manifests"].includes(id??"")) ||
-          (path.length === 3 && id === "executions" && !!action)
+          (path.length === 3 && id === "executions" && !!action) ||
+          (path.length === 4 && id === "manifests" && action === "baseline" && !!operation)
         )) ||
         (request.method === "POST" && (
           (path.length === 2 && id === "manifests") ||

@@ -12,6 +12,7 @@ import KnowledgeFabricStudio from "./knowledge-fabric-studio";
 import MemoryGraphStudio from "./memory-graph-studio";
 import R3AcceptanceStudio from "./r3-release-acceptance-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
+import AgentReleaseStudio from "./agent-release-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 
@@ -133,6 +134,7 @@ export default function Home() {
     <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio identity={identity}/></div>
     <div id="email" style={{scrollMarginTop:120}}><SyntheticEmailStudio identity={identity}/></div>
     <div id="tool-registry" style={{scrollMarginTop:120}}><GovernedToolRegistryStudio identity={identity}/></div>
+    <div id="agent-studio" style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/></div>
     <div id="provider-trials" style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
     <div id="integrations" style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
     <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole identity={identity} onRunSelected={id => {
