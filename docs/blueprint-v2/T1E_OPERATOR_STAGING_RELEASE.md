@@ -8,7 +8,7 @@ The existing Next OIDC code/PKCE login/callback, encrypted session cookies, Nest
 
 ## Implemented tranche
 
-- Identity: independent HTTPS issuer/JWKS, same-origin OIDC discovery endpoints, signed API audience, scoped JWT, immutable subject derived from issuer+sub, signed marketing_org_id, independently verified ID/access token subject and organization at browser callback, and authoritative PostgreSQL lookup before session creation. Email never binds identity.
+- Identity: independent HTTPS issuer/JWKS, same-origin OIDC discovery endpoints, signed API audience, scoped JWT, immutable collision-free escaped subject derived from issuer+sub, signed marketing_org_id, independently verified ID/access token subject and organization at browser callback, and authoritative PostgreSQL lookup before session creation. Email never binds identity.
 - Provider gating: only STAGING_OIDC + exact deployment environment staging, enabled literal OFFLINE_OPERATOR_TEST_ONLY, signed-claim tenant mode, no shared bootstrap token/tenant, no real AI/social/email credentials, all effects explicitly false. Loopback acceptance trust allowed ONLY with disposable GitHub CI flags and disposable PostgreSQL.
 - UI / real-stack acceptance: seven additional Chromium cases use real Next, Nest, PostgreSQL and HTTPS simulated IdP, covering separate admin/reviewer/viewer/foreign actors, actual browser sign-in and logout, signed organization isolation, role denial and a real offline brief/campaign workflow. Existing 19 real-stack, T1D login and 51 mock-browser cases remain separately tracked.
 - Ops: immutable image deployment template, nonsecret configuration example, config-only preflight, cautious dry-run-by-default operator provisioning adapter, empty unsigned operator acceptance register.
