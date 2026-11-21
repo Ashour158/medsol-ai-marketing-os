@@ -262,6 +262,33 @@ jobs:
             apps/web/t3c-playwright-report/
             apps/web/t3c-test-results/
             t3c-dag-evidence.json
+      - name: Create disposable CI-only Ed25519 signer for T3D reviewed knowledge DAG
+        run: |
+          set -euo pipefail
+          openssl genpkey -algorithm ED25519 -out /tmp/medsol-r3y-jwks/t3d-dag-private.pem
+          chmod 600 /tmp/medsol-r3y-jwks/t3d-dag-private.pem
+          openssl pkey -in /tmp/medsol-r3y-jwks/t3d-dag-private.pem -pubout -out /tmp/medsol-r3y-jwks/t3d-dag-public.pem
+      - name: Verify T3D evidence validator rejects forged and missing Chromium execution
+        run: node --test scripts/quality/t3d-knowledge-dag-evidence.test.mjs
+      - name: Test T3D signed offline reviewed knowledge and revocation on real Next Nest PostgreSQL
+        env:
+          MARKETING_R3Y_STAGING_CI_ONLY: '1'
+        run: pnpm --filter @medsol/web exec playwright test --config playwright.t3d-knowledge.config.ts
+      - name: Record T3D real signed knowledge DAG CI evidence against same-run security checks
+        env:
+          MARKETING_T3D_EVIDENCE_CI_ONLY: '1'
+        run: node scripts/quality/t3d-knowledge-dag-evidence.mjs --input apps/web/t3d-playwright-report/t3d-results.json --output t3d-knowledge-dag-evidence.json
+      - name: Preserve T3D reviewed knowledge and revocation browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-t3d-signed-knowledge-dag-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            apps/web/t3d-playwright-report/
+            apps/web/t3d-test-results/
+            t3d-knowledge-dag-evidence.json
       - name: Upload R3-Y real-stack Chromium traces, role proof and non-certifying manifests
         if: always()
         uses: actions/upload-artifact@v4
