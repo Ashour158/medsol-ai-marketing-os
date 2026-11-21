@@ -95,6 +95,19 @@ const server=createServer(async(req,res)=>{
  const is=(m,p)=>method===m&&path===p;
  const isManager=actor.role!=='VIEWER';
  const isAdmin=actor.role==='ADMIN';
+ if(!isManager && method!=='GET')return json(res,403,{message:'Role denied in browser fixture'});
+ let body={};if(method==='POST')try{body=await read(req)}catch{return json(res,413,{message:'Bounded fixture body'})}
+ if(fault&&fault.path===path&&fault.method===method){
+  const synthetic=fault;fault=null;
+  if(synthetic.kind==='disconnect'){res.destroy();return}
+  if(synthetic.kind==='preview_mismatch')return json(res,200,{
+   revisionId:rid,editableCopy:'Untrusted bytes',imageDataUrl:preview,
+   renditionDigest:'sha256:untrusted-mismatch',offlineOnly:true
+  });
+  return json(res,synthetic.status,{message:synthetic.message});
+ }
+ if(method==='POST')state.requestLog.push({method,path,actor:actor.userId,
+  recordedAt:'2026-11-21T00:00:00Z'});
  if(is('GET','/marketing/me'))return json(res,200,actor);
  if(is('GET','/marketing/overview'))return json(res,200,{campaigns:1,objectives:1,offlineOnly:1});
  if(is('GET','/marketing/agents'))return json(res,200,[]);
@@ -127,19 +140,6 @@ const server=createServer(async(req,res)=>{
    steps:[{stepKey:'research',status:'COMPLETED'}],agentProofs:[],
    requiredOperatorAction:'Inspect offline run; never automatically replay'
   });
- if(fault&&fault.path===path&&fault.method===method){
-  const synthetic=fault;fault=null;
-  if(synthetic.kind==='disconnect'){res.destroy();return}
-  if(synthetic.kind==='preview_mismatch')return json(res,200,{
-   revisionId:rid,editableCopy:'Untrusted bytes',imageDataUrl:preview,
-   renditionDigest:'sha256:untrusted-mismatch',offlineOnly:true
-  });
-  return json(res,synthetic.status,{message:synthetic.message});
- }
- if(method==='POST')state.requestLog.push({method,path,actor:actor.userId,
-  recordedAt:'2026-11-21T00:00:00Z'});
- if(!isManager && method!=='GET')return json(res,403,{message:'Role denied in browser fixture'});
- let body={};if(method==='POST')try{body=await read(req)}catch{return json(res,413,{message:'Bounded fixture body'})}
  if(is('POST','/marketing/sessions/revoke'))return json(res,200,{revoked:true});
  if(is('POST','/marketing/objectives'))return json(res,200,{id:'objective-e2e',name:body.name});
  if(is('POST','/marketing/workflows'))return json(res,200,{workflowExecutionId:'workflow-e2e',output:{campaign:{campaignId:jid}}});
