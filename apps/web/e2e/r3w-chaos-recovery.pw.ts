@@ -107,8 +107,8 @@ test('T01-025 failed foreign campaign lookup retains only explicitly loaded tena
  await login(page);await studio(page);await journey(page);
  await page.getByRole('textbox',{name:'Tenant campaign ID'}).fill('foreign-private-campaign');
  await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
- await expect(page.getByRole('alert').filter({hasText:'Unsupported simulated route'})).toBeVisible();
- await expect(page.getByText(/Loaded campaign:/)).toContainText('Chromium-only scientific campaign');
+ await expect(page.locator('details[aria-label="Complete offline campaign journey workspace"]').getByRole('alert').filter({hasText:'Unsupported simulated route'})).toBeVisible();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('Chromium-only scientific campaign');
  await expect(page.getByText('Separate tenant campaign fixture')).toHaveCount(0);
 });
 test('T01-026 switching to another campaign clears prior asset and approval affordances',async({page})=>{
@@ -117,7 +117,7 @@ test('T01-026 switching to another campaign clears prior asset and approval affo
  await journey(page,'campaign-alt-e2e');
  await expect(page.getByText(/Revision revision-e2e/)).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Prepare governed publication intent'})).toBeDisabled();
- await expect(page.getByText(/Loaded campaign:/)).toContainText('Separate tenant campaign fixture');
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('Separate tenant campaign fixture');
 });
 test('T01-027 revoked server session rejects reinstalled stolen encrypted cookie',async({page,request})=>{
  await login(page);
@@ -353,7 +353,7 @@ test('T13-005 recovery panel exposes no automatic replay or release certificatio
  await login(page);
  await page.getByRole('textbox',{name:'Offline workflow execution ID'}).fill('workflow-e2e');
  await page.getByRole('button',{name:'Inspect recovery ledger'}).click();
- await expect(page.getByText(/Automatic replay:/)).toContainText('prohibited');
+ await expect(page.getByText('Automatic replay:',{exact:true}).locator('..')).toContainText('prohibited');
  await expect(page.getByText(/Signature trusted: false/)).toBeVisible();
  expect((await state(request)).requestLog.filter((x:any)=>x.method==='POST'&&x.path.includes('resume'))).toHaveLength(0);
 });
