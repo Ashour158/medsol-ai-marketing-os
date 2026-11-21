@@ -21,7 +21,7 @@ export default function OfflineDagGraphEditor({json,onChange}:{
  const [error,setError]=useState("");
  const parsed=useMemo(()=>{
   try{return{value:readOfflineEditorManifest(json),error:""};}
-  catch(e){return{value:null,error:e instanceof Error?e.message:"Invalid JSON";}}
+  catch(e){return{value:null,error:e instanceof Error?e.message:"Invalid JSON"};}
  },[json]);
  useEffect(()=>{
   let active=true;
