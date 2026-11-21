@@ -62,7 +62,7 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
      typeof x.snippet!=="string"||x.snippet.length>480||
      !safeForAgentEvidence(x.snippet)||
      !citationPart(x.documentId)||!citationPart(x.chunkId)||
-     !new RegExp("^kb:"+x.documentId+":\\\\d+:"+String(x.chunkDigest).slice(7,19)+"$").test(String(x.citationRef)))
+     !new RegExp("^kb:"+x.documentId+":\\d+:"+String(x.chunkDigest).slice(7,19)+"$").test(String(x.citationRef)))
    throw new ForbiddenException("Unsafe, expired or unreviewed DAG source");
   refs.push({agentId,documentId:x.documentId as string,
    chunkId:x.chunkId as string,chunkDigest:x.chunkDigest as string,
