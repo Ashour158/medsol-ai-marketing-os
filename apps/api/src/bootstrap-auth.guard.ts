@@ -18,7 +18,7 @@ export class BootstrapAuthGuard implements CanActivate {
   constructor(private readonly db: PrismaService,private readonly roles:TenantRolePolicyService) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    if (req.url?.split('?')[0] === '/health' && req.method === 'GET') return true;
+    if (req.method === 'GET' && ['/health','/readyz'].includes(req.url?.split('?')[0] ?? '')) return true;
     const organizationId = process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
     if (!organizationId) throw new Error('MARKETING_BOOTSTRAP_ORGANIZATION_ID must be configured');
     const bodyTenant = req.body?.organizationId;

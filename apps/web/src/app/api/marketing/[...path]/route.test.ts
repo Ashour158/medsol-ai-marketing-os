@@ -14,7 +14,7 @@ const controllerFile=fileURLToPath(new URL(
   "../../../../../../api/src/main.ts",import.meta.url));
 const endpoints=[...readFileSync(controllerFile,"utf8")
  .matchAll(/@(Get|Post)\('([^']+)'\)/g)]
- .filter(x=>x[2]!=="health"&&!x[2]?.startsWith("marketing/sessions"))
+ .filter(x=>!["health","readyz"].includes(x[2]??"")&&!x[2]?.startsWith("marketing/sessions"))
  .map(x=>({method:x[1]==="Get"?"GET":"POST",
   template:"/"+x[2]!,path:"/"+x[2]!.replace(/:([A-Za-z]+)/g,(_,key:string)=>
    key==="kind"?"BRAIN_STALE":"id-acceptance")}));
@@ -65,7 +65,7 @@ afterEach(()=>vi.unstubAllGlobals());
 afterAll(()=>{process.env={...initial};});
 describe("R3-U authenticated web boundary contract across actual API inventory",()=>{
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
-  // 146 API routes minus health and the two dedicated OIDC session endpoints.
+  // 147 API routes minus the two public readiness probes and the two OIDC session endpoints.
   expect(endpoints).toHaveLength(143);
   const transport=mockUpstream();
   for(const {path,method,template} of endpoints){
