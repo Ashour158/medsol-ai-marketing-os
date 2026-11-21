@@ -32,7 +32,7 @@ const ctx=(req:unknown):any=>({switchToHttp:()=>({getRequest:()=>req})});
 let guard:BootstrapAuthGuard,sessionA:string,sessionB:string;
 let privateKey:Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
 async function signedToken(input:{oid?:string;organizationId?:unknown;scope?:string;
- audience?:string;issuer?:string;includeOrg?:boolean;expires?:string}={}):Promise<string>{
+ audience?:string;issuer?:string;includeOrg?:boolean;expires?:string|number}={}):Promise<string>{
  const claims:Record<string,unknown>={tid:tenant,oid:input.oid??oidA,
   scp:input.scope??'marketing'};
  if(input.includeOrg!==false)claims.marketing_org_id=
@@ -117,7 +117,7 @@ describe.skipIf(!enabled)('T1C actual signed tenant JWT + real PostgreSQL IAM se
  });
  it('disallows an expired signed token before database authentication',async()=>{
   await expect(guard.canActivate(ctx(req(
-   await signedToken({expires:'-10s'}),orgA,sessionA)))).rejects.toThrow('Invalid or expired');
+   await signedToken({expires:Math.floor(Date.now()/1000)-20}),orgA,sessionA)))).rejects.toThrow('Invalid or expired');
  });
  it('denies a revoked server session despite a still-valid signed token',async()=>{
   const sessions=new AuthSessionService(db as any);
