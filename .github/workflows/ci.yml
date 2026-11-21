@@ -164,6 +164,41 @@ jobs:
         run: node --test scripts/quality/r3y-real-stack-evidence.test.mjs
       - name: Bind R3-Y real browser passes to same-run non-bypass RLS and no-provider preflight
         run: node scripts/quality/r3y-real-stack-evidence.mjs --input apps/web/r3y-playwright-report/r3y-results.json --output r3y-real-stack-evidence.json
+      - name: Validate T1E staging configuration and dry-run operator provisioning with no external contact
+        env:
+          MARKETING_R3Y_STAGING_CI_ONLY: '1'
+          MARKETING_DISPOSABLE_OIDC_CI_ONLY: '1'
+          MARKETING_T1E_STAGING_CI_ONLY: '1'
+          MARKETING_DEPLOYMENT_ENV: staging
+          MARKETING_IDENTITY_PROVIDER: STAGING_OIDC
+          MARKETING_STAGING_OIDC_ENABLED: OFFLINE_OPERATOR_TEST_ONLY
+          MARKETING_AUTH_MODE: oidc
+          MARKETING_TENANT_RESOLUTION_MODE: SIGNED_OIDC_CLAIM
+          MARKETING_EXTERNAL_EFFECTS_ENABLED: 'false'
+          MARKETING_AI_REASONING_ENABLED: 'false'
+          MARKETING_REAL_EMAIL_ENABLED: 'false'
+          MARKETING_OIDC_ISSUER: https://127.0.0.1:3215
+          MARKETING_STAGING_OIDC_TRUSTED_ISSUER: https://127.0.0.1:3215
+          MARKETING_OIDC_JWKS_URL: https://127.0.0.1:3215/.well-known/jwks.json
+          MARKETING_OIDC_CLIENT_ID: r3y-disposable-browser
+          MARKETING_OIDC_AUDIENCE: api://medsol-r3y
+          MARKETING_STAGING_OIDC_CLIENT_SECRET: r3y-disposable-client-secret-ci-only
+          MARKETING_PUBLIC_ORIGIN: https://127.0.0.1:3443
+          MARKETING_API_INTERNAL_URL: http://127.0.0.1:3210
+        run: |
+          export MARKETING_SESSION_SECRET="$(node -p "require('node:crypto').randomBytes(32).toString('base64url')")"
+          node apps/api/scripts/t1e-staging-preflight.mjs --output t1e-staging-config-evidence.json
+          node apps/api/scripts/t1e-provision-operator.mjs --tenant r3y-tenant-a --subject ci-opaque-operator --name CiOperator --email ci-test@example.invalid --role VIEWER > t1e-provision-dryrun.json
+      - name: Preserve T1E configuration preflight and read-only operator provision proposal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-t1e-staging-config-preflight-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            t1e-staging-config-evidence.json
+            t1e-provision-dryrun.json
       - name: Provision additional CI-only T1E operator identities in canonical User table
         env:
           MARKETING_R3Y_STAGING_CI_ONLY: '1'
