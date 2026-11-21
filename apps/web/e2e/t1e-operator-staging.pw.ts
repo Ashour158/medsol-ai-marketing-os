@@ -11,12 +11,11 @@ const actor=(persona:Persona)=>'t1e-stage-'+persona;
 async function login(page:Page,persona:Persona='admin'){
  // This selects a CI-disposable issuer fixture identity; real self-hosted
  // staging must authenticate real operators (no such selector in the app).
- if(persona!=='admin')
-  await page.route('**/authorize?**',async route=>{
-   const url=new URL(route.request().url());
-   url.searchParams.set('login_hint',persona);
-   await route.continue({url:url.href});
-  });
+ // Select one synthetic individual in the isolated CI IdP, not via an
+ // application query, browser trust header or public operator account.
+ const pick=await page.request.post(ctl+'/__select-persona?persona='+persona);
+ expect(pick.status()).toBe(200);
+ expect((await pick.json()).disposableCiOnly).toBe(true);
  await page.goto('/api/auth/login');
  await expect(page).toHaveURL(frontend+'/');
  await page.getByRole('button',{name:'Load authenticated workspace'}).click();
