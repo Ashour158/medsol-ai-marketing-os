@@ -15,7 +15,9 @@ const base={
  MARKETING_BOOTSTRAP_ORGANIZATION_ID:'r3y-tenant-a',
  MARKETING_ENTRA_TENANT_ID:tenant,
  MARKETING_ENTRA_API_SCOPE:'api://medsol-r3y/marketing',
- MARKETING_OIDC_ISSUER:'https://login.microsoftonline.com/'+tenant+'/v2.0',
+ MARKETING_OIDC_ISSUER:'https://127.0.0.1:3215',
+ MARKETING_DISPOSABLE_OIDC_CI_ONLY:'1',
+ MARKETING_OFFLINE_OIDC_CLIENT_SECRET:'r3y-disposable-client-secret-ci-only',
  MARKETING_OIDC_AUDIENCE:'api://medsol-r3y',
  MARKETING_AUTH_MODE:'oidc',
  MARKETING_REQUIRE_TENANT_ROLE:'false',
@@ -51,6 +53,7 @@ export default defineConfig({
    env:{...process.env,...base,NODE_ENV:'production',
     MARKETING_SESSION_SECRET:browserOnlyKey,
     MARKETING_API_INTERNAL_URL:'http://127.0.0.1:3210',
+    NODE_EXTRA_CA_CERTS:'/tmp/medsol-r3y-jwks/cert.pem',
     MARKETING_PUBLIC_ORIGIN:origin,
     MARKETING_OIDC_CLIENT_ID:'r3y-disposable-browser'
    }},
