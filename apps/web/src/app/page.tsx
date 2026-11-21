@@ -11,6 +11,7 @@ import KnowledgeFabricStudio from "./knowledge-fabric-studio";
 import MemoryGraphStudio from "./memory-graph-studio";
 import R3AcceptanceStudio from "./r3-release-acceptance-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
+import AgentReleaseStudio from "./agent-release-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 
@@ -131,6 +132,7 @@ export default function Home() {
     <CampaignPublicationStudio identity={identity}/>
     <SyntheticEmailStudio identity={identity}/>
     <GovernedToolRegistryStudio identity={identity}/>
+    <AgentReleaseStudio identity={identity}/>
     <ProviderContractTrialStudio identity={identity}/>
     <IntegrationGovernanceStudio identity={identity}/>
     <OperationsConsole identity={identity} onRunSelected={id => {

@@ -42,6 +42,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'READ_PORTFOLIO';
   if(method==='POST'&&/^\/marketing\/media\/evidence\/[A-Za-z0-9_-]+\/verify-offline$/.test(path))
    return 'MANAGE_CAMPAIGN';
+  if(method==='GET'&&/^\/marketing\/agents\/manifests\/baseline\/[A-Za-z0-9_-]+$/.test(path))
+   return 'READ_TENANCY';
   if(method==='GET'&&path==='/marketing/agents/manifests')return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/agents/manifests'||
     /^\/marketing\/agents\/manifests\/[^/]+\/(approve|activate|revoke|rollback)$/.test(path)))

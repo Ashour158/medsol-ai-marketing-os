@@ -60,6 +60,25 @@ export class AgentManifestReleaseService{
    revokedBy:row.revokedBy,revokedAt:row.revokedAt,
    createdAt:row.createdAt,externalEffectsAuthorized:false as const};
  }
+ /**
+  * Canonical manifest starter. This is the SAME Agent authority as signed release
+  * activation, not a separate agent/skill factory or an alternate owner.
+  */
+ async baseline(organizationId:string,identity:VerifiedIdentity,agentId:unknown){
+  const canonical=agent(agentId);
+  return this.transaction(organizationId,async tx=>{
+   await this.authorize(tx,organizationId,identity);
+   const installed=await tx.agent.findFirst({where:{
+    organizationId,id:canonical.id
+   },select:{version:true,status:true}});
+   return{
+    manifest:baselineAgentReleaseManifest(canonical.id),
+    activeVersion:installed?.version??1,
+    installed:!!installed,agentStatus:installed?.status??'NOT_INSTALLED',
+    signatureRequired:true as const,externalEffectsAuthorized:false as const
+   };
+  });
+ }
  async list(organizationId:string,identity:VerifiedIdentity,agentId?:unknown){
   const match=agentId===undefined?undefined:agent(agentId).id;
   return this.transaction(organizationId,async tx=>{
