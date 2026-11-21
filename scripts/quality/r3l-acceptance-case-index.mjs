@@ -209,11 +209,11 @@ if(verifiedInCi){
   throw new Error('Missing R3-Y actual real-stack browser and role evidence');
  const real=JSON.parse(readFileSync(r3yPath,'utf8'));
  const role=JSON.parse(readFileSync(rolePath,'utf8'));
- const ids=[...r3yCases].sort();
+ const r3yExpectedIds=[...r3yCases].sort();
  if(real.schema!=='medsol-r3y-real-stack-actual-browser-evidence-v1'||
     real.runId!==process.env.GITHUB_RUN_ID||real.releaseVerdict!=='NOT_CERTIFIED'||
     real.actualPassedRealStackCases!==19||!Array.isArray(real.caseIds)||
-    JSON.stringify(real.caseIds)!==JSON.stringify(ids)||
+    JSON.stringify(real.caseIds)!==JSON.stringify(r3yExpectedIds)||
     real.database!=='real_migrated_postgres_non_bypassrls_app_role'||
     real.api!=='compiled_real_nest_server'||real.runtimeRoleVerified!==true||
     real.independentOperatorSignatures!==0||real.realEntraProviderConnected!==false||
