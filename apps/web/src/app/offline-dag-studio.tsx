@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import OfflineDagGraphEditor from "./offline-dag-graph-editor";
+import OfflineDagRunInspector from "./offline-dag-run-inspector";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Release={id:string;blueprintId:string;revision:number;digest:string;
  status:string;canaryPercent:number;stepCount:number;signatureTrusted:boolean;
@@ -26,6 +27,8 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
  const [market,setMarket]=useState("");
  const [runKey,setRunKey]=useState("");
  const [runId,setRunId]=useState("");
+ const [lookupRunId,setLookupRunId]=useState("");
+ const [runRefreshKey,setRunRefreshKey]=useState(0);
  const [runState,setRunState]=useState<unknown>(null);
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
@@ -156,20 +159,35 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
      const key=runKey||crypto.randomUUID();if(!runKey)setRunKey(key);
      const result=await call("runs",{blueprintId,requestKey:key,objective,market}) as
       {workflowExecutionId:string|null;status:string};
-     if(result.workflowExecutionId)setRunId(result.workflowExecutionId);
+     if(result.workflowExecutionId){setRunId(result.workflowExecutionId);setRunRefreshKey(k=>k+1);}
      setRunState(result);
     })}>Launch canary-assigned run</button>
    <button disabled={busy||!runId} style={button}
-    onClick={()=>void task(async()=>setRunState(await call(
-     "runs/"+encodeURIComponent(runId)+"/tick",{})))}>Advance bounded steps</button>
+    onClick={()=>void task(async()=>{
+      setRunState(await call("runs/"+encodeURIComponent(runId)+"/tick",{}));
+      setRunRefreshKey(k=>k+1);
+     })}>Advance bounded steps</button>
    <button disabled={busy||!runId} style={{...button,background:"#64748b"}}
     onClick={()=>void task(async()=>{
      const response=await fetch("/api/marketing/workflows/"+encodeURIComponent(runId),
       {cache:"no-store",credentials:"same-origin"});
      if(!response.ok)throw new Error("Unable to retrieve canonical workflow ledger");
      setRunState(await response.json() as unknown);
+     setRunRefreshKey(k=>k+1);
     })}>Inspect full ledger</button>
   </div>
+  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"end",marginTop:14}}>
+   <label style={{fontSize:12,flex:"1 1 240px"}}>Inspect existing canonical offline run ID
+    <input aria-label="Inspect existing offline workflow ID" style={field}
+     value={lookupRunId} onChange={e=>setLookupRunId(e.target.value.trim())}
+     placeholder="Paste a tenant-owned workflow ID"/></label>
+   <button style={{...button,background:"#475569"}}
+    disabled={busy||!/^[a-zA-Z0-9_-]{1,160}$/.test(lookupRunId)}
+    onClick={()=>{setRunId(lookupRunId);setRunRefreshKey(k=>k+1);}}>
+    Open offline workflow timeline</button>
+  </div>
+  {runId&&<OfflineDagRunInspector runId={runId} identity={identity}
+   refreshKey={runRefreshKey}/>}
   {runId&&<p style={{fontSize:12,overflowWrap:"anywhere"}}>
    Run ID: <strong>{runId}</strong>. When waiting, use the existing
    approval inbox with a different authorized reviewer; then advance again.
