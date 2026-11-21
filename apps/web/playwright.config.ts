@@ -18,7 +18,8 @@ export default defineConfig({
  retries:0,
  timeout:35000,
  expect:{timeout:10000},
- reporter:[['list'],['html',{open:'never',outputFolder:'playwright-report'}]],
+ reporter:[['list'],['html',{open:'never',outputFolder:'playwright-report'}],
+  ['json',{outputFile:'playwright-report/r3w-results.json'}]],
  outputDir:'test-results',
  use:{
   ...devices['Desktop Chrome'],browserName:'chromium',

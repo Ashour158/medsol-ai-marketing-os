@@ -81,33 +81,46 @@ jobs:
           path: r3n-rls-inventory.json
       - name: Build production Next frontend for real-browser acceptance
         run: pnpm --filter @medsol/web build
-      - name: Install Chromium for R3-V real-browser acceptance
+      - name: Install Chromium for R3-W browser fault and role acceptance
         run: pnpm --filter @medsol/web exec playwright install --with-deps chromium
-      - name: Run 17 Chromium browser journeys with local-only synthetic API and encrypted session
+      - name: Run 51 Chromium browser journeys with local-only synthetic API and encrypted session
         run: pnpm --filter @medsol/web test:browser
-      - name: Preserve R3-V Chromium browser traces and HTML report
+      - name: Preserve R3-W Chromium browser traces, JSON evidence and HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3v-chromium-browser-report-${{ github.run_id }}
+          name: medsol-r3w-chromium-browser-report-${{ github.run_id }}
           retention-days: 14
           if-no-files-found: warn
           path: |
             apps/web/test-results/
             apps/web/playwright-report/
-      - name: Validate 194 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
+      - name: Reject forged, skipped, flaky, retried or missing Chromium execution results
+        run: node --test scripts/quality/r3w-browser-evidence.test.mjs
+      - name: Generate same-run actual Chromium execution manifest from Playwright JSON
+        run: node scripts/quality/r3w-browser-evidence.mjs --input apps/web/playwright-report/r3w-results.json --output r3w-browser-evidence.json
+      - name: Validate 228 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
         env:
           MARKETING_R3U_TEST_GATE_PASSED: 'true'
           MARKETING_R3V_BROWSER_GATE_PASSED: 'true'
-        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3v-chromium-acceptance-evidence.json
-      - name: Upload R3-V Chromium browser non-certifying 500-case evidence coverage
+          MARKETING_R3W_BROWSER_GATE_PASSED: 'true'
+        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3w-chaos-acceptance-evidence.json
+      - name: Upload R3-W Chromium chaos and non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3v-chromium-acceptance-evidence-${{ github.run_id }}
+          name: medsol-r3w-chaos-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: r3v-chromium-acceptance-evidence.json
+          path: r3w-chaos-acceptance-evidence.json
+      - name: Upload actual per-case Playwright execution manifest (non-certifying)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-r3w-chromium-runtime-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: r3w-browser-evidence.json
       - name: Reject forged production certification and fake independent 500-case signatures
         run: node --test scripts/quality/production-release-certification.test.mjs
       - name: Disposable PostgreSQL backup and restore rehearsal (not production DR certification)
