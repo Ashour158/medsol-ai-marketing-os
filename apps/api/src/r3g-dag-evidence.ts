@@ -12,6 +12,8 @@ const key=(x:unknown)=>typeof x==="string"&&/^[A-Za-z0-9:_-]{8,160}$/.test(x);
 const citation=(x:unknown,prefix:string)=>typeof x==="string"&&
  x.startsWith(prefix+":")&&x.length<=220&&!/[\s<>]/.test(x);
 const field=(x:unknown)=>typeof x==="string"&&x.length>0;
+const citationPart=(x:unknown)=>typeof x==="string"&&/^[A-Za-z0-9:_-]{8,160}$/.test(x);
+const boundedUnique=(items:readonly string[])=>new Set(items).size===items.length;
 const record=(x:unknown):Record<string,unknown>=>{
  if(!x||typeof x!=="object"||Array.isArray(x))
   throw new ForbiddenException("Invalid governed knowledge evidence");
@@ -46,10 +48,11 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
     data.graphTruthVerified!==false||
     data.retrievalMethod!=="POSTGRES_FULL_TEXT_PLUS_LOCAL_SPARSE_VECTOR"||
     !Array.isArray(data.results)||!Array.isArray(data.memories)||
-    data.results.length>3||data.memories.length>8)
+    data.results.length>3||data.memories.length>8||
+    data.results.length+data.memories.length===0)
   throw new ForbiddenException("Governed agent knowledge provenance required");
  const refs:DagEvidenceRef[]=[];
- const sourceExcerpts= data.results.slice(0,2).map(untrusted=>{
+ const sourceExcerpts= data.results.map(untrusted=>{
   const x=record(untrusted);
   if(!key(x.documentId)||!key(x.chunkId)||!digest(x.sourceDigest)||
      !digest(x.chunkDigest)||!citation(x.citationRef,"kb")||
@@ -57,7 +60,9 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
      x.untrustedSourceText!==true||x.externalEffectsAuthorized!==false||
      !expiry(x.expiresAt,now)||!field(x.sourceTitle)||
      typeof x.snippet!=="string"||x.snippet.length>480||
-     !safeForAgentEvidence(x.snippet))
+     !safeForAgentEvidence(x.snippet)||
+     !citationPart(x.documentId)||!citationPart(x.chunkId)||
+     !new RegExp("^kb:"+x.documentId+":\\d+:"+String(x.chunkDigest).slice(7,19)+"$").test(String(x.citationRef)))
    throw new ForbiddenException("Unsafe, expired or unreviewed DAG source");
   refs.push({agentId,documentId:x.documentId as string,
    chunkId:x.chunkId as string,chunkDigest:x.chunkDigest as string,
@@ -69,14 +74,16 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
    chunkDigest:x.chunkDigest as string,
    sourceTitle:(x.sourceTitle as string).slice(0,120)};
  });
- const reviewedMemories=data.memories.slice(0,4).map(untrusted=>{
+ const reviewedMemories=data.memories.map(untrusted=>{
   const x=record(untrusted);
   if(!key(x.documentId)||!key(x.memoryId)||
      !digest(x.sourceDigest)||!digest(x.contentDigest)||
      !citation(x.citationRef,"km")||x.humanReviewed!==true||
      x.independentlyVerified!==false||x.externalEffectsAuthorized!==false||
      !expiry(x.expiresAt,now)||typeof x.text!=="string"||
-     x.text.length>1200||!safeForAgentEvidence(x.text))
+     x.text.length>1200||!safeForAgentEvidence(x.text)||
+     !citationPart(x.documentId)||!citationPart(x.memoryId)||
+     x.citationRef!=="km:"+x.memoryId+":"+String(x.contentDigest).slice(7,19))
    throw new ForbiddenException("Unsafe, unreviewed or expired DAG agent memory");
   refs.push({agentId,documentId:x.documentId as string,
    memoryId:x.memoryId as string,memoryDigest:x.contentDigest as string,
@@ -87,8 +94,12 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
    memoryDigest:x.contentDigest as string,
    sourceDigest:x.sourceDigest as string};
  });
+ if(!boundedUnique(refs.map(x=>x.chunkId??x.memoryId??''))||
+    !boundedUnique([...sourceExcerpts.map(x=>x.citationRef),
+     ...reviewedMemories.map(x=>x.citationRef)]))
+  throw new ForbiddenException('Duplicated governed evidence citation');
  return{context:{retrievalMethod:"POSTGRES_FULL_TEXT_PLUS_LOCAL_SPARSE_VECTOR",
-  sourceExcerpts,reviewedMemories,untrustedDataNotInstructions:true,
+  sourceExcerpts:sourceExcerpts.slice(0,2),reviewedMemories:reviewedMemories.slice(0,4),untrustedDataNotInstructions:true,
   independentlyVerified:false,agentMemoryWritesAllowed:false,
   externalEffectsAuthorized:false},refs};
 }
@@ -98,8 +109,9 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
  */
 export async function assertDagEvidenceCurrent(tx:Prisma.TransactionClient,
  org:string,refs:unknown):Promise<void>{
- if(!Array.isArray(refs)||refs.length>6)
+ if(!Array.isArray(refs)||refs.length<1||refs.length>11)
   throw new ConflictException("DAG evidence references malformed");
+ const seen=new Set<string>();
  for(const untrusted of refs){
   const ref=record(untrusted);
   if(!key(ref.documentId)||!key(ref.agentId)||
@@ -108,6 +120,10 @@ export async function assertDagEvidenceCurrent(tx:Prisma.TransactionClient,
      (ref.chunkId&&!digest(ref.chunkDigest))||
      (ref.memoryId&&!digest(ref.memoryDigest)))
    throw new ConflictException("Untrusted DAG citation reference");
+  const evidenceId=String(ref.chunkId??ref.memoryId);
+  if(seen.has(evidenceId))
+   throw new ConflictException('Duplicate DAG evidence reference');
+  seen.add(evidenceId);
   const doc=await tx.knowledgeDocument.findFirst({where:{
    id:ref.documentId as string,organizationId:org,status:"REVIEWED",
    accessMode:"AGENT_SCOPED",agentScope:{has:ref.agentId as string},
