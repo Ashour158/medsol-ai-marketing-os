@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {verifySignedOperatorJourney} from './t1f-signed-operator-evidence.mjs';
 const id='123456',commit='a'.repeat(40);
 const source=Array.from({length:5},(_,i)=>
- "test('T1F-"+String(i+1).padStart(3,'0')+" case', async()=>{});").join('\n');
+ "test('T17-"+String(i+1).padStart(3,'0')+" case', async()=>{});").join('\n');
 const raw=x=>JSON.stringify(x);
 function good(){
  return{
   suites:[{title:'t1f-signed-operator-journey.pw.ts',
    specs:Array.from({length:5},(_,i)=>({
-    title:'T1F-'+String(i+1).padStart(3,'0')+' case',ok:true,
+    title:'T17-'+String(i+1).padStart(3,'0')+' case',ok:true,
     tests:[{status:'expected',results:[{status:'passed',retry:0,
      duration:i*150+10}]}]
    }))}],
@@ -50,7 +50,7 @@ test('T1F evidence rejects skipped, retried, missing and duplicate browser cases
  assert.throws(()=>verify(duplicate),/browser execution failed/);
 });
 test('T1F requires exact source cases, duration, same-run RLS and no external provider access',()=>{
- assert.throws(()=>verify(good(),source.replace('T1F-003','T1F-009')),
+ assert.throws(()=>verify(good(),source.replace('T17-003','T17-009')),
   /immutable T1F/);
  const noDuration=good();delete noDuration.suites[0].specs[0].tests[0].results[0].duration;
  assert.throws(()=>verify(noDuration),/duration absent/);
