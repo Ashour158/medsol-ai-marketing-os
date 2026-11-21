@@ -122,21 +122,64 @@ jobs:
         run: node --test scripts/quality/r3w-browser-evidence.test.mjs
       - name: Generate same-run actual Chromium execution manifest from Playwright JSON
         run: node scripts/quality/r3w-browser-evidence.mjs --input apps/web/playwright-report/r3w-results.json --output r3w-browser-evidence.json
-      - name: Validate 265 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
+      - name: Build compiled Nest API for real-stack staging acceptance
+        run: pnpm --filter @medsol/api build
+      - name: Prepare TLS-only local JWKS, disposable identities and NON-BYPASSRLS runtime database role
+        env:
+          MARKETING_R3Y_STAGING_CI_ONLY: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/medsol-r3y-jwks
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/medsol-r3y-jwks/key.pem -out /tmp/medsol-r3y-jwks/cert.pem -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' >/dev/null 2>&1
+          chmod 600 /tmp/medsol-r3y-jwks/key.pem
+          export PGPASSWORD=marketing_test_password
+          psql -X -v ON_ERROR_STOP=1 -h localhost -p 5432 -U marketing_test -d marketing_test <<'SQL'
+          CREATE ROLE marketing_r3y_runtime LOGIN PASSWORD 'r3y_disposable_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;
+          GRANT CONNECT ON DATABASE marketing_test TO marketing_r3y_runtime;
+          GRANT USAGE ON SCHEMA public TO marketing_r3y_runtime;
+          GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO marketing_r3y_runtime;
+          GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO marketing_r3y_runtime;
+          SQL
+          node apps/api/e2e/fixtures/r3y-seed.mjs
+      - name: Prove runtime PostgreSQL application user has no bypass role and real per-tenant RLS
+        env:
+          MARKETING_R3Y_STAGING_CI_ONLY: '1'
+          DATABASE_URL: postgresql://marketing_r3y_runtime:r3y_disposable_password@localhost:5432/marketing_test?schema=public
+        run: node scripts/quality/r3y-runtime-role-proof.mjs --output r3y-runtime-role-evidence.json
+      - name: Run 19 Chromium cases with compiled Nest API, PostgreSQL, signed loopback JWKS and production-built Next
+        run: pnpm --filter @medsol/web exec playwright test --config playwright.staging.config.ts
+      - name: Verify R3-Y actual real-stack browser report and local signed-OIDC provenance
+        run: node --test scripts/quality/r3y-real-stack-evidence.test.mjs
+      - name: Bind R3-Y real browser passes to same-run non-bypass RLS and no-provider preflight
+        run: node scripts/quality/r3y-real-stack-evidence.mjs --input apps/web/r3y-playwright-report/r3y-results.json --output r3y-real-stack-evidence.json
+      - name: Upload R3-Y real-stack Chromium traces, role proof and non-certifying manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-r3y-real-stack-staging-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            apps/web/r3y-playwright-report/
+            apps/web/r3y-test-results/
+            r3y-runtime-role-evidence.json
+            r3y-real-stack-evidence.json
+      - name: Validate 284 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
         env:
           MARKETING_R3U_TEST_GATE_PASSED: 'true'
           MARKETING_R3V_BROWSER_GATE_PASSED: 'true'
           MARKETING_R3W_BROWSER_GATE_PASSED: 'true'
           MARKETING_R3X_POSTGRES_GATE_PASSED: 'true'
-        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3x-cross-engine-acceptance-evidence.json
-      - name: Upload R3-X cross-engine CI-only, non-certifying 500-case evidence coverage
+          MARKETING_R3Y_REAL_STACK_GATE_PASSED: 'true'
+        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3y-real-stack-acceptance-evidence.json
+      - name: Upload R3-Y real-stack CI-only, non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3x-cross-engine-acceptance-evidence-${{ github.run_id }}
+          name: medsol-r3y-real-stack-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: r3x-cross-engine-acceptance-evidence.json
+          path: r3y-real-stack-acceptance-evidence.json
       - name: Upload actual per-case Playwright execution manifest (non-certifying)
         if: always()
         uses: actions/upload-artifact@v4
