@@ -61,7 +61,8 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
      !expiry(x.expiresAt,now)||!field(x.sourceTitle)||
      typeof x.snippet!=="string"||x.snippet.length>480||
      !safeForAgentEvidence(x.snippet)||
-     !citationPart(x.documentId)||!citationPart(x.chunkId))
+     !citationPart(x.documentId)||!citationPart(x.chunkId)||
+     !new RegExp("^kb:"+x.documentId+":\\\\d+:"+String(x.chunkDigest).slice(7,19)+"$").test(String(x.citationRef)))
    throw new ForbiddenException("Unsafe, expired or unreviewed DAG source");
   refs.push({agentId,documentId:x.documentId as string,
    chunkId:x.chunkId as string,chunkDigest:x.chunkDigest as string,
@@ -81,7 +82,8 @@ export function curateDagEvidence(raw:unknown,agentId:string,now=Date.now()):
      x.independentlyVerified!==false||x.externalEffectsAuthorized!==false||
      !expiry(x.expiresAt,now)||typeof x.text!=="string"||
      x.text.length>1200||!safeForAgentEvidence(x.text)||
-     !citationPart(x.documentId)||!citationPart(x.memoryId))
+     !citationPart(x.documentId)||!citationPart(x.memoryId)||
+     x.citationRef!=="km:"+x.memoryId+":"+String(x.contentDigest).slice(7,19))
    throw new ForbiddenException("Unsafe, unreviewed or expired DAG agent memory");
   refs.push({agentId,documentId:x.documentId as string,
    memoryId:x.memoryId as string,memoryDigest:x.contentDigest as string,
