@@ -64,7 +64,7 @@ describe("T3D signed DAG governed knowledge packet",()=>{
    chunkId:"chunk-123",memoryId:"memory-123",
    chunkDigest:sha,memoryDigest:sha
   }])).rejects.toThrow("Untrusted");
-  await expect(assertDagEvidenceCurrent(tx,"tenant-a",Array(7).fill({})))
+  await expect(assertDagEvidenceCurrent(tx,"tenant-a",Array(12).fill({})))
    .rejects.toThrow("malformed");
   const x=good();x.results=Array(4).fill(x.results[0]);
   expect(()=>curateDagEvidence(x,agent)).toThrow("provenance");
