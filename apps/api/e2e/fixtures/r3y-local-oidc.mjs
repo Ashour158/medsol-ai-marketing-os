@@ -50,12 +50,17 @@ const json=(res,status,data)=>{res.writeHead(status,{
  'pragma':'no-cache','x-content-type-options':'nosniff'});
  res.end(JSON.stringify(data));};
 const reject=(res,reason)=>json(res,400,{error:'invalid_request',reason});
-const accessToken=async(oid)=>new SignJWT({tid:tenant,oid,scp:scope,ver:'2.0'})
+const staged=process.env.MARKETING_T1E_STAGING_CI_ONLY==='1';
+const orgFor=(oid)=>oid===people.foreign?'r3y-tenant-b':'r3y-tenant-a';
+const stageClaims=(oid)=>staged?{sub:'disposable-r3y-'+oid,
+ marketing_org_id:orgFor(oid)}:{};
+const accessToken=async(oid)=>new SignJWT({tid:tenant,oid,scp:scope,ver:'2.0',
+ ...stageClaims(oid)})
  .setProtectedHeader({alg:'RS256',kid,typ:'JWT'})
  .setIssuer(issuer).setAudience(audience).setIssuedAt().setExpirationTime('15m')
  .sign(kp.privateKey);
 const identityToken=async(oid,nonce)=>new SignJWT({tid:tenant,oid,
-  nonce,sub:'disposable-r3y-'+oid,ver:'2.0'})
+  nonce,sub:'disposable-r3y-'+oid,ver:'2.0',...stageClaims(oid)})
  .setProtectedHeader({alg:'RS256',kid,typ:'JWT'})
  .setIssuer(issuer).setAudience(clientId).setIssuedAt().setExpirationTime('15m')
  .sign(kp.privateKey);
@@ -79,7 +84,7 @@ const tls=httpsServer({
    !/^[A-Za-z0-9_-]{43}$/.test(q.get('code_challenge')??'')||
    !/^[A-Za-z0-9_-]{32,160}$/.test(q.get('state')??'')||
    !/^[A-Za-z0-9_-]{32,160}$/.test(q.get('nonce')??'')||
-   !['openid','api://medsol-r3y/marketing'].every(s=>
+   !['openid',staged?'marketing':'api://medsol-r3y/marketing'].every(s=>
     (q.get('scope')??'').split(' ').includes(s)))
    return reject(res,'OIDC request invalid');
   const code=randomBytes(30).toString('base64url');
