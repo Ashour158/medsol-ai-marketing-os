@@ -146,6 +146,7 @@ test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creativ
  await signIn(page,'admin');await studio(page);
  const id=await create(page);
  const before=await success(page,'journeys/'+id);
+ const baselineRevisions=before.creativeAssets.map((x:{revisionId:string})=>x.revisionId).sort();
  expect(before.campaignApprovals[0].decision).toBe('PENDING');
  await page.getByRole('button',{name:'Approve campaign as authenticated reviewer'}).click();
  await expect(page.getByRole('alert').filter({hasText:/self-approv|cannot approve/i}))
@@ -162,7 +163,8 @@ test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creativ
  await switchIdentity(page,'admin');await studio(page);await load(page,id);
  const still=await success(page,'journeys/'+id);
  expect(still.campaignApprovals[0].decision).toBe('PENDING');
- expect(still.creativeAssets).toHaveLength(0);
+ expect(still.creativeAssets.map((x:{revisionId:string})=>x.revisionId).sort())
+  .toEqual(baselineRevisions); // denied viewer mutation changed no canonical revision
 });
 test('T17-003 signed foreign tenant cannot read or mutate another organization campaign',async({page})=>{
  await signIn(page,'admin');await studio(page);
