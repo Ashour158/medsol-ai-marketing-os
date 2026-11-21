@@ -79,6 +79,18 @@ export class AgentManifestReleaseService{
    };
   });
  }
+ /** Returns canonical bytes for independent offline signing; no key or permission is granted. */
+ async preview(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  return this.transaction(organizationId,async tx=>{
+   await this.authorize(tx,organizationId,identity);
+   const manifest=parseAgentReleaseManifest(raw);
+   const digest=agentReleaseDigest(manifest);
+   return {manifest,digest,
+    signaturePayload:'medsol-agent-release-signature-v1\n'+digest,
+    signatureAlgorithm:'Ed25519' as const,requiresIndependentReview:true as const,
+    externalEffectsAuthorized:false as const};
+  });
+ }
  async list(organizationId:string,identity:VerifiedIdentity,agentId?:unknown){
   const match=agentId===undefined?undefined:agent(agentId).id;
   return this.transaction(organizationId,async tx=>{

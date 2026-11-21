@@ -7,6 +7,7 @@ describe('Agent Release Studio reuses signed, restrictive domain authority',()=>
  it('authorizes baseline read as TENANT administration, not public access',()=>{
   expect(permissionForMarketingRoute('GET','/marketing/agents/manifests/baseline/MKT-CMO-001')).toBe('READ_TENANCY');
   expect(permissionForMarketingRoute('POST','/marketing/agents/manifests')).toBe('MANAGE_TENANT');
+  expect(permissionForMarketingRoute('POST','/marketing/agents/manifests/preview')).toBe('MANAGE_TENANT');
   expect(permissionForMarketingRoute('POST','/marketing/agents/manifests/rev-1/activate')).toBe('MANAGE_TENANT');
  });
  it('prepares only known offline-review canonical agents',()=>{

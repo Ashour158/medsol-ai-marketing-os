@@ -71,6 +71,9 @@ export function agentReleaseDigest(manifest:AgentReleaseManifest):string{
   v.maxOutputTokens
  ])).digest('hex');
 }
+export function agentReleaseSigningPayload(manifest:AgentReleaseManifest):string{
+ return 'medsol-agent-release-signature-v1\n'+agentReleaseDigest(manifest);
+}
 export function verifyTrustedAgentReleaseSignature(manifest:AgentReleaseManifest,
  signature:string,signerKeyId:string,config:{
  trustedPublicKeyPem?:string|undefined;trustedKeyId?:string|undefined
@@ -83,8 +86,7 @@ export function verifyTrustedAgentReleaseSignature(manifest:AgentReleaseManifest
   if(bytes.length!==64)return false;
   const keyObj=createPublicKey(config.trustedPublicKeyPem);
   if(keyObj.asymmetricKeyType!=='ed25519')return false;
-  return verify(null,Buffer.from('medsol-agent-release-signature-v1\n'+
-   agentReleaseDigest(manifest)),keyObj,bytes);
+  return verify(null,Buffer.from(agentReleaseSigningPayload(manifest)),keyObj,bytes);
  }catch{return false;}
 }
 export const agentReleaseTrustConfig=()=>({
