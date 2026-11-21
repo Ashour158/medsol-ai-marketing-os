@@ -1,6 +1,7 @@
 /** R3-V offline-only browser fixture. No network clients, SDKs or provider credentials.
  * It provides deterministic *UI simulation*, never real API permission or
  * PostgreSQL evidence. Those authorities are separately exercised in CI.
+ * R3-W adds bounded one-shot chaos injection and observable virtual state.
  */
 import {createServer} from 'node:http';
 const identities={
@@ -11,9 +12,11 @@ const identities={
 const initial=()=>({
  campaignApproved:false,creativeApproved:false,creativeExists:false,
  brainRuns:[],learningSignals:[],emailSimulations:[],publications:[],
- contacts:[],consent:false,rightsReviewed:false
+ contacts:[],consent:false,rightsReviewed:false,requestLog:[],
+ externalNetworkRequests:0,realEmailsSent:0,realSocialPosts:0
 });
 let state=initial();
+let fault=null;
 const json=(res,status,body)=>{
  res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});
  res.end(JSON.stringify(body));
@@ -25,11 +28,18 @@ const read=async req=>{
   parts.push(chunk);
  }
  const content=Buffer.concat(parts).toString('utf8');
- try{return content?JSON.parse(content):{}}catch{return {}}
+ try{return content?JSON.parse(content):{}}catch{throw new Error('Malformed JSON request')}
 };
 const jid='campaign-e2e',rid='revision-e2e',aid='approval-e2e';
 const preview='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y+ZGWUAAAAASUVORK5CYII=';
-function journey(){
+function journey(campaignId=jid){
+ if(campaignId!==jid) return {
+  campaign:{id:campaignId,name:'Separate tenant campaign fixture',brandId:'brand-alt',code:'ALT-E2E',status:'DRAFT'},
+  workflow:null,campaignApprovals:[],brainRuns:[],creativeAssets:[],
+  publications:[],emailSimulations:[],learningSignals:[],observations:[],
+  stages:{brief:false,agentResearch:false,creative:false,publicationSimulation:false},
+  auditHistory:[],offlineSimulationOnly:true,externalEffectsAuthorized:false
+ };
  return {
   campaign:{id:jid,name:'Chromium-only scientific campaign',brandId:'brand-e2e',code:'OFFLINE-E2E',status:state.campaignApproved?'APPROVED':'PENDING_APPROVAL'},
   workflow:{id:'workflow-e2e',status:'COMPLETED',currentStep:'AWAIT_HUMAN'},
@@ -55,7 +65,21 @@ const server=createServer(async(req,res)=>{
  const url=new URL(req.url??'/','http://127.0.0.1:3209');
  if(url.pathname==='/__health')return json(res,200,{status:'synthetic_only'});
  if(url.pathname==='/__reset'&&req.method==='POST'){
-  state=initial();return json(res,200,{reset:true});
+  state=initial();fault=null;return json(res,200,{reset:true});
+ }
+ if(url.pathname==='/__state'&&req.method==='GET')
+  return json(res,200,{...state,simulationOnly:true,externalEffectsAuthorized:false});
+ if(url.pathname==='/__fault'&&req.method==='POST'){
+  let body;try{body=await read(req)}catch{return json(res,400,{message:'Bad fixture fault'})}
+  if(typeof body.path!=='string'||!/^\/marketing\/[A-Za-z0-9/_-]{1,256}$/.test(body.path)||
+     !['GET','POST'].includes(body.method)||
+     ![400,401,403,404,409,429,500,502,503].includes(body.status)||
+     !['json','disconnect','preview_mismatch'].includes(body.kind??'json'))
+   return json(res,400,{message:'Unsafe synthetic fault definition'});
+  fault={path:body.path,method:body.method,status:body.status,
+   kind:body.kind??'json',message:typeof body.message==='string'?body.message.slice(0,180):
+    'Synthetic upstream unavailable'};
+  return json(res,200,{armed:true,offlineOnly:true});
  }
  if(!url.pathname.startsWith('/marketing/'))return json(res,404,{error:'Unknown endpoint'});
  const token=(req.headers.authorization??'').replace(/^Bearer /,'');
@@ -84,6 +108,36 @@ const server=createServer(async(req,res)=>{
  if(is('GET','/marketing/brand/active'))return json(res,200,{version:1});
  if(is('GET','/marketing/tenancy/brands'))return json(res,200,[{id:'brand-e2e',name:'Medsol Offline Scientific Brand'}]);
  if(is('GET','/marketing/journeys/'+jid))return json(res,200,journey());
+ if(is('GET','/marketing/journeys/campaign-alt-e2e'))
+  return json(res,200,journey('campaign-alt-e2e'));
+ if(is('GET','/marketing/architecture/readiness'))return json(res,200,{
+  asOf:'2026-11-21T00:00:00.000Z',verdict:'NOT_CERTIFIED',
+  productionExternalEffectsAuthorized:false,counts:{campaigns:1,simulated:1},
+  gates:[{id:'INDEPENDENT_500_E2E',owner:'Independent QA',
+   status:'BLOCKED',evidence:'No independent signoff in disposable browser CI'}],
+  incidentCount:0,requiredAction:'Independent operator acceptance required',
+  certificationCanBeOverriddenByThisReport:false
+ });
+ if(is('GET','/marketing/architecture/runs/workflow-e2e/recovery'))
+  return json(res,200,{
+   workflowExecutionId:'workflow-e2e',status:'NEEDS_REVIEW',
+   evidenceStatus:'OFFLINE_ONLY',automaticReplayAllowed:false,
+   directStepResumeAllowed:false,release:{status:'UNSIGNED',signatureTrusted:false,digest:null},
+   lease:{generation:1,expired:true,leaseHeld:false},
+   steps:[{stepKey:'research',status:'COMPLETED'}],agentProofs:[],
+   requiredOperatorAction:'Inspect offline run; never automatically replay'
+  });
+ if(fault&&fault.path===path&&fault.method===method){
+  const synthetic=fault;fault=null;
+  if(synthetic.kind==='disconnect'){res.destroy();return}
+  if(synthetic.kind==='preview_mismatch')return json(res,200,{
+   revisionId:rid,editableCopy:'Untrusted bytes',imageDataUrl:preview,
+   renditionDigest:'sha256:untrusted-mismatch',offlineOnly:true
+  });
+  return json(res,synthetic.status,{message:synthetic.message});
+ }
+ if(method==='POST')state.requestLog.push({method,path,actor:actor.userId,
+  recordedAt:'2026-11-21T00:00:00Z'});
  if(!isManager && method!=='GET')return json(res,403,{message:'Role denied in browser fixture'});
  let body={};if(method==='POST')try{body=await read(req)}catch{return json(res,413,{message:'Bounded fixture body'})}
  if(is('POST','/marketing/sessions/revoke'))return json(res,200,{revoked:true});
@@ -134,6 +188,10 @@ const server=createServer(async(req,res)=>{
   return json(res,200,{contactId:'contact-e2e'});
  }
  if(is('POST','/marketing/audience/synthetic-contacts/contact-e2e/consent')){
+  if(body.action==='SIMULATED_OPT_OUT'){
+   state.consent=false;state.contacts[0].latestSimulatedConsent='OPTED_OUT';
+   return json(res,200,{status:'OPTED_OUT'});
+  }
   state.consent=true;state.contacts[0].latestSimulatedConsent='OPTED_IN';
   return json(res,200,{status:'OPTED_IN'});
  }
