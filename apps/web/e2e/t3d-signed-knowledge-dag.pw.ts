@@ -102,7 +102,7 @@ async function waiting(page:Page,blueprintId:string){
  expect(agent.output.knowledgeMode).toBe("CITATIONS_REQUIRED");
  expect(human.status).toBe("WAITING_APPROVAL");
  const evidence=await ok(page,"agents/executions/"+agent.output.agentExecutionId);
- expect(evidence.input.knowledgeContext.untrustedDataNotInstructions).toBe(true);
+ expect(evidence.decision.releaseEvidence.modelCallsAuthorized).toBe(false);
  expect(evidence.decision.releaseEvidence.externalEffectsAuthorized).toBe(false);
  return{runId,wf,agent,approvalId:human.output.approvalId as string};
 }
