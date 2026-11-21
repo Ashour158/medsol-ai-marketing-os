@@ -45,17 +45,25 @@ const kid='r3y-disposable-local-jwks-1';
 const publicJwks={keys:[{...jwk,alg:'RS256',kid,use:'sig'}]};
 const certDir='/tmp/medsol-r3y-jwks';
 const codes=new Map();
+// Only the disposable GitHub CI IdP can choose the next synthetic operator.
+// This state has NO production web or API equivalent.
+let nextInteractivePersona='admin';
 const json=(res,status,data)=>{res.writeHead(status,{
  'content-type':'application/json','cache-control':'no-store',
  'pragma':'no-cache','x-content-type-options':'nosniff'});
  res.end(JSON.stringify(data));};
 const reject=(res,reason)=>json(res,400,{error:'invalid_request',reason});
-const accessToken=async(oid)=>new SignJWT({tid:tenant,oid,scp:scope,ver:'2.0'})
+const staged=process.env.MARKETING_T1E_STAGING_CI_ONLY==='1';
+const orgFor=(oid)=>oid===people.foreign?'r3y-tenant-b':'r3y-tenant-a';
+const stageClaims=(oid)=>staged?{sub:'disposable-r3y-'+oid,
+ marketing_org_id:orgFor(oid)}:{};
+const accessToken=async(oid)=>new SignJWT({tid:tenant,oid,scp:scope,ver:'2.0',
+ ...stageClaims(oid)})
  .setProtectedHeader({alg:'RS256',kid,typ:'JWT'})
  .setIssuer(issuer).setAudience(audience).setIssuedAt().setExpirationTime('15m')
  .sign(kp.privateKey);
 const identityToken=async(oid,nonce)=>new SignJWT({tid:tenant,oid,
-  nonce,sub:'disposable-r3y-'+oid,ver:'2.0'})
+  nonce,sub:'disposable-r3y-'+oid,ver:'2.0',...stageClaims(oid)})
  .setProtectedHeader({alg:'RS256',kid,typ:'JWT'})
  .setIssuer(issuer).setAudience(clientId).setIssuedAt().setExpirationTime('15m')
  .sign(kp.privateKey);
@@ -79,12 +87,18 @@ const tls=httpsServer({
    !/^[A-Za-z0-9_-]{43}$/.test(q.get('code_challenge')??'')||
    !/^[A-Za-z0-9_-]{32,160}$/.test(q.get('state')??'')||
    !/^[A-Za-z0-9_-]{32,160}$/.test(q.get('nonce')??'')||
-   !['openid','api://medsol-r3y/marketing'].every(s=>
+   !['openid',staged?'marketing':'api://medsol-r3y/marketing'].every(s=>
     (q.get('scope')??'').split(' ').includes(s)))
    return reject(res,'OIDC request invalid');
   const code=randomBytes(30).toString('base64url');
+  const hint=q.get('login_hint');
+  if(hint&&!staged)return reject(res,'Non-staging login selector forbidden');
+  const persona=staged?(hint??nextInteractivePersona):'admin';
+  nextInteractivePersona='admin'; // consume the selection before code is issued
+  if(!Object.hasOwn(people,persona))return reject(res,'Unknown test-only persona');
   codes.set(code,{challenge:q.get('code_challenge'),state:q.get('state'),
-   nonce:q.get('nonce'),clientId,redirect,oid:people.admin,
+   nonce:q.get('nonce'),clientId,redirect,
+   oid:people[persona],
    expiresAt:Date.now()+90000});
   const target=new URL(redirect);target.searchParams.set('code',code);
   target.searchParams.set('state',q.get('state'));
@@ -120,6 +134,13 @@ const ctl=httpServer(async(req,res)=>{
  const url=new URL(req.url??'/', 'http://127.0.0.1:3216');
  if(url.pathname==='/__health')
   return json(res,200,{ok:true,testOnly:true});
+ if(url.pathname==='/__select-persona'&&req.method==='POST'&&staged){
+  const selected=url.searchParams.get('persona');
+  if(!selected||!Object.hasOwn(people,selected))
+   return reject(res,'Unknown disposable test persona');
+  nextInteractivePersona=selected;
+  return json(res,200,{selected,disposableCiOnly:true});
+ }
  if(url.pathname!=='/__issue'||req.method!=='POST')
   return json(res,404,{error:'not_found'});
  const persona=url.searchParams.get('persona');

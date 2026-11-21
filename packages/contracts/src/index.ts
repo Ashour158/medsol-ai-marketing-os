@@ -13,3 +13,4 @@ export * from './blueprint-v2-compiler.js';
 export * from './blueprint-v2-simulator.js';
 export * from './oidc-tenant.js';
 export * from './disposable-oidc.js';
+export * from './staging-oidc.js';

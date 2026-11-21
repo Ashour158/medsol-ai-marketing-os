@@ -54,6 +54,30 @@ describe("marketing session cryptography and OIDC request protection", () => {
     expect(oidcClientSecret("https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0"))
      .toBe("entra-confidential-secret");
   });
+  it("configures strong, separately pinned offline staging client identity without Entra",()=>{
+    process.env.MARKETING_IDENTITY_PROVIDER="STAGING_OIDC";
+    process.env.MARKETING_DEPLOYMENT_ENV="staging";
+    process.env.MARKETING_STAGING_OIDC_ENABLED="OFFLINE_OPERATOR_TEST_ONLY";
+    process.env.MARKETING_AUTH_MODE="oidc";
+    process.env.MARKETING_TENANT_RESOLUTION_MODE="SIGNED_OIDC_CLAIM";
+    delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
+    delete process.env.MARKETING_BOOTSTRAP_TOKEN;
+    process.env.MARKETING_EXTERNAL_EFFECTS_ENABLED="false";
+    process.env.MARKETING_AI_REASONING_ENABLED="false";
+    process.env.MARKETING_REAL_EMAIL_ENABLED="false";
+    const issuer="https://id.staging.medsol.example/realms/medsol";
+    process.env.MARKETING_OIDC_ISSUER=issuer;
+    process.env.MARKETING_STAGING_OIDC_TRUSTED_ISSUER=issuer;
+    process.env.MARKETING_OIDC_JWKS_URL=issuer+"/protocol/openid-connect/certs";
+    process.env.MARKETING_OIDC_AUDIENCE="staging-api";
+    process.env.MARKETING_OIDC_CLIENT_ID="staging-web";
+    process.env.MARKETING_STAGING_OIDC_CLIENT_SECRET="staging-secret-32-bytes-long-and-random";
+    process.env.MARKETING_PUBLIC_ORIGIN="https://stage.medsol.example";
+    expect(authConfig()).toMatchObject({identityProvider:"STAGING_OIDC",organizationId:null});
+    expect(oidcClientSecret(issuer)).toBe("staging-secret-32-bytes-long-and-random");
+    process.env.MARKETING_DEPLOYMENT_ENV="production";
+    expect(()=>authConfig()).toThrow();
+  });
   it("rejects cross-origin POSTs", () => {
     process.env.MARKETING_PUBLIC_ORIGIN = "https://marketing.medsol.example";
     process.env.MARKETING_ENTRA_TENANT_ID = "11111111-1111-4111-8111-111111111111";
