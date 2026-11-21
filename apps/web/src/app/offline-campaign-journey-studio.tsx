@@ -343,7 +343,8 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
       if(campaignId)await refresh();
      })}>Generate and verify internal flattened raster draft</button>
     {creative&&<button style={{...secondary,marginLeft:9}}
-      disabled={blocked||!manager||creativeCopy.trim().length<12}
+      disabled={blocked||!manager||creativeCopy.trim().length<12||
+       !Number.isSafeInteger(creative.version)||creative.version<1}
       onClick={()=>void run(async()=>{
        const asset=await api("assets/"+encodeURIComponent(creative.assetId)) as CreativeDetail;
        if(asset.brandId!==creative.brandId||asset.version!==creative.version)
