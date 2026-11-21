@@ -65,8 +65,11 @@ afterEach(()=>vi.unstubAllGlobals());
 afterAll(()=>{process.env={...initial};});
 describe("R3-U authenticated web boundary contract across actual API inventory",()=>{
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
-  // 148 API routes minus the two public readiness probes and the two OIDC session endpoints.
-  expect(endpoints).toHaveLength(144);
+  // 149 API routes including T4A creative revision, minus two public probes and two OIDC sessions.
+  expect(endpoints).toHaveLength(145);
+  expect(endpoints).toContainEqual({method:"POST",
+   template:"/marketing/assets/:id/offline-revisions",
+   path:"/marketing/assets/id-acceptance/offline-revisions"});
   const transport=mockUpstream();
   for(const {path,method,template} of endpoints){
    const res=await call(path,method as "GET"|"POST");
