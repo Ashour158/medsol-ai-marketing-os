@@ -69,9 +69,7 @@ describe('immutable identity binding', () => {
     delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
     const claims={sub:'opaque-user',marketing_org_id:'tenant-stage',scope:'openid marketing'};
     vi.mocked(jwtVerify).mockResolvedValue({payload:claims} as any);
-    const subject='staging-oidc:'+
-     (await import('node:crypto')).createHash('sha256')
-      .update(issuer+'\0opaque-user').digest('hex');
+    const subject='staging-oidc:'+encodeURIComponent(issuer)+'|opaque-user';
     lookup.mockResolvedValue({...user,oidcSubject:subject});
     const stageCfg={issuer,audience:'staging-api',jwksUrl:process.env.MARKETING_OIDC_JWKS_URL};
     await expect(verifyOidcIdentity('Bearer signed','',stageCfg,lookup))
