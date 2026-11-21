@@ -812,10 +812,26 @@ export class MarketingWorkflowService {
     });
   }
 
-  async start(request: MarketingRequest): Promise<WorkflowResult> {
+  async start(request: MarketingRequest,authenticatedInitiatorId?:string): Promise<WorkflowResult> {
+    // Only the Nest OIDC guard supplies this optional human ID. Never trust a
+    // requestedBy or initiator from the untrusted workflow request body.
+    // The persisted workflow input owns provenance across crash/recovery.
+    if(authenticatedInitiatorId){
+      const author=await withMarketingTenant(this.db,request.organizationId,tx=>
+        tx.user.findFirst({where:{id:authenticatedInitiatorId,
+          organizationId:request.organizationId,disabledAt:null},
+          select:{id:true}}));
+      if(!author)throw new ForbiddenException('Authenticated workflow initiator not provisioned in tenant');
+    }
     const correlationId = randomUUID();
-    const workflow = await withMarketingTenant(this.db,request.organizationId,tx=>tx.workflowExecution.create({ data: { organizationId: request.organizationId, workflowType: 'MARKETING_CAMPAIGN_LIFECYCLE', currentStep: 'CMO_ASSESSMENT', correlationId, input: request as any } }));
-    return this.runWithLease(workflow.id, request, correlationId);
+    const input={...request,...(authenticatedInitiatorId?{
+      initiatedBy:authenticatedInitiatorId
+    }:{})};
+    const workflow = await withMarketingTenant(this.db,request.organizationId,tx=>tx.workflowExecution.create({
+      data:{organizationId:request.organizationId,workflowType:'MARKETING_CAMPAIGN_LIFECYCLE',
+        currentStep:'CMO_ASSESSMENT',correlationId,input}
+    }));
+    return this.runWithLease(workflow.id,request,correlationId,authenticatedInitiatorId);
   }
 
   async resume(id: string, organizationId: string): Promise<WorkflowResult> {
@@ -830,27 +846,30 @@ export class MarketingWorkflowService {
       data: { status: 'RUNNING', currentStep: 'RECOVERING', completedAt: null, version: { increment: 1 } }
     }));
     if (claimed.count !== 1) throw new ConflictException('Workflow recovery already claimed');
-    return this.runWithLease(workflow.id, MarketingRequestSchema.parse(workflow.input), workflow.correlationId);
+    const owner=(workflow.input as {initiatedBy?:unknown})?.initiatedBy;
+    const originalHuman=typeof owner==='string'&&owner.length>0?owner:undefined;
+    return this.runWithLease(workflow.id,MarketingRequestSchema.parse(workflow.input),
+      workflow.correlationId,originalHuman);
   }
 
-  private async runWithLease(workflowId: string, request: MarketingRequest, correlationId: string): Promise<WorkflowResult> {
+  private async runWithLease(workflowId: string, request: MarketingRequest, correlationId: string,originalHuman?:string): Promise<WorkflowResult> {
     const lease = await this.leases.claim(request.organizationId, workflowId, 300000);
-    try { return await this.execute(workflowId, request, correlationId, lease); }
+    try { return await this.execute(workflowId, request, correlationId, lease,originalHuman); }
     finally { await this.leases.release(lease); }
   }
 
-  private async execute(workflowId: string, request: MarketingRequest, correlationId: string, lease: WorkflowLease): Promise<WorkflowResult> {
+  private async execute(workflowId: string, request: MarketingRequest, correlationId: string, lease: WorkflowLease,originalHuman?:string): Promise<WorkflowResult> {
     try {
       const cmo = await this.step(workflowId, lease, 'CMO_ASSESSMENT', request, () => this.agents.execute('MKT-CMO-001', { organizationId: request.organizationId, correlationId, input: request, capabilities: ['ASSESS_OBJECTIVE'] }));
       const strategy = await this.step(workflowId, lease, 'STRATEGY_ASSESSMENT', { request, cmo: cmo.decision.payload }, () => this.agents.execute('MKT-STR-001', { organizationId: request.organizationId, correlationId, causationId: cmo.executionId, input: { request, cmo: cmo.decision.payload }, capabilities: ['ASSESS_MARKET'] }));
       if (!request.objectiveId) return this.finish(workflowId, lease, 'OBJECTIVE_REQUIRED', { cmo: cmo.decision.payload, strategy: strategy.decision.payload, nextAction: 'Provide objectiveId before campaign creation.' });
       const code = 'MKT-' + Date.now().toString(36).toUpperCase() + '-' + randomUUID().slice(0, 6).toUpperCase();
-      const campaign = await this.step(workflowId, lease, 'CAMPAIGN_CREATION', { request, strategy: strategy.decision.payload }, () => this.campaigns.create({ commandId: workflowId + ':CAMPAIGN_CREATION', correlationId, organizationId: request.organizationId, objectiveId: request.objectiveId!, productId: request.productId, brandId: request.brandId, code, name: request.requestedOutcome, riskLevel: 'R2' }));
+      const campaign = await this.step(workflowId, lease, 'CAMPAIGN_CREATION', { request, strategy: strategy.decision.payload }, () => this.campaigns.create({ commandId: workflowId + ':CAMPAIGN_CREATION', correlationId, organizationId: request.organizationId, objectiveId: request.objectiveId!, productId: request.productId, brandId: request.brandId, code, name: request.requestedOutcome, riskLevel: 'R2' },originalHuman));
       const transitions = [['ASSESSMENT', 'CAMPAIGN_ASSESSMENT'], ['PROPOSED', 'CAMPAIGN_PROPOSAL'], ['APPROVAL_PENDING', 'APPROVAL_GATE']] as const;
       let last = campaign;
       for (const [to, stepKey] of transitions) {
         const currentVersion = (last as { version: number }).version;
-        last = await this.step(workflowId, lease, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: (campaign as {campaignId:string}).campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId }));
+        last = await this.step(workflowId, lease, stepKey, last, () => this.campaigns.transition({ commandId: workflowId + ':' + stepKey, correlationId, organizationId: request.organizationId, campaignId: (campaign as {campaignId:string}).campaignId, to, expectedVersion: currentVersion, workflowExecutionId: workflowId },originalHuman));
       }
       await this.leases.assertActive(lease);
       const waiting = await withMarketingTenant(this.db,request.organizationId,tx=>tx.workflowExecution.updateMany({ where: { id: workflowId, organizationId: request.organizationId, leaseOwner: lease.owner, leaseGeneration: lease.generation, leaseExpiresAt: { gt: new Date() }, status: 'RUNNING' }, data: { status: 'WAITING_APPROVAL', currentStep: 'APPROVAL_GATE', output: { campaign: last, workflow: 'WAITING_FOR_HUMAN_APPROVAL' } as any, version: { increment: 1 } } }));
