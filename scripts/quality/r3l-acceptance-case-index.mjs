@@ -162,19 +162,60 @@ for(const id of r3wCases){
   contractEngine:'Real Chromium browser + production Next BFF + offline chaos/recovery fixture',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==228)
- throw new Error('Expected precisely 228 mapped engineering cases, got '+active.size);
+
+const r3xSource='apps/api/src/postgres-r3x-cross-engine-staging.integration.test.ts';
+const r3xSourceCode=existsSync(r3xSource)?readFileSync(r3xSource,'utf8'):'';
+const r3xCases=["T01-029","T01-030","T01-031","T01-032","T01-033","T01-034","T01-035","T04-008","T04-009","T04-010","T04-011","T05-004","T05-005","T05-006","T08-004","T08-005","T08-006","T09-008","T09-009","T09-010","T10-007","T10-008","T10-009","T12-002","T12-003","T13-006","T13-007","T13-008","T13-009","T13-010","T13-011","T13-012","T13-013","T13-014","T14-003","T14-004","T14-005"];
+for(const id of r3xCases){
+ if(active.has(id)||!(r3xSourceCode.includes("it('"+id+" ")||
+                        r3xSourceCode.includes('it("'+id+' ')))
+  throw new Error('R3-X real PostgreSQL cross-engine case marker missing: '+id);
+ active.set(id,{kind:'POSTGRES_CROSS_ENGINE_ASSERTION',testSource:r3xSource,
+  contractEngine:'Real migrated PostgreSQL two-tenant transactions via canonical owners',
+  operatorSignoff:false,providerUatVerified:false});
+}
+if(active.size!==265)
+ throw new Error('Expected precisely 265 mapped engineering cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
  process.env.MARKETING_R3U_TEST_GATE_PASSED==='true'&&
  process.env.MARKETING_R3V_BROWSER_GATE_PASSED==='true'&&
- process.env.MARKETING_R3W_BROWSER_GATE_PASSED==='true';
+ process.env.MARKETING_R3W_BROWSER_GATE_PASSED==='true'&&
+ process.env.MARKETING_R3X_POSTGRES_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
 let browserExecutionEvidence=null;
+let postgresExecutionEvidence=null;
+let stagingPreflightEvidence=null;
 if(verifiedInCi){
+ const pgPath='r3x-postgres-evidence.json',stagePath='r3x-staging-preflight.json';
+ if(!existsSync(pgPath)||!existsSync(stagePath))
+  throw new Error('R3-X same-run PostgreSQL/staging execution evidence missing');
+ const pg=JSON.parse(readFileSync(pgPath,'utf8'));
+ const stage=JSON.parse(readFileSync(stagePath,'utf8'));
+ const expectedPgCases=[...r3xCases].sort();
+ if(pg.schema!=='medsol-r3x-real-postgres-execution-evidence-v1'||
+    pg.runId!==process.env.GITHUB_RUN_ID||
+    pg.releaseVerdict!=='NOT_CERTIFIED'||pg.actualPassedDatabaseCases!==37||
+    pg.independentOperatorSignoffs!==0||pg.realProviderAccountsConnected!==0||
+    pg.liveOutboundMessages!==0||!Array.isArray(pg.caseIds)||
+    JSON.stringify(pg.caseIds)!==JSON.stringify(expectedPgCases)||
+    stage.schema!=='medsol-r3x-disposable-staging-preflight-v1'||
+    stage.runId!==process.env.GITHUB_RUN_ID||
+    stage.verdict!=='OFFLINE_DISPOSABLE_TEST_ALLOWED'||
+    stage.productionReady!==false||
+    stage.actualExternalPublishAndEmailAllowed!==false||
+    stage.database?.forceRlsTables!==46||
+    pg.preflightEvidenceDigest!==stage.evidenceDigest)
+  throw new Error('R3-X cross-engine PostgreSQL execution and staging proofs mismatch');
+ postgresExecutionEvidence={runId:pg.runId,actualPassedDatabaseCases:37,
+  reportSha256:pg.reportSha256,sourceSha256:pg.sourceSha256,
+  independentOperatorSignoff:false};
+ stagingPreflightEvidence={runId:stage.runId,verdict:stage.verdict,
+  productionReady:false,externalEffectsAuthorized:false};
+
  const browserPath='r3w-browser-evidence.json';
  if(!existsSync(browserPath))throw new Error('Missing same-run Chromium runtime evidence');
  const browser=JSON.parse(readFileSync(browserPath,'utf8'));
@@ -226,21 +267,23 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3w-chaos-browser-500-case-acceptance-index-v1',
+ schema:'medsol-r3x-cross-engine-staging-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
- evidenceScope:'CI_OFFLINE_UNIT_REAL_CHROMIUM_CHAOS_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
+ evidenceScope:'CI_OFFLINE_UNIT_51_REAL_CHROMIUM_AND_91_ACTUAL_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
  releaseVerdict:'NOT_CERTIFIED',
  tenantRlsInventory,
  browserExecutionEvidence,
+ postgresExecutionEvidence,
+ stagingPreflightEvidence,
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:123,
- mappedPostgresIntegrationCases:54,
+ mappedPostgresIntegrationCases:91,
  mappedChromiumBrowserCases:51,
- mappedEngineeringAssertions:228,
- unmappedPlannedCases:272,
- referenceCasesAssertedInThisCi:verifiedInCi?228:0,
+ mappedEngineeringAssertions:265,
+ unmappedPlannedCases:235,
+ referenceCasesAssertedInThisCi:verifiedInCi?265:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,

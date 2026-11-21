@@ -79,6 +79,29 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
           path: r3n-rls-inventory.json
+      - name: Reject unsafe disposable staging configuration and spoofed offline safety proofs
+        run: node --test scripts/quality/r3x-staging-preflight.test.mjs
+      - name: Require same-run FORCE RLS census and no real provider access for R3-X staging
+        env:
+          MARKETING_R3X_PREFLIGHT_CI_ONLY: '1'
+        run: node scripts/quality/r3x-staging-preflight.mjs --output r3x-staging-preflight.json
+      - name: Run isolated R3-X actual PostgreSQL two-tenant cross-engine acceptance
+        run: pnpm --filter @medsol/api exec vitest run src/postgres-r3x-cross-engine-staging.integration.test.ts --reporter=json --outputFile=../../r3x-postgres-test-results.json
+      - name: Test strict real PostgreSQL execution report binding and forgery denial
+        run: node --test scripts/quality/r3x-postgres-evidence.test.mjs
+      - name: Issue R3-X same-run 37-case real PostgreSQL execution manifest
+        run: node scripts/quality/r3x-postgres-evidence.mjs --input r3x-postgres-test-results.json --output r3x-postgres-evidence.json
+      - name: Preserve R3-X staging preflight and real PostgreSQL execution proofs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-r3x-offline-staging-postgres-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            r3x-staging-preflight.json
+            r3x-postgres-test-results.json
+            r3x-postgres-evidence.json
       - name: Build production Next frontend for real-browser acceptance
         run: pnpm --filter @medsol/web build
       - name: Install Chromium for R3-W browser fault and role acceptance
@@ -99,20 +122,21 @@ jobs:
         run: node --test scripts/quality/r3w-browser-evidence.test.mjs
       - name: Generate same-run actual Chromium execution manifest from Playwright JSON
         run: node scripts/quality/r3w-browser-evidence.mjs --input apps/web/playwright-report/r3w-results.json --output r3w-browser-evidence.json
-      - name: Validate 228 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
+      - name: Validate 265 mapped engineering assertions in strict 500-case blueprint (NOT independently signed 500 E2E)
         env:
           MARKETING_R3U_TEST_GATE_PASSED: 'true'
           MARKETING_R3V_BROWSER_GATE_PASSED: 'true'
           MARKETING_R3W_BROWSER_GATE_PASSED: 'true'
-        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3w-chaos-acceptance-evidence.json
-      - name: Upload R3-W Chromium chaos and non-certifying 500-case evidence coverage
+          MARKETING_R3X_POSTGRES_GATE_PASSED: 'true'
+        run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3x-cross-engine-acceptance-evidence.json
+      - name: Upload R3-X cross-engine CI-only, non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: medsol-r3w-chaos-acceptance-evidence-${{ github.run_id }}
+          name: medsol-r3x-cross-engine-acceptance-evidence-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
-          path: r3w-chaos-acceptance-evidence.json
+          path: r3x-cross-engine-acceptance-evidence.json
       - name: Upload actual per-case Playwright execution manifest (non-certifying)
         if: always()
         uses: actions/upload-artifact@v4
