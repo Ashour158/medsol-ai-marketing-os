@@ -1,5 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {marketingTenantResolutionMode,resolveMarketingOrganizationId} from '@medsol/contracts';
 import { entraSubject, entraTenantId, entraIssuer } from './entra-identity.js';
 
 export type VerifiedIdentity = { userId: string; organizationId: string; email: string; role: string; subject: string };
@@ -27,8 +28,14 @@ export async function verifyOidcIdentity(
   const subject = entraSubject(payload, tenant);
   const requiredScope = process.env.MARKETING_ENTRA_API_SCOPE?.split('/').at(-1);
   if (!requiredScope || typeof payload.scp !== 'string' || !payload.scp.split(' ').includes(requiredScope)) throw new ForbiddenException('Delegated Marketing API scope required');
-  const user = await lookup(subject, organizationId);
+  // Signed tenant claim is considered only AFTER jose validates issuer/audience,
+  // token signature, expiry and delegated scope. The DB membership remains decisive.
+  let verifiedOrganizationId:string;
+  try{verifiedOrganizationId=resolveMarketingOrganizationId(payload,organizationId,
+   marketingTenantResolutionMode(process.env.MARKETING_TENANT_RESOLUTION_MODE));}
+  catch{throw new UnauthorizedException('Verified OIDC organization context required');}
+  const user = await lookup(subject, verifiedOrganizationId);
   if (!user || user.disabledAt) throw new ForbiddenException('User is not active in this organization');
   if (!user.oidcSubject || user.oidcSubject !== subject) throw new ForbiddenException('OIDC subject is not bound to the provisioned user');
-  return { userId: user.id, organizationId, email: user.email, role: user.role, subject };
+  return { userId: user.id, organizationId:verifiedOrganizationId, email: user.email, role: user.role, subject };
 }

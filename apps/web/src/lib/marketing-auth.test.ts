@@ -33,6 +33,18 @@ describe("marketing session cryptography and OIDC request protection", () => {
     expect(a).not.toBe(b);
     expect(challenge(a)).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
+  it("validates single-tenant default and signed-claim opt-in configuration",()=>{
+    process.env.MARKETING_PUBLIC_ORIGIN="https://marketing.medsol.example";
+    process.env.MARKETING_ENTRA_TENANT_ID="11111111-1111-4111-8111-111111111111";
+    process.env.MARKETING_OIDC_ISSUER="https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0";
+    process.env.MARKETING_OIDC_CLIENT_ID="medsol-web";
+    process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID="tenant-a";
+    expect(authConfig().organizationId).toBe("tenant-a");
+    process.env.MARKETING_TENANT_RESOLUTION_MODE="SIGNED_OIDC_CLAIM";
+    expect(()=>authConfig()).toThrow("fixed organization unset");
+    delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
+    expect(authConfig()).toMatchObject({organizationId:null,tenantMode:"SIGNED_OIDC_CLAIM"});
+  });
   it("rejects cross-origin POSTs", () => {
     process.env.MARKETING_PUBLIC_ORIGIN = "https://marketing.medsol.example";
     process.env.MARKETING_ENTRA_TENANT_ID = "11111111-1111-4111-8111-111111111111";

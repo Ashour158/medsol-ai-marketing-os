@@ -29,6 +29,27 @@ describe('authentication and approval authority', () => {
     await expect(guard.canActivate(context(req))).resolves.toBe(true);
     expect((req as any).identity.userId).toBe('u-1');
   });
+  it('requires signed tenant identity and rejects forged header or body before session access',async()=>{
+    process.env.MARKETING_AUTH_MODE='oidc';
+    process.env.MARKETING_TENANT_RESOLUTION_MODE='SIGNED_OIDC_CLAIM';
+    delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
+    vi.mocked(verifyOidcIdentity).mockResolvedValue({userId:'u-1',organizationId:'org-2',
+      email:'reviewer@example.com',role:'CMO',subject:'oidc-sub'});
+    const guard=new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any);
+    const wrong=request('/marketing/approvals/decide');
+    await expect(guard.canActivate(context(wrong))).rejects.toThrow('Cross-tenant');
+    const valid=request('/marketing/approvals/decide',{organizationId:'org-2'});
+    valid.headers['x-organization-id']='org-2';
+    await expect(guard.canActivate(context(valid))).resolves.toBe(true);
+    expect(valid.headers['x-organization-id']).toBe('org-2');
+    expect(vi.mocked(verifyOidcIdentity).mock.calls.at(-1)?.[1]).toBe('');
+  });
+  it('disallows bootstrap credentials in signed-tenant mode',async()=>{
+    process.env.MARKETING_TENANT_RESOLUTION_MODE='SIGNED_OIDC_CLAIM';
+    delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
+    await expect(new BootstrapAuthGuard(db,{assertActorPermission:vi.fn()} as any)
+      .canActivate(context(request('/marketing/agents')))).rejects.toThrow('requires verified OIDC');
+  });
   it('rejects unsupported auth modes', async () => {
     process.env.MARKETING_AUTH_MODE = 'unsafe';
     await expect(new BootstrapAuthGuard(db,{assertActorPermission:vi.fn().mockResolvedValue(undefined)} as any).canActivate(context(request('/marketing/agents')))).rejects.toThrow('Unsupported authentication mode');

@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {marketingTenantResolutionMode} from '@medsol/contracts';
 import { verifyBootstrapRequest } from './bootstrap-auth.js';
 import { verifyOidcIdentity, type VerifiedIdentity } from './oidc-identity.js';
 import { assertMarketingPermission, permissionForMarketingRoute } from './marketing-permissions.js';
@@ -19,24 +20,31 @@ export class BootstrapAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     if (req.method === 'GET' && ['/health','/readyz'].includes(req.url?.split('?')[0] ?? '')) return true;
-    const organizationId = process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
-    if (!organizationId) throw new Error('MARKETING_BOOTSTRAP_ORGANIZATION_ID must be configured');
-    const bodyTenant = req.body?.organizationId;
-    const headerTenant = req.headers['x-organization-id'];
-    // Both independently supplied claims must agree with the provisioned
-    // organization. A legitimate body tenant must never mask a forged header
-    // (or vice versa) during authenticated request normalization.
-    if ((bodyTenant !== undefined && bodyTenant !== organizationId) ||
-        (headerTenant !== undefined && headerTenant !== organizationId))
-      throw new ForbiddenException('Cross-tenant access denied');
-    const requested = bodyTenant ?? headerTenant;
-    const mode = process.env.MARKETING_AUTH_MODE ?? 'bootstrap';
-    if (mode === 'oidc') {
+    const authMode=process.env.MARKETING_AUTH_MODE??'bootstrap';
+    const tenantMode=marketingTenantResolutionMode(process.env.MARKETING_TENANT_RESOLUTION_MODE);
+    const fixedOrganizationId=process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
+    if(tenantMode==='SIGNED_OIDC_CLAIM'&&authMode!=='oidc')
+      throw new UnauthorizedException('Signed organization mode requires verified OIDC');
+    if(tenantMode==='FIXED'&&!fixedOrganizationId)
+      throw new Error('MARKETING_BOOTSTRAP_ORGANIZATION_ID must be configured');
+    if(tenantMode==='SIGNED_OIDC_CLAIM'&&fixedOrganizationId)
+      throw new Error('Signed organization mode cannot use a fixed organization');
+    const bodyTenant=req.body?.organizationId;
+    const headerTenant=req.headers['x-organization-id'];
+    const requested=bodyTenant??headerTenant;
+    // In signed mode the actual tenant is extracted AFTER JWT verification,
+    // never from the request header/body. Both are optional consistency checks.
+    let organizationId=fixedOrganizationId??'';
+    if (authMode === 'oidc') {
       const identity = await verifyOidcIdentity(req.headers.authorization, organizationId, {
         issuer: process.env.MARKETING_OIDC_ISSUER ?? '',
         audience: process.env.MARKETING_OIDC_AUDIENCE ?? '',
         jwksUrl: process.env.MARKETING_OIDC_JWKS_URL ?? ''
       }, async (subject, tenant) => withMarketingTenant(this.db,tenant,tx=>tx.user.findFirst({ where: { oidcSubject: subject, organizationId: tenant }, select: { id: true, email: true, role: true, oidcSubject: true, disabledAt: true } })));
+      organizationId=identity.organizationId;
+      if((bodyTenant!==undefined&&bodyTenant!==organizationId)||
+         (headerTenant!==undefined&&headerTenant!==organizationId))
+       throw new ForbiddenException('Cross-tenant access denied');
       req.identity = identity;
       const route = req.url?.split('?')[0];
       if (route !== '/marketing/sessions' || req.method !== 'POST') {
@@ -47,7 +55,11 @@ export class BootstrapAuthGuard implements CanActivate {
            userId:identity.userId,revokedAt:null,expiresAt:{gt:new Date()}}}));
         if (!session) throw new UnauthorizedException('Session expired or revoked');
       }
-    } else if (mode === 'bootstrap') {
+    } else if (authMode === 'bootstrap') {
+      // Shared bootstrap tokens remain restricted to one explicitly configured org.
+      if ((bodyTenant!==undefined&&bodyTenant!==organizationId)||
+          (headerTenant!==undefined&&headerTenant!==organizationId))
+        throw new ForbiddenException('Cross-tenant access denied');
       const token = process.env.MARKETING_BOOTSTRAP_TOKEN;
       if (!token) throw new Error('MARKETING_BOOTSTRAP_TOKEN must be configured');
       verifyBootstrapRequest(req.headers.authorization, requested, token, organizationId);
@@ -60,7 +72,7 @@ export class BootstrapAuthGuard implements CanActivate {
       throw new UnauthorizedException('Unsupported authentication mode');
     }
     const permission = permissionForMarketingRoute(req.method ?? '', req.url?.split('?')[0] ?? '');
-    if (permission && mode === 'bootstrap') {
+    if (permission && authMode === 'bootstrap') {
       if (permission !== 'READ_PORTFOLIO' && permission !== 'ASSESS') throw new ForbiddenException('Bootstrap pilot access is limited to portfolio reads and assessment');
     } else if (permission) {
       assertMarketingPermission(req.identity, permission);
