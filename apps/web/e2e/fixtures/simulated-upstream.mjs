@@ -12,7 +12,7 @@ const identities={
 const initial=()=>({
  campaignApproved:false,creativeApproved:false,creativeExists:false,
  brainRuns:[],learningSignals:[],emailSimulations:[],publications:[],
- contacts:[],consent:false,rightsReviewed:false,requestLog:[],
+ contacts:[],consent:false,rightsReviewed:false,requestLog:[],revokedSessions:[],
  externalNetworkRequests:0,realEmailsSent:0,realSocialPosts:0
 });
 let state=initial();
@@ -90,6 +90,9 @@ const server=createServer(async(req,res)=>{
   return json(res,403,{message:'Cross-tenant access denied by simulated fixture'});
  if(req.headers['x-marketing-session-id']!=='11111111-1111-4111-8111-111111111111')
   return json(res,401,{message:'Synthetic test session required'});
+ if(state.revokedSessions.includes(req.headers['x-marketing-session-id'])&&
+    req.url!=='/marketing/sessions/revoke')
+  return json(res,401,{message:'Server session revoked'});
  const path=url.pathname;
  const method=req.method;
  const is=(m,p)=>method===m&&path===p;
@@ -140,10 +143,15 @@ const server=createServer(async(req,res)=>{
    steps:[{stepKey:'research',status:'COMPLETED'}],agentProofs:[],
    requiredOperatorAction:'Inspect offline run; never automatically replay'
   });
- if(is('POST','/marketing/sessions/revoke'))return json(res,200,{revoked:true});
+ if(is('POST','/marketing/sessions/revoke')){
+  state.revokedSessions.push(req.headers['x-marketing-session-id']);
+  return json(res,200,{revoked:true});
+ }
  if(is('POST','/marketing/objectives'))return json(res,200,{id:'objective-e2e',name:body.name});
  if(is('POST','/marketing/workflows'))return json(res,200,{workflowExecutionId:'workflow-e2e',output:{campaign:{campaignId:jid}}});
  if(is('POST','/marketing/brain/runs'))return json(res,200,{id:'brain-e2e',status:'PENDING'});
+ if(is('GET','/marketing/brain/runs/brain-e2e'))
+  return json(res,200,state.brainRuns[0]??{id:'brain-e2e',status:'PENDING'});
  if(is('POST','/marketing/brain/runs/brain-e2e/execute')){
   state.brainRuns=[{id:'brain-e2e',status:'COMPLETED',steps:[{stage:'research',agentId:'scientific-research',status:'COMPLETED'}]}];
   return json(res,200,{id:'brain-e2e',status:'COMPLETED'});
