@@ -235,6 +235,26 @@ jobs:
             apps/web/t1f-playwright-report/
             apps/web/t1f-test-results/
             t1f-signed-operator-evidence.json
+      - name: Create throwaway Ed25519 DAG signer for T3C offline operator browser acceptance
+        run: |
+          set -euo pipefail
+          openssl genpkey -algorithm ED25519 -out /tmp/medsol-r3y-jwks/t3c-dag-private.pem
+          chmod 600 /tmp/medsol-r3y-jwks/t3c-dag-private.pem
+          openssl pkey -in /tmp/medsol-r3y-jwks/t3c-dag-private.pem -pubout -out /tmp/medsol-r3y-jwks/t3c-dag-public.pem
+      - name: Run T3C real-stack signed offline DAG maker-checker operator journeys
+        env:
+          MARKETING_R3Y_STAGING_CI_ONLY: '1'
+        run: pnpm --filter @medsol/web exec playwright test --config playwright.offline-dag-operator.config.ts
+      - name: Preserve T3C actual browser runs (engineering only, no independent QA claim)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-t3c-offline-dag-operator-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            apps/web/t3c-playwright-report/
+            apps/web/t3c-test-results/
       - name: Upload R3-Y real-stack Chromium traces, role proof and non-certifying manifests
         if: always()
         uses: actions/upload-artifact@v4
