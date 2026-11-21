@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
-import {marketingTenantResolutionMode,resolveMarketingOrganizationId} from '@medsol/contracts';
+import {marketingTenantResolutionMode,resolveMarketingOrganizationId,
+ disposableOidcCiAllowed} from '@medsol/contracts';
 import { entraSubject, entraTenantId, entraIssuer } from './entra-identity.js';
 
 export type VerifiedIdentity = { userId: string; organizationId: string; email: string; role: string; subject: string };
@@ -24,7 +25,9 @@ export async function verifyOidcIdentity(
     ({ payload } = await jwtVerify(authorization.slice(7), keys, { issuer: config.issuer, audience: config.audience, algorithms: ['RS256', 'ES256'] }));
   } catch { throw new UnauthorizedException('Invalid or expired OIDC token'); }
   const tenant = entraTenantId();
-  if (config.issuer !== entraIssuer(tenant)) throw new Error('Microsoft Entra issuer mismatch');
+  if (config.issuer !== entraIssuer(tenant) &&
+    !disposableOidcCiAllowed(config.issuer,process.env))
+   throw new Error('Microsoft Entra issuer mismatch');
   const subject = entraSubject(payload, tenant);
   const requiredScope = process.env.MARKETING_ENTRA_API_SCOPE?.split('/').at(-1);
   if (!requiredScope || typeof payload.scp !== 'string' || !payload.scp.split(' ').includes(requiredScope)) throw new ForbiddenException('Delegated Marketing API scope required');

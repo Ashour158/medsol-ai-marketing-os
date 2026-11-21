@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import {resolveMarketingOrganizationId} from "@medsol/contracts";
-import { authConfig, entraTenant, FLOW_COOKIE, SESSION_COOKIE, seal, secureCookie, unseal } from "../../../../lib/marketing-auth";
+import { authConfig, entraTenant, oidcClientSecret, FLOW_COOKIE, SESSION_COOKIE, seal, secureCookie, unseal } from "../../../../lib/marketing-auth";
 
 type Flow = { state: string; nonce: string; verifier: string; tokenEndpoint: string; jwksUri: string; issuer: string };
 export async function GET(request: NextRequest) {
@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   const response = redirect("authentication_failed");
   response.cookies.set(FLOW_COOKIE, "", secureCookie(0));
   try {
-    const clientSecret = process.env.MARKETING_ENTRA_CLIENT_SECRET;
-    if (!clientSecret) throw new Error("Microsoft Entra confidential web client credential is required");
+    const clientSecret = oidcClientSecret(cfg.issuer);
+    if (!clientSecret) throw new Error("Trusted confidential OIDC client credential required");
     const tokenResult = await fetch(flow.tokenEndpoint, {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "authorization_code", client_id: cfg.clientId, client_secret: clientSecret, code, code_verifier: flow.verifier, redirect_uri: cfg.origin + "/api/auth/callback" }),

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
-import {marketingTenantResolutionMode,resolveMarketingOrganizationId} from "@medsol/contracts";
+import {marketingTenantResolutionMode,resolveMarketingOrganizationId,
+ disposableOidcCiAllowed} from "@medsol/contracts";
 
 export const SESSION_COOKIE = "__Host-medsol_session";
 export const FLOW_COOKIE = "__Host-medsol_oidc_flow";
@@ -39,11 +40,19 @@ export function authConfig() {
   // request-supplied tenant or a permissive onboarding organization.
   if(tenantMode==="FIXED")resolveMarketingOrganizationId({},organizationId,tenantMode);
   else if(organizationId)throw new Error("Signed-claim mode requires fixed organization unset");
-  if (issuer !== 'https://login.microsoftonline.com/' + entraTenant() + '/v2.0') throw new Error('Tenant-specific Microsoft Entra issuer required');
+  if (issuer !== 'https://login.microsoftonline.com/' + entraTenant() + '/v2.0' &&
+      !disposableOidcCiAllowed(issuer,process.env))
+   throw new Error('Tenant-specific Microsoft Entra issuer required');
   const url = new URL(origin);
   if (url.protocol !== "https:" && url.hostname !== "localhost") throw new Error("HTTPS origin required");
   return { issuer, clientId, origin: url.origin,
    organizationId:tenantMode==="FIXED"?organizationId:null,tenantMode };
+}
+/** Never read a CI test secret unless every disposable-safety gate passes. */
+export function oidcClientSecret(issuer:string):string|undefined{
+ return disposableOidcCiAllowed(issuer,process.env)?
+  process.env.MARKETING_OFFLINE_OIDC_CLIENT_SECRET:
+  process.env.MARKETING_ENTRA_CLIENT_SECRET;
 }
 export async function seal(payload: Record<string, unknown>, ttlSeconds: number) {
   return new EncryptJWT(payload).setProtectedHeader({ alg: "dir", enc: "A256GCM" }).setIssuedAt().setExpirationTime(Math.floor(Date.now() / 1000) + ttlSeconds).encrypt(secrets()[0]!);

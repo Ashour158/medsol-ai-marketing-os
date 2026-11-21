@@ -148,6 +148,18 @@ jobs:
         run: node scripts/quality/r3y-runtime-role-proof.mjs --output r3y-runtime-role-evidence.json
       - name: Run 19 Chromium cases with compiled Nest API, PostgreSQL, signed loopback JWKS and production-built Next
         run: pnpm --filter @medsol/web exec playwright test --config playwright.staging.config.ts
+      - name: Run T1D interactive signed-OIDC browser login with real Nest and PostgreSQL (disposable only)
+        run: pnpm --filter @medsol/web exec playwright test --config playwright.disposable-oidc.config.ts
+      - name: Preserve T1D synthetic OIDC login traces (not independently certified)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-t1d-disposable-browser-login-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            apps/web/t1d-playwright-report/
+            apps/web/t1d-test-results/
       - name: Verify R3-Y actual real-stack browser report and local signed-OIDC provenance
         run: node --test scripts/quality/r3y-real-stack-evidence.test.mjs
       - name: Bind R3-Y real browser passes to same-run non-bypass RLS and no-provider preflight

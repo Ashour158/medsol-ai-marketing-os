@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { randomBytes } from "node:crypto";
-import { authConfig, challenge, randomToken, seal, unseal, sameOrigin } from "./marketing-auth";
+import { authConfig, oidcClientSecret, challenge, randomToken, seal, unseal, sameOrigin } from "./marketing-auth";
 
 const original = { ...process.env };
 afterEach(() => { process.env = { ...original }; });
@@ -44,6 +44,15 @@ describe("marketing session cryptography and OIDC request protection", () => {
     expect(()=>authConfig()).toThrow("fixed organization unset");
     delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
     expect(authConfig()).toMatchObject({organizationId:null,tenantMode:"SIGNED_OIDC_CLAIM"});
+  });
+  it("rejects synthetic login secret outside the exact disposable CI trust fence",()=>{
+    process.env.MARKETING_ENTRA_CLIENT_SECRET="entra-confidential-secret";
+    process.env.MARKETING_OFFLINE_OIDC_CLIENT_SECRET="ci-disposable-not-real";
+    process.env.MARKETING_DISPOSABLE_OIDC_CI_ONLY="1";
+    expect(oidcClientSecret("https://127.0.0.1:3215"))
+     .toBe("entra-confidential-secret");
+    expect(oidcClientSecret("https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0"))
+     .toBe("entra-confidential-secret");
   });
   it("rejects cross-origin POSTs", () => {
     process.env.MARKETING_PUBLIC_ORIGIN = "https://marketing.medsol.example";
