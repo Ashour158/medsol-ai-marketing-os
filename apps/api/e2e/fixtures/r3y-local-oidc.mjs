@@ -88,8 +88,12 @@ const tls=httpsServer({
     (q.get('scope')??'').split(' ').includes(s)))
    return reject(res,'OIDC request invalid');
   const code=randomBytes(30).toString('base64url');
+  const hint=q.get('login_hint');
+  if(hint&&!staged)return reject(res,'Non-staging login selector forbidden');
+  if(hint&&!Object.hasOwn(people,hint))return reject(res,'Unknown test-only persona');
   codes.set(code,{challenge:q.get('code_challenge'),state:q.get('state'),
-   nonce:q.get('nonce'),clientId,redirect,oid:people.admin,
+   nonce:q.get('nonce'),clientId,redirect,
+   oid:hint?people[hint]:people.admin,
    expiresAt:Date.now()+90000});
   const target=new URL(redirect);target.searchParams.set('code',code);
   target.searchParams.set('state',q.get('state'));
