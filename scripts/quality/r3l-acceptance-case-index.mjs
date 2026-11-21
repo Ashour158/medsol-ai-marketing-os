@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * R3-V Chromium UI acceptance atop R3-U authenticated BFF/API boundary and PostgreSQL guard acceptance extends the authoritative R3-L 500-case blueprint evidence index.
+ * R3-W Chromium fault/recovery execution evidence atop R3-V UI acceptance and R3-U authenticated BFF/API boundary and PostgreSQL guard acceptance extends the authoritative R3-L 500-case blueprint evidence index.
  * Evidence is PASS-eligible only after the repository's actual pnpm test
  * step succeeds in the same CI job. This register never claims 500 E2E.
  */
@@ -150,17 +150,49 @@ for(const id of chromiumCases){
 if(!existsSync('apps/web/playwright.config.ts')||
  !existsSync('apps/web/e2e/fixtures/simulated-upstream.mjs'))
  throw new Error('Actual browser runner and offline upstream fixture missing');
-if(active.size!==194)
- throw new Error('Expected precisely 194 mapped engineering cases, got '+active.size);
+
+const r3wSource='apps/web/e2e/r3w-chaos-recovery.pw.ts';
+const r3wCode=existsSync(r3wSource)?readFileSync(r3wSource,'utf8'):'';
+const r3wCases=["T01-023","T01-024","T01-025","T01-026","T01-027","T01-028","T04-004","T04-005","T04-006","T04-007","T05-002","T05-003","T06-022","T07-028","T07-029","T07-030","T08-003","T09-003","T09-004","T09-005","T09-006","T09-007","T10-003","T10-004","T10-005","T10-006","T11-002","T11-003","T11-004","T12-001","T13-004","T13-005","T15-023","T15-026"];
+for(const id of r3wCases){
+ if(active.has(id)||!(r3wCode.includes("test('"+id+" ")||
+                        r3wCode.includes('test("'+id+' ')))
+  throw new Error('R3-W Chromium chaos test marker missing: '+id);
+ active.set(id,{kind:'CHROMIUM_CHAOS_RECOVERY_ASSERTION',testSource:r3wSource,
+  contractEngine:'Real Chromium browser + production Next BFF + offline chaos/recovery fixture',
+  operatorSignoff:false,providerUatVerified:false});
+}
+if(active.size!==228)
+ throw new Error('Expected precisely 228 mapped engineering cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
  process.env.MARKETING_R3U_TEST_GATE_PASSED==='true'&&
- process.env.MARKETING_R3V_BROWSER_GATE_PASSED==='true';
+ process.env.MARKETING_R3V_BROWSER_GATE_PASSED==='true'&&
+ process.env.MARKETING_R3W_BROWSER_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
+let browserExecutionEvidence=null;
 if(verifiedInCi){
+ const browserPath='r3w-browser-evidence.json';
+ if(!existsSync(browserPath))throw new Error('Missing same-run Chromium runtime evidence');
+ const browser=JSON.parse(readFileSync(browserPath,'utf8'));
+ const ids=[...chromiumCases,...r3wCases].sort();
+ if(browser.schema!=='medsol-r3w-chromium-execution-evidence-v1'||
+    browser.runId!==process.env.GITHUB_RUN_ID||
+    browser.releaseVerdict!=='NOT_CERTIFIED'||browser.operatorSignedOff!==false||
+    browser.independentlySignedE2eCases!==0||
+    browser.realProviderCalls!==0||browser.realEmailSends!==0||
+    browser.realSocialPosts!==0||
+    browser.actualExecutedBrowserCases!==51||browser.browserPassedCases!==51||
+    !Array.isArray(browser.caseIds)||JSON.stringify(browser.caseIds)!==JSON.stringify(ids))
+  throw new Error('R3-W Chromium actual execution report does not match same-run source inventory');
+ browserExecutionEvidence={
+  runId:browser.runId,passedCases:51,reportSha256:browser.reportSha256,
+  independentOperatorSignoff:false,providerUatVerified:false
+ };
+
  if(!existsSync(inventoryPath))throw new Error('Missing same-run R3-N RLS inventory');
  const inventory=JSON.parse(readFileSync(inventoryPath,'utf8'));
  if(inventory.schema!=='medsol-r3n-postgresql-tenant-rls-inventory-v1'||
@@ -194,20 +226,21 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3v-chromium-500-case-acceptance-index-v1',
+ schema:'medsol-r3w-chaos-browser-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
- evidenceScope:'CI_OFFLINE_UNIT_CHROMIUM_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
+ evidenceScope:'CI_OFFLINE_UNIT_REAL_CHROMIUM_CHAOS_AND_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
  generatedAt:new Date().toISOString(),
  releaseVerdict:'NOT_CERTIFIED',
  tenantRlsInventory,
+ browserExecutionEvidence,
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:123,
  mappedPostgresIntegrationCases:54,
- mappedChromiumBrowserCases:17,
- mappedEngineeringAssertions:194,
- unmappedPlannedCases:306,
- referenceCasesAssertedInThisCi:verifiedInCi?194:0,
+ mappedChromiumBrowserCases:51,
+ mappedEngineeringAssertions:228,
+ unmappedPlannedCases:272,
+ referenceCasesAssertedInThisCi:verifiedInCi?228:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,
