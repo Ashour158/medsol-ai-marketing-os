@@ -12,7 +12,7 @@ export function verifySignedOperatorJourney(report,source,run,proof,preflight,st
  if(!/^\d{5,18}$/.test(run?.id??'')||!/^[a-f0-9]{40}$/.test(run?.commit??''))
   block('real GitHub CI run and exact commit required');
  const required=indexedCases([{file,source}]);
- const ids=Array.from({length:5},(_,i)=>'T1F-'+String(i+1).padStart(3,'0'));
+ const ids=Array.from({length:5},(_,i)=>'T17-'+String(i+1).padStart(3,'0'));
  if(required.size!==5||ids.some(x=>!required.has(x)))
   block('exact five immutable T1F cases required');
  let passed;
@@ -41,7 +41,7 @@ export function verifySignedOperatorJourney(report,source,run,proof,preflight,st
  const durations=[];
  function scan(s){
   for(const spec of s.specs??[]){
-   if(/^T1F-\d{3} /.test(spec.title)){
+   if(/^T17-\d{3} /.test(spec.title)){
     const ms=spec.tests?.[0]?.results?.[0]?.duration;
     if(!Number.isFinite(ms)||ms<0)block('real browser duration absent');
     durations.push({id:spec.title.slice(0,7),durationMs:ms});
