@@ -36,7 +36,8 @@ export function assertMarketingPermission(identity: VerifiedIdentity | undefined
 export function permissionForMarketingRoute(method: string, path: string): MarketingPermission | null {
   if(method==='GET'&&/^\/marketing\/journeys\/[A-Za-z0-9_-]+$/.test(path))
    return 'READ_AUDIT';
-  if(method==='POST'&&path==='/marketing/assets/offline-raster')
+  if(method==='POST'&&(path==='/marketing/assets/offline-raster'||
+    /^\/marketing\/assets\/[A-Za-z0-9_-]+\/offline-revisions$/.test(path)))
    return 'MANAGE_CAMPAIGN';
   if(method==='GET'&&/^\/marketing\/assets\/revisions\/[A-Za-z0-9_-]+\/offline-preview$/.test(path))
    return 'READ_PORTFOLIO';
