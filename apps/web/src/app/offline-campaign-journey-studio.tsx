@@ -42,8 +42,11 @@ async function api(path:string,body?:unknown):Promise<any>{
  });
  let out:unknown;
  try{out=await response.json();}catch{throw new Error("Non-JSON response");}
- if(!response.ok)throw new Error(out&&typeof out==="object"&&"message" in out?
-  String((out as {message:unknown}).message):"Request was rejected");
+ if(!response.ok){
+  const error=out&&typeof out==="object"?(out as Record<string,unknown>):null;
+  const detail=error?.message??error?.error;
+  throw new Error(typeof detail==="string"?detail:"Request was rejected ("+response.status+")");
+ }
  return out;
 }
 /** Visible real PNG generated in the browser, not AI art or external storage.
@@ -88,6 +91,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  const [brief,setBrief]=useState("Present an evidence-led, compliance-conscious biotechnology innovation campaign to qualified research laboratories, with no unsupported claims.");
  const [sector,setSector]=useState("biotechnology");
  const [campaignId,setCampaignId]=useState("");
+ const [lookupCampaignId,setLookupCampaignId]=useState("");
  const [workflowId,setWorkflowId]=useState("");
  const [brainRunId,setBrainRunId]=useState("");
  const [journey,setJourney]=useState<Journey|null>(null);
@@ -116,10 +120,18 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  async function refresh(forId=campaignId){
   if(!forId.trim())throw new Error("Select an existing campaign first");
   const r=await api("journeys/"+encodeURIComponent(forId)) as Journey;
-  setJourney(r);setCampaignId(r.campaign.id);setBrandId(r.campaign.brandId);
+  // A typed lookup is not authoritative until the API has confirmed it.
+  // Never mix the previous campaign's approval/creative with a new campaign.
+  const switching=r.campaign.id!==campaignId;
+  if(switching){
+   setCreative(null);setPreview(null);setDestinationRef("");
+   setCreativeApprovalId("");setPublicationId("");setSyntheticContacts([]);
+  }
+  setJourney(r);setCampaignId(r.campaign.id);setLookupCampaignId(r.campaign.id);
+  setBrandId(r.campaign.brandId);
   if(r.workflow)setWorkflowId(r.workflow.id);
   if(r.brainRuns[0])setBrainRunId(r.brainRuns[0].id);
-  if(r.creativeAssets[0]&&!creative) {
+  if(r.creativeAssets[0]&&(switching||!creative)) {
    const chosen=r.creativeAssets.find(x=>x.publicationLinked)??r.creativeAssets[0];
    setCreative({assetId:chosen.assetId,revisionId:chosen.revisionId,
     brandId:r.campaign.brandId,renditionDigest:chosen.renditionDigest,
@@ -135,7 +147,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   }catch{}
  }
  useEffect(()=>{
-  setBrands([]);setJourney(null);setCampaignId("");setWorkflowId("");
+  setBrands([]);setJourney(null);setCampaignId("");setLookupCampaignId("");setWorkflowId("");
   setBrainRunId("");setCreative(null);setPreview(null);setDestinationRef("");
   setCreativeApprovalId("");setSyntheticContacts([]);setPublicationId("");
   setBrandPolicyVersion("");
@@ -174,15 +186,15 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
    <div style={section}>
     <h3 style={{marginTop:0}}>0 · Resume an existing campaign</h3>
     <label style={label}>Tenant campaign ID
-     <input style={input} value={campaignId} onChange={e=>setCampaignId(e.target.value)}
+     <input style={input} value={lookupCampaignId} onChange={e=>setLookupCampaignId(e.target.value)}
       placeholder="Paste an approved or in-progress campaign ID"/>
     </label>
-    <button style={secondary} disabled={blocked||!campaignId}
-     onClick={()=>void run(async()=>{await refresh();setNotice("Canonical journey timeline refreshed")})}>
+    <button style={secondary} disabled={blocked||!lookupCampaignId.trim()}
+     onClick={()=>void run(async()=>{await refresh(lookupCampaignId.trim());setNotice("Canonical journey timeline refreshed")})}>
      Load durable cross-engine timeline
     </button>
     {journey&&<>
-     <p style={{fontSize:13}}><strong>{journey.campaign.name}</strong> · {journey.campaign.status}</p>
+     <p style={{fontSize:13}}><strong>Loaded campaign:</strong> {journey.campaign.name} · {journey.campaign.status} · <code>{campaignId}</code></p>
      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
       {Object.entries(journey.stages).map(([name,ok])=>
        <div key={name} style={{padding:9,background:"#f8fafc",borderRadius:6,fontSize:12}}>
@@ -296,11 +308,16 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
        pngBase64:localPng(creativeTitle,creativeCopy,color),
        rightsExpiresAt:dateAt(60),requestKey:uuid()
       }) as OfflineCreative;
-      setCreative(result);
+      // A created raster is not usable until both server readback and verified
+      // preview succeed. A failed readback cannot leave an approval-ready UI.
       await api("media/evidence/"+encodeURIComponent(result.revisionId)+"/verify-offline",{});
       const p=await api("assets/revisions/"+
        encodeURIComponent(result.revisionId)+"/offline-preview") as Preview;
-      setPreview(p);setNotice("Stored actual synthetic PNG, editable text and readback proof; rights unapproved");
+      if(p.revisionId!==result.revisionId||!p.offlineOnly||
+         p.renditionDigest!==result.renditionDigest||
+         !p.imageDataUrl.startsWith("data:image/png;base64,"))
+       throw new Error("Offline preview digest or origin mismatch");
+      setCreative(result);setPreview(p);setNotice("Stored actual synthetic PNG, editable text and readback proof; rights unapproved");
       if(campaignId)await refresh();
      })}>Generate and verify internal flattened raster draft</button>
     {creative&&<p style={{fontSize:12}}>Revision {creative.revisionId} · {creative.renditionDigest}</p>}
