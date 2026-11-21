@@ -174,22 +174,63 @@ for(const id of r3xCases){
   contractEngine:'Real migrated PostgreSQL two-tenant transactions via canonical owners',
   operatorSignoff:false,providerUatVerified:false});
 }
-if(active.size!==265)
- throw new Error('Expected precisely 265 mapped engineering cases, got '+active.size);
+
+const r3ySource='apps/web/e2e/r3y-real-stack.pw.ts';
+const r3yCode=existsSync(r3ySource)?readFileSync(r3ySource,'utf8'):'';
+const r3yCases=["T08-007","T04-012","T04-013","T03-024","T05-007","T11-005","T11-006","T09-011","T09-012","T10-010","T10-011","T12-004","T13-015","T14-006","T06-023","T04-014","T04-015","T04-016","T09-013"];
+for(const id of r3yCases){
+ if(active.has(id)||!(r3yCode.includes("test('"+id+" ")||
+                        r3yCode.includes('test("'+id+' ')))
+  throw new Error('R3-Y real-stack browser case marker missing: '+id);
+ active.set(id,{kind:'CHROMIUM_REAL_NEXT_NEST_POSTGRES_ASSERTION',testSource:r3ySource,
+  contractEngine:'Production-built HTTPS Next BFF to compiled Nest with signed local JWKS, real tenant sessions and FORCE RLS PostgreSQL',
+  operatorSignoff:false,providerUatVerified:false});
+}
+if(active.size!==284)
+ throw new Error('Expected precisely 284 mapped engineering cases, got '+active.size);
 const verifiedInCi=process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&
  process.env.MARKETING_DB_INTEGRATION==='1'&&
  /^[0-9]{5,18}$/.test(process.env.GITHUB_RUN_ID||'')&&
  process.env.MARKETING_R3U_TEST_GATE_PASSED==='true'&&
  process.env.MARKETING_R3V_BROWSER_GATE_PASSED==='true'&&
  process.env.MARKETING_R3W_BROWSER_GATE_PASSED==='true'&&
- process.env.MARKETING_R3X_POSTGRES_GATE_PASSED==='true';
+ process.env.MARKETING_R3X_POSTGRES_GATE_PASSED==='true'&&
+ process.env.MARKETING_R3Y_REAL_STACK_GATE_PASSED==='true';
 // The same CI run must first prove the actual PostgreSQL FORCE RLS census.
 const inventoryPath='r3n-rls-inventory.json';
 let tenantRlsInventory=null;
 let browserExecutionEvidence=null;
 let postgresExecutionEvidence=null;
 let stagingPreflightEvidence=null;
+let realStackExecutionEvidence=null;
 if(verifiedInCi){
+ const r3yPath='r3y-real-stack-evidence.json',rolePath='r3y-runtime-role-evidence.json';
+ if(!existsSync(r3yPath)||!existsSync(rolePath))
+  throw new Error('Missing R3-Y actual real-stack browser and role evidence');
+ const real=JSON.parse(readFileSync(r3yPath,'utf8'));
+ const role=JSON.parse(readFileSync(rolePath,'utf8'));
+ const r3yExpectedIds=[...r3yCases].sort();
+ if(real.schema!=='medsol-r3y-real-stack-actual-browser-evidence-v1'||
+    real.runId!==process.env.GITHUB_RUN_ID||real.releaseVerdict!=='NOT_CERTIFIED'||
+    real.actualPassedRealStackCases!==19||!Array.isArray(real.caseIds)||
+    JSON.stringify(real.caseIds)!==JSON.stringify(r3yExpectedIds)||
+    real.database!=='real_migrated_postgres_non_bypassrls_app_role'||
+    real.api!=='compiled_real_nest_server'||real.runtimeRoleVerified!==true||
+    real.independentOperatorSignatures!==0||real.realEntraProviderConnected!==false||
+    real.actualProviderCredentials!==0||real.realMessagesSent!==0||
+    real.realSocialPosts!==0||real.productionSecurityCertified!==false||
+    role.schema!=='medsol-r3y-runtime-role-rls-proof-v1'||
+    role.runId!==process.env.GITHUB_RUN_ID||
+    role.verdict!=='DISPOSABLE_NON_BYPASSRLS_TENANT_SEPARATION_PASSED'||
+    role.superuser!==false||role.bypassRls!==false||
+    role.noTenantRowsVisible!==0||role.tenantARowsVisible!==3||
+    role.tenantBRowsVisible!==1)
+  throw new Error('R3-Y actual real API / unprivileged RLS acceptance mismatch');
+ realStackExecutionEvidence={
+  runId:real.runId,actualPassedRealStackCases:19,reportSha256:real.reportSha256,
+  realNest:true,realPostgresql:true,syntheticLocalOidcOnly:true,independentOperatorSignoff:false
+ };
+
  const pgPath='r3x-postgres-evidence.json',stagePath='r3x-staging-preflight.json';
  if(!existsSync(pgPath)||!existsSync(stagePath))
   throw new Error('R3-X same-run PostgreSQL/staging execution evidence missing');
@@ -267,23 +308,24 @@ for(const [suite,area,count] of PLAN){
  }
 }
 const result={
- schema:'medsol-r3x-cross-engine-staging-500-case-acceptance-index-v1',
+ schema:'medsol-r3y-real-stack-500-case-acceptance-index-v1',
  runId:verifiedInCi?process.env.GITHUB_RUN_ID:null,
- evidenceScope:'CI_OFFLINE_UNIT_51_REAL_CHROMIUM_AND_91_ACTUAL_DISPOSABLE_POSTGRES_NOT_INDEPENDENT_E2E',
+ evidenceScope:'CI_OFFLINE_UNIT_51_SIMULATED_OWNER_CHROMIUM_19_REAL_NEST_POSTGRES_CHROMIUM_91_POSTGRES_CASES_NOT_INDEPENDENT_STAGING_E2E',
  generatedAt:new Date().toISOString(),
  releaseVerdict:'NOT_CERTIFIED',
  tenantRlsInventory,
  browserExecutionEvidence,
  postgresExecutionEvidence,
  stagingPreflightEvidence,
+ realStackExecutionEvidence,
  plannedE2eCases:500,
  executedAndIndependentlySignedE2eCases:0,
  mappedOfflineUnitCases:123,
  mappedPostgresIntegrationCases:91,
- mappedChromiumBrowserCases:51,
- mappedEngineeringAssertions:265,
- unmappedPlannedCases:235,
- referenceCasesAssertedInThisCi:verifiedInCi?265:0,
+ mappedChromiumBrowserCases:70,
+ mappedEngineeringAssertions:284,
+ unmappedPlannedCases:216,
+ referenceCasesAssertedInThisCi:verifiedInCi?284:0,
  providerAccountsTested:0,
  realPublishOrEmailSendCount:0,
  irreversibleRealSideEffects:0,

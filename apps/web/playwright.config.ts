@@ -12,7 +12,7 @@ const origin='https://127.0.0.1:3443';
 
 export default defineConfig({
  testDir:'./e2e',
- testMatch:'**/*.pw.ts',
+ testMatch:['**/marketing-journey.pw.ts','**/r3w-chaos-recovery.pw.ts'],
  fullyParallel:false,
  workers:1,
  retries:0,
