@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {generateKeyPairSync,sign} from 'node:crypto';
-import {agentReleaseDigest,baselineAgentReleaseManifest,
+import {agentReleaseDigest,agentReleaseSigningPayload,baselineAgentReleaseManifest,
  parseAgentReleaseManifest,verifyTrustedAgentReleaseSignature}
  from './agent-manifest-release.js';
 import {AGENT_ROSTER} from '@medsol/agent-runtime';
@@ -20,6 +20,13 @@ describe('R3-F canonical restrictive signed agent manifests',()=>{
   const a=base();
   const b={...a,capabilities:[...a.capabilities].reverse()};
   expect(agentReleaseDigest(a)).toBe(agentReleaseDigest(parseAgentReleaseManifest(b)));
+ });
+ it('emits exact canonical offline signing bytes and refuses an unsafe draft',()=>{
+  const manifest=base();
+  expect(agentReleaseSigningPayload(manifest)).toBe('medsol-agent-release-signature-v1\n'+agentReleaseDigest(manifest));
+  expect(agentReleaseSigningPayload({...manifest,mission:'A different reviewed agent mission'}))
+   .not.toBe(agentReleaseSigningPayload(manifest));
+  expect(()=>agentReleaseSigningPayload({...manifest,modelPolicy:'ONLINE' as 'OFFLINE_ONLY'})).toThrow();
  });
  it('requires a separately trusted Ed25519 signer',()=>{
   const pair=generateKeyPairSync('ed25519');

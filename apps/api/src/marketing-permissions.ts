@@ -46,6 +46,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'READ_TENANCY';
   if(method==='GET'&&path==='/marketing/agents/manifests')return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/agents/manifests'||
+    path==='/marketing/agents/manifests/preview'||
     /^\/marketing\/agents\/manifests\/[^/]+\/(approve|activate|revoke|rollback)$/.test(path)))
    return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/tools/registrations')return 'READ_TENANCY';

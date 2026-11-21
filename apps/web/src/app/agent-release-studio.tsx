@@ -8,6 +8,8 @@ type ManifestRow={id:string;agentId:string;revision:number;status:string;
  digest:string;signatureTrusted:boolean;createdBy:string;approvedBy:string|null;
  manifest:{name:string;mission:string;capabilities:string[];skillKeys:string[];knowledgeKeys:string[]};
  externalEffectsAuthorized:false};
+type Preview={manifest:Record<string,unknown>;digest:string;signaturePayload:string;
+ signatureAlgorithm:"Ed25519";requiresIndependentReview:true;externalEffectsAuthorized:false};
 type Baseline={manifest:Record<string,unknown>;activeVersion:number;installed:boolean;
  agentStatus:string;signatureRequired:true;externalEffectsAuthorized:false};
 const field={display:"block",boxSizing:"border-box" as const,width:"100%",
@@ -21,6 +23,8 @@ export default function AgentReleaseStudio({identity}:{identity:Identity}){
  const [agentId,setAgentId]=useState("");
  const [baseline,setBaseline]=useState<Baseline|null>(null);
  const [draft,setDraft]=useState("");
+ const [preview,setPreview]=useState<Preview|null>(null);
+ const [previewDraft,setPreviewDraft]=useState("");
  const [signature,setSignature]=useState("");
  const [signerKeyId,setSignerKeyId]=useState("");
  const [reason,setReason]=useState("");
@@ -49,6 +53,7 @@ export default function AgentReleaseStudio({identity}:{identity:Identity}){
   setRoster(all as Agent[]);setRows(history as ManifestRow[]);
  }
  async function selectAgent(id:string){
+  setPreview(null);setPreviewDraft("");setSignature("");
   if(!id){setAgentId("");setBaseline(null);setDraft("");return;}
   const details=await api("manifests/baseline/"+encodeURIComponent(id)) as Baseline;
   setAgentId(id);setBaseline(details);setDraft(JSON.stringify(details.manifest,null,2));
@@ -84,22 +89,44 @@ export default function AgentReleaseStudio({identity}:{identity:Identity}){
    </p>
    <label>Proposed signed manifest (strict JSON)
     <textarea style={{...field,minHeight:210,fontFamily:"monospace",fontSize:12}}
-     value={draft} onChange={e=>setDraft(e.target.value)}/>
+     value={draft} onChange={e=>{
+      setDraft(e.target.value);setPreview(null);setPreviewDraft("");setSignature("");
+     }}/>
    </label>
+   <button style={{...button,marginTop:12}} disabled={busy||!draft.trim()}
+    onClick={()=>act(async()=>{
+     const source=draft;
+     const verified=await api("manifests/preview",{manifest:JSON.parse(source)}) as Preview;
+     setPreview(verified);setPreviewDraft(source);setSignature("");
+     setNotice("Server canonicalized this draft. Sign the exact bytes below with your trusted offline key.");
+    })}>Validate draft and prepare offline signing packet</button>
+   {preview&&previewDraft===draft&&<div style={{marginTop:12,padding:12,
+    border:"1px solid #b8d4e8",borderRadius:8}}>
+    <strong>Validated canonical SHA-256 digest</strong>
+    <p style={{overflowWrap:"anywhere",fontSize:12}}>{preview.digest}</p>
+    <label>Exact UTF-8 Ed25519 signing payload (read-only)
+     <textarea readOnly style={{...field,minHeight:75,fontFamily:"monospace",fontSize:12}}
+      value={preview.signaturePayload}/>
+    </label>
+    <p style={{fontSize:12,color:"#475569"}}>Sign these bytes outside the application; paste only the detached
+     base64url signature and configured signer key ID. Never paste or upload a private key.
+     A different administrator must still approve the signed release.</p>
+   </div>}
    <div style={{display:"grid",gap:12,gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",marginTop:10}}>
     <label>Trusted signer key ID
      <input style={field} value={signerKeyId} onChange={e=>setSignerKeyId(e.target.value)}
       placeholder="Configured operator key ID"/>
     </label>
     <label>Ed25519 detached signature (base64url)
-     <input style={field} value={signature} onChange={e=>setSignature(e.target.value)}
+     <input style={field} value={signature} disabled={!preview||previewDraft!==draft}
+      onChange={e=>setSignature(e.target.value)}
       placeholder="Signed digest, not private key"/>
     </label>
    </div>
-   <button style={{...button,marginTop:12}} disabled={busy||!draft||!signature||!signerKeyId}
+   <button style={{...button,marginTop:12}} disabled={busy||!preview||previewDraft!==draft||!signature.trim()||!signerKeyId.trim()}
     onClick={()=>act(async()=>{
-     const parsed:unknown=JSON.parse(draft);
-     await api("manifests",{manifest:parsed,signature:signature.trim(),signerKeyId:signerKeyId.trim()});
+     if(!preview||previewDraft!==draft)throw Error("Validate the latest draft before signing");
+     await api("manifests",{manifest:preview.manifest,signature:signature.trim(),signerKeyId:signerKeyId.trim()});
      setSignature("");setNotice("Signed release proposed. Independent approval is still mandatory.");
      await refresh();
     })}>Propose signed offline agent release</button>
