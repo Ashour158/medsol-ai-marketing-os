@@ -83,7 +83,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (request.method==="POST" && (
           path.length===1 ||
           (path.length===2 && id==="offline-raster") ||
-          (path.length===3 && !!id && id!=="revisions" && action==="revisions") ||
+          (path.length===3 && !!id && id!=="revisions" &&
+            (action==="revisions"||action==="offline-revisions")) ||
           (path.length===4 && id==="revisions" && !!action &&
              (operation==="rights-review" || operation==="submit-approval"))
         ))
