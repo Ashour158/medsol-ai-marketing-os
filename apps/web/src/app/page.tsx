@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import OperationsConsole from "./operations-console";
+import WorkspaceNavigation from "./workspace-navigation";
 import CreativeGovernanceStudio from "./creative-governance-studio";
 import CampaignPublicationStudio from "./campaign-publication-studio";
 import SyntheticEmailStudio from "./synthetic-email-studio";
@@ -108,7 +109,8 @@ export default function Home() {
     <div style={{ color: "#124d83", fontSize: 13, fontWeight: 800, letterSpacing: 2 }}>MEDSOL · AI MARKETING OS</div>
     <h1 style={{ fontSize: 38, marginBottom: 8 }}>Marketing Command Center</h1>
     <p style={{ color: "#64748b" }}>Authenticated marketing workspace · human approval remains mandatory for governed campaigns.</p>
-    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
+    <WorkspaceNavigation authenticated={Boolean(identity)}/>
+    <section id="identity" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
       <h2 style={{ marginTop: 0 }}>1. Connect to your organization</h2>
       <p style={{ color: "#64748b", fontSize: 13 }}>Sign in through your organization's identity provider. Sessions use encrypted HTTP-only cookies and authenticated requests are proxied server-side.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -126,18 +128,18 @@ export default function Home() {
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
-    <OfflineCampaignJourneyStudio identity={identity} />
-    <CreativeGovernanceStudio identity={identity} />
-    <CampaignPublicationStudio identity={identity}/>
-    <SyntheticEmailStudio identity={identity}/>
-    <GovernedToolRegistryStudio identity={identity}/>
-    <ProviderContractTrialStudio identity={identity}/>
-    <IntegrationGovernanceStudio identity={identity}/>
-    <OperationsConsole identity={identity} onRunSelected={id => {
+    <div id="journey" style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio identity={identity} /></div>
+    <div id="creative" style={{scrollMarginTop:120}}><CreativeGovernanceStudio identity={identity} /></div>
+    <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio identity={identity}/></div>
+    <div id="email" style={{scrollMarginTop:120}}><SyntheticEmailStudio identity={identity}/></div>
+    <div id="tool-registry" style={{scrollMarginTop:120}}><GovernedToolRegistryStudio identity={identity}/></div>
+    <div id="provider-trials" style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
+    <div id="integrations" style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
+    <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
-    }} />
-    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    }} /></div>
+    <section id="portfolio" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>2. Portfolio and operational overview</h2>
       <button style={buttonStyle} disabled={busy} onClick={() => perform(loadDashboard)}>Refresh command center</button>
       {overview && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 12, marginTop: 18 }}>
@@ -176,7 +178,7 @@ export default function Home() {
         {agentDetail !== null && <details open><summary>Selected execution audit trace</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agentDetail, null, 2)}</pre></details>}
       </div>
     </section>
-    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="strategy" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>3. Assess and initiate a campaign</h2>
       <label>Marketing objective<textarea style={{ ...fieldStyle, minHeight: 100 }} value={goal} onChange={e => setGoal(e.target.value)} placeholder="Launch an oncology genomics awareness campaign in Egypt" /></label>
       <label style={{ display: "block", marginTop: 14 }}>Existing marketing objective ID (required to create a campaign)<input style={fieldStyle} value={objectiveId} onChange={e => setObjectiveId(e.target.value)} placeholder="UUID from marketing objectives" /></label>
@@ -188,7 +190,7 @@ export default function Home() {
       </div>
       {assessment !== null && <details open style={{ marginTop: 16 }}><summary>Assessment result</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(assessment, null, 2)}</pre></details>}
     </section>
-    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="workflow-operations" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>4. Monitor and recover workflow</h2>
       <label>Workflow execution ID<input style={fieldStyle} value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="Workflow ID" /></label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
@@ -197,7 +199,7 @@ export default function Home() {
       </div>
       {workflow && <><p><strong>Status:</strong> {workflow.status ?? "Unknown"} · <strong>Step:</strong> {workflow.currentStep ?? "Unknown"}</p><details><summary>Workflow details and checkpoints</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(workflow, null, 2)}</pre></details></>}
     </section>
-    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="approvals" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>5. Pending human approvals</h2>
       <p style={{ color: "#64748b" }}>Approval decisions require a verified OIDC user and an authorized marketing role. Shared bootstrap tokens cannot approve.</p>
       <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { setPendingApprovals(await call("approvals/pending")); })}>Refresh approval inbox</button>
@@ -215,7 +217,7 @@ export default function Home() {
       </div>}
       {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
     </section>
-    <section style={{ background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="agent-brain" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }} id="brain-operations">Marketing Brain & Learning Intelligence</h2>
       <p style={{ color: "#64748b" }}>Review all agent stages, evidence quarantine and proposed skills. No automatic skill activation or external publishing.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -295,11 +297,11 @@ export default function Home() {
             <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify({brains:blueprintInventory.brains,personas:blueprintInventory.personas},null,2)}</pre>
           </details>
         </>}
-        {identity&&<BlueprintVirtualStudio/>}
-        <OfflineDagStudio identity={identity}/>
-        <KnowledgeFabricStudio identity={identity}/>
-        <MemoryGraphStudio identity={identity}/>
-        <R3AcceptanceStudio identity={identity}/>
+        <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio/>}</div>
+        <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio identity={identity}/></div>
+        <div id="knowledge" style={{scrollMarginTop:120}}><KnowledgeFabricStudio identity={identity}/></div>
+        <div id="memory" style={{scrollMarginTop:120}}><MemoryGraphStudio identity={identity}/></div>
+        <div id="acceptance" style={{scrollMarginTop:120}}><R3AcceptanceStudio identity={identity}/></div>
       </div>
       {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}
       {brainAssessment !== null && <details open><summary>13-agent review trace</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainAssessment,null,2)}</pre></details>}
