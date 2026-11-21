@@ -230,7 +230,7 @@ test('T07-030 simulated observations are never converted into verified lessons a
  await expect(page.getByRole('status').filter({hasText:'Feedback quarantined'})).toBeVisible();
  const x=await state(request);
  expect(x.learningSignals).toEqual([{id:'signal-e2e',status:'QUARANTINED',topic:'offline acceptance'}]);
- expect(x.requestLog.filter((z:any)=>/\\/learning\\/(proposals|skills|knowledge)/.test(z.path))).toHaveLength(0);
+ expect(x.requestLog.filter((z:any)=>['/learning/proposals','/learning/skills','/learning/knowledge'].some(segment=>z.path.includes(segment)))).toHaveLength(0);
 });
 test('T08-003 unavailable approved brand policy blocks creative release submission',async({page,request})=>{
  await fault(request,'GET','/marketing/brand/active',503,'Brand policy unavailable');
