@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import OfflineDagGraphEditor from "./offline-dag-graph-editor";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Release={id:string;blueprintId:string;revision:number;digest:string;
  status:string;canaryPercent:number;stepCount:number;signatureTrusted:boolean;
@@ -75,10 +76,13 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
    Never paste private keys into this console. A draft alone cannot be activated.
   </p>
   <label style={{display:"block",marginTop:12,fontSize:13}}>Signed deployment manifest
-   <textarea value={manifest} onChange={e=>setManifest(e.target.value)}
+   <textarea value={manifest} onChange={e=>{setManifest(e.target.value);setSignature("");}}
     spellCheck={false} style={{...field,height:240,
      fontFamily:"monospace",fontSize:12,display:"block",marginTop:6}}/>
   </label>
+  <OfflineDagGraphEditor json={manifest} onChange={next=>{
+   setManifest(next);setSignature("");setRunKey("");
+  }}/>
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",
    gap:12,marginTop:10}}>
    <label style={{fontSize:13}}>Trusted signer key ID
