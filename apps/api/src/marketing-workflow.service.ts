@@ -3,7 +3,9 @@ import {parseOfflineDagManifest,offlineDagDigest,verifyOfflineDagSignature,
  offlineDagTrust,planOfflineDag,canaryAllows,SAFE_DAG_CAPABILITY}
  from './r3g-offline-dag.js';
 import { Prisma } from '@prisma/client';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {MarketingLearningService} from './marketing-learning.service.js';
+import {curateDagEvidence,assertDagEvidenceCurrent,type DagEvidenceRef} from './r3g-dag-evidence.js';
 import { createHash,randomUUID } from 'node:crypto';
 import { MarketingRequest, MarketingRequestSchema,simulateBlueprintDraft,type BlueprintSimulationResult } from '@medsol/contracts';
 import { PrismaService,withMarketingTenant } from './prisma.service.js';
@@ -17,7 +19,8 @@ type WorkflowResult = { workflowExecutionId: string; status: string; currentStep
 
 @Injectable()
 export class MarketingWorkflowService {
-  constructor(private readonly db: PrismaService, private readonly agents: AgentService, private readonly campaigns: CampaignService, private readonly leases: WorkflowLeaseService) {}
+  constructor(private readonly db: PrismaService, private readonly agents: AgentService, private readonly campaigns: CampaignService, private readonly leases: WorkflowLeaseService,
+    @Optional() private readonly learning?: MarketingLearningService) {}
 
 
   /**
@@ -386,7 +389,8 @@ export class MarketingWorkflowService {
       correlationId,status:'RUNNING',currentStep:'QUEUED',
       input:{blueprintId,requestKey,objective,market,requestedBy:identity.userId,
        deploymentId:release.id,releaseDigest:release.digest,revision:release.revision,
-       agentPins,offlineOnly:true,externalEffectsAuthorized:false}
+       agentPins,knowledgeMode:process.env.MARKETING_DAG_KNOWLEDGE_ENABLED==='true'?
+        'CITATIONS_REQUIRED':'DISABLED',offlineOnly:true,externalEffectsAuthorized:false}
      }});
      await tx.workflowStepExecution.createMany({data:plan.map(step=>({
       organizationId,workflowExecutionId:row.id,stepKey:step.id,status:'PENDING',
@@ -420,7 +424,8 @@ export class MarketingWorkflowService {
             throw new ConflictException('DAG lease, status or execution fence changed');
           const meta=wf.input as {deploymentId?:string;releaseDigest?:string;
            blueprintId?:string;objective?:string;market?:string;
-           requestedBy?:string;agentPins?:Record<string,number>};
+           requestedBy?:string;agentPins?:Record<string,number>;
+           knowledgeMode?:string};
           const release=await tx.blueprintDeployment.findFirst({where:{
            organizationId,id:meta.deploymentId??''}});
           if(!release||release.status==='REVOKED'||release.digest!==meta.releaseDigest||
@@ -437,6 +442,37 @@ export class MarketingWorkflowService {
           const plan=planOfflineDag(release.manifest);
           const steps=await tx.workflowStepExecution.findMany({where:{
            workflowExecutionId:id,organizationId}});
+          if(meta.knowledgeMode==='CITATIONS_REQUIRED'){
+           // No source revocation may be bypassed by a later tick, even after
+           // the human approval was granted. Recheck in the SAME tenant TX.
+           try{
+            for(const priorStep of steps){
+             const priorInput=priorStep.input as {type?:string};
+             if(priorStep.status!=='COMPLETED'||priorInput?.type!=='AGENT_TASK')
+              continue;
+             const priorOutput=priorStep.output as {
+              knowledgeMode?:string;evidenceRefs?:unknown
+             }|null;
+             if(priorOutput?.knowledgeMode!=='CITATIONS_REQUIRED')
+              throw new ConflictException('Signed DAG evidence checkpoint missing');
+             await assertDagEvidenceCurrent(tx,organizationId,priorOutput.evidenceRefs);
+            }
+           }catch{
+            await tx.workflowExecution.updateMany({where:{id,organizationId,
+             leaseOwner:lease.owner,leaseGeneration:lease.generation,
+             status:'RUNNING'},data:{
+             status:'BLOCKED',currentStep:'CITED_KNOWLEDGE_INVALIDATED',
+             error:{reason:'Reviewed source or memory invalid at DAG tick',
+              automaticReplayAllowed:false,externalEffectsAuthorized:false},
+             completedAt:new Date(),version:{increment:1}}});
+            await tx.auditEvent.create({data:{organizationId,
+             actorType:'SYSTEM',actorId:'r3g-dag-evidence-gate',
+             action:'DAG_CITATION_INVALIDATED',objectType:'WorkflowExecution',
+             objectId:id,correlationId:wf.correlationId,
+             after:{stepCount:steps.length,externalEffectsAuthorized:false}}});
+            return{kind:'BLOCKED' as const};
+           }
+          }
           const ledger=new Map(steps.map(s=>[s.stepKey,s]));
           if(steps.length!==plan.length||steps.some(s=>!plan.some(p=>p.id===s.stepKey)))
            throw new ConflictException('Durable DAG step ledger differs from pinned graph');
@@ -509,7 +545,7 @@ export class MarketingWorkflowService {
             data:{currentStep:ready.id,version:{increment:1}}});
            return{kind:'AGENT_TASK' as const,stepId:current.id,
             agentId,objective:meta.objective??'',market:meta.market??'',
-            correlationId:wf.correlationId};
+            correlationId:wf.correlationId,knowledgeMode:meta.knowledgeMode??'DISABLED'};
           }
           const claimed=await tx.workflowStepExecution.updateMany({where:{
            id:current.id,organizationId,status:'PENDING'},data:{
@@ -531,6 +567,15 @@ export class MarketingWorkflowService {
           try{
            const capability=SAFE_DAG_CAPABILITY[action.agentId];
            if(!capability)throw new ForbiddenException('Agent capability not in offline allowlist');
+           let evidence:ReturnType<typeof curateDagEvidence>|null=null;
+           if(action.knowledgeMode==='CITATIONS_REQUIRED'){
+            if(process.env.MARKETING_DAG_KNOWLEDGE_ENABLED!=='true'||!this.learning)
+             throw new ForbiddenException('Signed DAG knowledge policy disabled or unavailable');
+            const retrieved=await this.learning.contextForAgent(organizationId,
+             action.agentId,action.objective.slice(0,400));
+            evidence=curateDagEvidence(retrieved,action.agentId);
+           }else if(action.knowledgeMode!=='DISABLED')
+            throw new ForbiddenException('Unknown pinned DAG knowledge policy');
            const result=await this.agents.execute(action.agentId,{
             organizationId,correlationId:action.correlationId,
             causationId:id,input:{objective:action.objective,
@@ -539,11 +584,13 @@ export class MarketingWorkflowService {
              // marker is safer than inventing a geographic market or failing
              // halfway through an agent task after its durable claim.
              market:action.market.trim()||'Unspecified market; human review required',
-             requestedOutcome:action.objective},capabilities:[capability]});
+             requestedOutcome:action.objective,
+             ...(evidence?{knowledgeContext:evidence.context}:{})},
+            capabilities:[capability]});
            await this.leases.assertActive(lease);
            await this.dagCheckpointAgentStep(lease,action.stepId,
             action.agentId,result.executionId,result.decision.action,
-            result.decision.approvalRequired);
+            result.decision.approvalRequired,evidence?.refs??[]);
           }catch(error){
            // Losing the lease must not corrupt a successor's state.
            // A current owner quarantines uncertain outcomes atomically.
@@ -567,7 +614,8 @@ export class MarketingWorkflowService {
    * the single canonical workflow ledger authoritative, even across workers.
    */
   private async dagCheckpointAgentStep(lease:WorkflowLease,stepId:string,
-    agentId:string,executionId:string,action:string,reviewRequired:boolean){
+    agentId:string,executionId:string,action:string,reviewRequired:boolean,
+    evidenceRefs:DagEvidenceRef[]=[]){
     if(process.env.MARKETING_DAG_OFFLINE_EXECUTION_ENABLED!=='true'||
        process.env.MARKETING_AI_REASONING_ENABLED==='true')
      throw new ForbiddenException('Offline-only DAG runtime gate changed before checkpoint');
@@ -587,7 +635,7 @@ export class MarketingWorkflowService {
       }});
       if(!wf)throw new ConflictException('DAG agent checkpoint lease superseded or expired');
       const meta=wf.input as {deploymentId?:string;releaseDigest?:string;
-       agentPins?:Record<string,number>};
+       agentPins?:Record<string,number>;knowledgeMode?:string};
       const release=await tx.blueprintDeployment.findFirst({where:{
        organizationId:lease.organizationId,id:meta.deploymentId??'',
        status:{not:'REVOKED'}
@@ -612,6 +660,12 @@ export class MarketingWorkflowService {
       const decision=execution?.decision as {releaseEvidence?:{
        modelCallsAuthorized?:boolean;toolCallsAuthorized?:boolean;
        externalEffectsAuthorized?:boolean}}|null|undefined;
+      if(meta.knowledgeMode==='CITATIONS_REQUIRED'){
+       if(process.env.MARKETING_DAG_KNOWLEDGE_ENABLED!=='true')
+        throw new ConflictException('Pinned knowledge gate changed during execution');
+       await assertDagEvidenceCurrent(tx,lease.organizationId,evidenceRefs);
+      }else if(evidenceRefs.length)
+       throw new ConflictException('Unpinned knowledge is not permitted in DAG checkpoint');
       if(!execution||decision?.releaseEvidence?.modelCallsAuthorized!==false||
        decision?.releaseEvidence?.toolCallsAuthorized!==false||
        decision?.releaseEvidence?.externalEffectsAuthorized!==false)
@@ -622,6 +676,7 @@ export class MarketingWorkflowService {
       },data:{status:'COMPLETED',completedAt:now,output:{
        agentExecutionId:executionId,action,reviewRequired,
        releaseDigest:release.digest,leaseGeneration:lease.generation,
+       evidenceRefs,knowledgeMode:meta.knowledgeMode??'DISABLED',
        externalEffectsAuthorized:false}}});
       if(changed.count!==1)
        throw new ConflictException('DAG agent checkpoint already decided');
@@ -632,7 +687,7 @@ export class MarketingWorkflowService {
        correlationId:wf.correlationId,causationId:executionId,
        after:{stepId,agentId,executionId,
         leaseGeneration:lease.generation,releaseDigest:release.digest,
-        externalEffectsAuthorized:false}
+        evidenceReferences:evidenceRefs.length,externalEffectsAuthorized:false}
       }});
       return{stepId,status:'COMPLETED' as const,executionId};
     });

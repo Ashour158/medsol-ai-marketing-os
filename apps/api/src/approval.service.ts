@@ -7,6 +7,7 @@ import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
 import {MarketingWorkflowService} from './marketing-workflow.service.js';
 import {offlineDagDigest,verifyOfflineDagSignature,offlineDagTrust}
  from './r3g-offline-dag.js';
+import {assertDagEvidenceCurrent} from './r3g-dag-evidence.js';
 import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
 
 @Injectable() export class ApprovalService{
@@ -61,6 +62,23 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
         !verifyOfflineDagSignature(release.manifest,release.signature,
          release.signerKeyId,offlineDagTrust()))
       throw new ConflictException('Pinned DAG release revoked or signature untrusted at human decision');
+     // The existing ApprovalService is also the evidence-release gate.
+     // A source revoked AFTER an agent checkpoint but BEFORE independent
+     // approval cannot be laundered into a successful human decision.
+     if((workflow.input as {knowledgeMode?:string}).knowledgeMode==='CITATIONS_REQUIRED'){
+      const priorSteps=await tx.workflowStepExecution.findMany({where:{
+       organizationId:cmd.organizationId,workflowExecutionId:workflow.id,
+       status:'COMPLETED'
+      }});
+      for(const priorStep of priorSteps){
+       const metadata=priorStep.input as {type?:string};
+       if(metadata?.type!=='AGENT_TASK')continue;
+       const output=priorStep.output as {knowledgeMode?:string;evidenceRefs?:unknown}|null;
+       if(output?.knowledgeMode!=='CITATIONS_REQUIRED')
+        throw new ConflictException('Pinned DAG agent evidence checkpoint missing');
+       await assertDagEvidenceCurrent(tx,cmd.organizationId,output.evidenceRefs);
+      }
+     }
     }
    }
    if(a.objectType==='Campaign' && cmd.decision==='APPROVED'){
