@@ -20,10 +20,14 @@ type Journey={
  auditHistory:Array<{id:string;action:string;occurredAt:string;objectType:string}>;
  offlineSimulationOnly:true;externalEffectsAuthorized:false;
 };
-type OfflineCreative={assetId:string;revisionId:string;brandId:string;
+type OfflineCreative={assetId:string;revisionId:string;version:number;brandId:string;
  renditionDigest:string;offlineOnly:true;sourceKind:"FLATTENED_EXPORT"};
-type Preview={revisionId:string;editableCopy:string;imageDataUrl:string;
+type Preview={revisionId:string;assetId:string;version:number;current:boolean;
+ title:string;editableCopy:string;imageDataUrl:string;
  renditionDigest:string;offlineOnly:true};
+type CreativeDetail={id:string;brandId:string;version:number;
+ revisions:Array<{id:string;version:number;offlinePreviewAvailable:boolean;
+  rightsReviewedAt:string|null}>};
 type Contact={contactId:string;latestSimulatedConsent:string};
 const button={padding:"10px 14px",border:0,borderRadius:8,cursor:"pointer",
  background:"#124d83",fontWeight:650 as const,color:"white"};
@@ -97,6 +101,9 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  const [journey,setJourney]=useState<Journey|null>(null);
  const [creative,setCreative]=useState<OfflineCreative|null>(null);
  const [preview,setPreview]=useState<Preview|null>(null);
+ const [versionHistory,setVersionHistory]=useState<CreativeDetail["revisions"]>([]);
+ const [historyId,setHistoryId]=useState("");
+ const [historicalPreview,setHistoricalPreview]=useState<Preview|null>(null);
  const [creativeTitle,setCreativeTitle]=useState("Scientific innovation · evidence first");
  const [creativeCopy,setCreativeCopy]=useState("Discover evidence-led research workflows with a scientific team. Product claims require independent source and regulatory review.");
  const [color,setColor]=useState("#124d83");
@@ -124,7 +131,8 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   // Never mix the previous campaign's approval/creative with a new campaign.
   const switching=r.campaign.id!==campaignId;
   if(switching){
-   setCreative(null);setPreview(null);setDestinationRef("");
+   setCreative(null);setPreview(null);setVersionHistory([]);
+   setHistoryId("");setHistoricalPreview(null);setDestinationRef("");
    setCreativeApprovalId("");setPublicationId("");setSyntheticContacts([]);
   }
   setJourney(r);setCampaignId(r.campaign.id);setLookupCampaignId(r.campaign.id);
@@ -133,9 +141,14 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   if(r.brainRuns[0])setBrainRunId(r.brainRuns[0].id);
   if(r.creativeAssets[0]&&(switching||!creative)) {
    const chosen=r.creativeAssets.find(x=>x.publicationLinked)??r.creativeAssets[0];
-   setCreative({assetId:chosen.assetId,revisionId:chosen.revisionId,
-    brandId:r.campaign.brandId,renditionDigest:chosen.renditionDigest,
+   const detail=await api("assets/"+encodeURIComponent(chosen.assetId)) as CreativeDetail;
+   const latest=detail.revisions.find(x=>x.version===detail.version&&x.offlinePreviewAvailable);
+   const revisionId=latest?.id??chosen.revisionId;
+   const p=await api("assets/revisions/"+encodeURIComponent(revisionId)+"/offline-preview") as Preview;
+   setCreative({assetId:chosen.assetId,revisionId,version:p.version,
+    brandId:r.campaign.brandId,renditionDigest:p.renditionDigest,
     offlineOnly:true,sourceKind:"FLATTENED_EXPORT"});
+   setPreview(p);setVersionHistory(detail.revisions.filter(x=>x.offlinePreviewAvailable));
   }
  }
  async function load(){
@@ -148,7 +161,9 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  }
  useEffect(()=>{
   setBrands([]);setJourney(null);setCampaignId("");setLookupCampaignId("");setWorkflowId("");
-  setBrainRunId("");setCreative(null);setPreview(null);setDestinationRef("");
+  setBrainRunId("");setCreative(null);setPreview(null);
+  setVersionHistory([]);setHistoryId("");setHistoricalPreview(null);
+  setDestinationRef("");
   setCreativeApprovalId("");setSyntheticContacts([]);setPublicationId("");
   setBrandPolicyVersion("");
   if(!identity)return;
@@ -317,10 +332,78 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
          p.renditionDigest!==result.renditionDigest||
          !p.imageDataUrl.startsWith("data:image/png;base64,"))
        throw new Error("Offline preview digest or origin mismatch");
-      setCreative(result);setPreview(p);setNotice("Stored actual synthetic PNG, editable text and readback proof; rights unapproved");
+      setCreative(result);setPreview(p);
+      const detail=await api("assets/"+encodeURIComponent(result.assetId)) as CreativeDetail;
+      setVersionHistory(detail.revisions.filter(x=>x.offlinePreviewAvailable));
+      setHistoryId("");setHistoricalPreview(null);
+      setCreativeApprovalId("");setPublicationId("");
+      setNotice("Saved the first immutable offline creative version. Independent rights review is required.");
       if(campaignId)await refresh();
      })}>Generate and verify internal flattened raster draft</button>
+    {creative&&<button style={{...secondary,marginLeft:9}}
+      disabled={blocked||!manager||creativeCopy.trim().length<12}
+      onClick={()=>void run(async()=>{
+       const asset=await api("assets/"+encodeURIComponent(creative.assetId)) as CreativeDetail;
+       if(asset.brandId!==creative.brandId||asset.version!==creative.version)
+        throw new Error("Creative changed since you loaded it. Refresh and review the latest version.");
+       const next=await api("assets/"+encodeURIComponent(creative.assetId)+"/offline-revisions",{
+        expectedVersion:creative.version,editableCopy:creativeCopy,
+        pngBase64:localPng(creativeTitle,creativeCopy,color),
+        rightsExpiresAt:dateAt(60),requestKey:uuid()
+       }) as OfflineCreative;
+       // As for the first version: never expose the new draft as usable
+       // until authoritative server-side raster readback and preview succeed.
+       await api("media/evidence/"+encodeURIComponent(next.revisionId)+"/verify-offline",{});
+       const observed=await api("assets/revisions/"+
+        encodeURIComponent(next.revisionId)+"/offline-preview") as Preview;
+       if(observed.assetId!==creative.assetId||observed.version!==next.version||
+          !observed.current||observed.renditionDigest!==next.renditionDigest||
+          !observed.imageDataUrl.startsWith("data:image/png;base64,"))
+        throw new Error("Revised offline creative readback does not match the saved version");
+       setCreative(next);setPreview(observed);
+       const history=await api("assets/"+encodeURIComponent(next.assetId)) as CreativeDetail;
+       setVersionHistory(history.revisions.filter(x=>x.offlinePreviewAvailable));
+       setHistoryId("");setHistoricalPreview(null);
+       // A new immutable version invalidates earlier exact-content approval.
+       setCreativeApprovalId("");setPublicationId("");
+       setNotice("Saved immutable version "+next.version+
+        ". Previous approval scopes are stale; new independent rights and release approval required.");
+       if(campaignId)await refresh();
+      })}>Save revised PNG and text as new version</button>}
     {creative&&<p style={{fontSize:12}}>Revision {creative.revisionId} · {creative.renditionDigest}</p>}
+    {creative&&versionHistory.length>0&&<div style={{marginTop:12}}>
+     <label style={label}>Version history (read-only comparisons)
+      <select style={input} value={historyId} onChange={e=>{
+       setHistoryId(e.target.value);setHistoricalPreview(null);
+      }}>
+       <option value="">Select a saved revision</option>
+       {versionHistory.map(rev=><option key={rev.id} value={rev.id}>
+        Version {rev.version} {rev.rightsReviewedAt?"· rights reviewed":"· rights pending"}
+        {rev.id===creative.revisionId?" · current":""}
+       </option>)}
+      </select>
+     </label>
+     <button style={secondary} disabled={blocked||!historyId}
+      onClick={()=>void run(async()=>{
+       const p=await api("assets/revisions/"+
+        encodeURIComponent(historyId)+"/offline-preview") as Preview;
+       if(p.assetId!==creative.assetId||!p.offlineOnly)
+        throw new Error("Version does not belong to this offline creative");
+       setHistoricalPreview(p);setNotice("Retrieved immutable creative version "+p.version);
+      })}>Compare saved version</button>
+     {historicalPreview&&<div style={{marginTop:10}}>
+      <p style={{fontSize:12,fontWeight:650}}>Version {historicalPreview.version}
+       {historicalPreview.current?" · current":" · historical (not current)"}</p>
+      <img alt="Previously saved offline creative version" src={historicalPreview.imageDataUrl}
+       style={{maxWidth:"100%",border:"1px solid #cbd5e1",borderRadius:8}}/>
+      <p style={{fontSize:12,whiteSpace:"pre-wrap"}}>{historicalPreview.editableCopy}</p>
+      <button style={secondary} disabled={blocked||!manager}
+       onClick={()=>{setCreativeCopy(historicalPreview.editableCopy);
+        setNotice("Loaded previous copy into unsaved editor; saving will append a NEW version.");}}>
+       Reuse historical copy in editor</button>
+     </div>}
+    </div>}
+
     {preview&&<div style={{marginTop:12}}>
       <img alt="Generated offline campaign preview; not publishable media" src={preview.imageDataUrl}
        style={{maxWidth:"100%",border:"1px solid #cbd5e1",borderRadius:8}}/>
