@@ -337,7 +337,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
       setVersionHistory(detail.revisions.filter(x=>x.offlinePreviewAvailable));
       setHistoryId("");setHistoricalPreview(null);
       setCreativeApprovalId("");setPublicationId("");
-      setNotice("Saved the first immutable offline creative version. Independent rights review is required.");
+      setNotice("Stored actual synthetic PNG with immutable version 1 and editable copy; independent rights review required.");
       if(campaignId)await refresh();
      })}>Generate and verify internal flattened raster draft</button>
     {creative&&<button style={{...secondary,marginLeft:9}}
