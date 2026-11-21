@@ -1,0 +1,45 @@
+{
+  "schema": "medsol-t1e-operator-acceptance-template-v1",
+  "releaseVerdict": "NOT_CERTIFIED",
+  "deploymentStatus": "NOT_DEPLOYED",
+  "independentOperatorSignatures": 0,
+  "requiredIndependentQaSlots": 500,
+  "completedIndependentlySignedQaSlots": 0,
+  "defects": [],
+  "perCaseEvidence": [],
+  "acceptance": [
+    {
+      "id": "T1E-AUTH",
+      "status": "NOT_RUN",
+      "description": "Real human OIDC sign-in and MFA, session revoke and cross tenant"
+    },
+    {
+      "id": "T1E-JOURNEY",
+      "status": "NOT_RUN",
+      "description": "Full offline brief-to-campaign-to-approval-to-simulated social/email/learning"
+    },
+    {
+      "id": "T1E-SEC",
+      "status": "NOT_RUN",
+      "description": "Tenant RLS, signed claims, negative egress, TLS and role proof"
+    },
+    {
+      "id": "T1E-ACCESS",
+      "status": "NOT_RUN",
+      "description": "Manual accessibility and keyboard acceptance"
+    },
+    {
+      "id": "T1E-PERF",
+      "status": "NOT_RUN",
+      "description": "Measured staging performance budgets and concurrent flows"
+    },
+    {
+      "id": "T1E-DR",
+      "status": "NOT_RUN",
+      "description": "Real staging backup/restore, rollback and secrets rotation"
+    }
+  ],
+  "signedAt": null,
+  "signer": null,
+  "comment": "This is a blank handoff, not evidence of actual human acceptance."
+}

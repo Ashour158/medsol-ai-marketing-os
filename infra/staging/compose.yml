@@ -1,0 +1,48 @@
+# T1E STAGING TEMPLATE ONLY — requires external self-hosted OIDC, DB,
+# HTTPS TLS reverse proxy, secret manager and approved immutable images.
+name: medsol-ai-marketing-staging
+services:
+  api:
+    image: ${MARKETING_STAGING_API_IMAGE:?Provide reviewed immutable API SHA256 image}
+    env_file:
+      - ${MARKETING_STAGING_API_ENV_FILE:?Provide private API runtime envfile}
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+    networks: [private]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  web:
+    image: ${MARKETING_STAGING_WEB_IMAGE:?Provide reviewed immutable web SHA256 image}
+    env_file:
+      - ${MARKETING_STAGING_WEB_ENV_FILE:?Provide private web runtime envfile}
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      MARKETING_API_INTERNAL_URL: http://api:3001
+    ports:
+      - "127.0.0.1:${MARKETING_STAGING_LOCAL_PORT:-3100}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [private]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:noexec,nosuid,size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+networks:
+  private: {}
