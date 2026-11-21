@@ -72,7 +72,7 @@ async function source(page:Page,agentId:string){
   sourceKey:"t3d-evidence-"+randomUUID(),
   title:"Reviewed genomics sequencing evidence fixture",
   sourceUrl:"https://example.org/offline-evidence-fixture",
-  expiresAt:"2030-12-31T00:00:00.000Z",
+  expiresAt:"2027-12-31T00:00:00.000Z",
   accessMode:"AGENT_SCOPED",agentScope:[agentId],text
  });
 }
