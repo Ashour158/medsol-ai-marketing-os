@@ -22,7 +22,7 @@ const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
 describe.skipIf(!enabled)('R3-X two-tenant cross-owner PostgreSQL staging acceptance',()=>{
  const db=new PrismaClient();
  const a='r3x-a-'+randomUUID(),b='r3x-b-'+randomUUID();
- const adminId=randomUUID(),reviewerId=randomUUID(),subject='r3x-oidc-'+randomUUID();
+ const adminId=randomUUID(),reviewerId=randomUUID(),foreignUserId=randomUUID(),subject='r3x-oidc-'+randomUUID();
  let brandId:string,foreignBrandId:string,objectiveId:string,foreignObjectiveId:string;
  let campaignId:string,foreignCampaignId:string;
  let reads:MarketingReadService,learning:MarketingLearningService;
@@ -61,7 +61,10 @@ describe.skipIf(!enabled)('R3-X two-tenant cross-owner PostgreSQL staging accept
     email:adminId+'@example.invalid',role:'ADMIN',oidcSubject:subject},
    {id:reviewerId,organizationId:a,name:'R3X separate reviewer',
     email:reviewerId+'@example.invalid',role:'ADMIN',
-    oidcSubject:'reviewer-'+randomUUID()}
+    oidcSubject:'reviewer-'+randomUUID()},
+   {id:foreignUserId,organizationId:b,name:'R3X foreign admin',
+    email:foreignUserId+'@example.invalid',role:'ADMIN',
+    oidcSubject:'foreign-'+randomUUID()}
   ]});
   const x=await db.brand.create({data:{
    id:randomUUID(),organizationId:a,slug:'r3x-scientific',
@@ -70,7 +73,7 @@ describe.skipIf(!enabled)('R3-X two-tenant cross-owner PostgreSQL staging accept
   brandId=x.id;
   const y=await db.brand.create({data:{
    id:randomUUID(),organizationId:b,slug:'r3x-foreign',
-   name:'R3X Foreign',createdBy:adminId
+   name:'R3X Foreign',createdBy:foreignUserId
   }});
   foreignBrandId=y.id;
   const obj=await db.marketingObjective.create({data:{
