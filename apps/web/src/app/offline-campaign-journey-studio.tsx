@@ -141,14 +141,14 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   if(r.brainRuns[0])setBrainRunId(r.brainRuns[0].id);
   if(r.creativeAssets[0]&&(switching||!creative)) {
    const chosen=r.creativeAssets.find(x=>x.publicationLinked)??r.creativeAssets[0];
-   const detail=await api("assets/"+encodeURIComponent(chosen.assetId)) as CreativeDetail;
-   const latest=detail.revisions.find(x=>x.version===detail.version&&x.offlinePreviewAvailable);
-   const revisionId=latest?.id??chosen.revisionId;
-   const p=await api("assets/revisions/"+encodeURIComponent(revisionId)+"/offline-preview") as Preview;
-   setCreative({assetId:chosen.assetId,revisionId,version:p.version,
-    brandId:r.campaign.brandId,renditionDigest:p.renditionDigest,
+   // Campaign timeline is authoritative for linked metadata, but does not
+   // contain a version-pinned PNG. Do NOT perform new DAM fetches while
+   // refreshing unrelated journey/approval views. The editor loads the exact
+   // current version only on explicit history refresh.
+   setCreative({assetId:chosen.assetId,revisionId:chosen.revisionId,version:0,
+    brandId:r.campaign.brandId,renditionDigest:chosen.renditionDigest,
     offlineOnly:true,sourceKind:"FLATTENED_EXPORT"});
-   setPreview(p);setVersionHistory(detail.revisions.filter(x=>x.offlinePreviewAvailable));
+   setPreview(null);setVersionHistory([]);
   }
  }
  async function load(){
@@ -333,8 +333,10 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
          !p.imageDataUrl.startsWith("data:image/png;base64,"))
        throw new Error("Offline preview digest or origin mismatch");
       setCreative(result);setPreview(p);
-      const detail=await api("assets/"+encodeURIComponent(result.assetId)) as CreativeDetail;
-      setVersionHistory(detail.revisions.filter(x=>x.offlinePreviewAvailable));
+      // First immutable revision is already proved by authoritative write +
+      // server readback. Avoid an extra DAM read on the creation happy path.
+      setVersionHistory([{id:result.revisionId,version:result.version,
+       offlinePreviewAvailable:true,rightsReviewedAt:null}]);
       setHistoryId("");setHistoricalPreview(null);
       setCreativeApprovalId("");setPublicationId("");
       setNotice("Stored actual synthetic PNG with immutable version 1 and editable copy; independent rights review required.");
@@ -371,6 +373,25 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
        if(campaignId)await refresh();
       })}>Save revised PNG and text as new version</button>}
     {creative&&<p style={{fontSize:12}}>Revision {creative.revisionId} · {creative.renditionDigest}</p>}
+    {creative&&<button style={{...secondary,marginTop:10}} disabled={blocked||!manager}
+      onClick={()=>void run(async()=>{
+       const detail=await api("assets/"+encodeURIComponent(creative.assetId)) as CreativeDetail;
+       if(detail.brandId!==creative.brandId)
+        throw new Error("Selected creative brand mismatch");
+       const current=detail.revisions.find(x=>x.version===detail.version&&
+        x.offlinePreviewAvailable);
+       if(!current)throw new Error("No current offline creative revision available");
+       const p=await api("assets/revisions/"+
+        encodeURIComponent(current.id)+"/offline-preview") as Preview;
+       if(p.assetId!==creative.assetId||!p.current||
+          p.version!==detail.version||p.revisionId!==current.id)
+        throw new Error("Creative version changed during history read");
+       setCreative({...creative,revisionId:p.revisionId,version:p.version,
+        renditionDigest:p.renditionDigest});
+       setPreview(p);setVersionHistory(detail.revisions.filter(x=>x.offlinePreviewAvailable));
+       setHistoryId("");setHistoricalPreview(null);
+       setNotice("Loaded current immutable creative v"+p.version+" and version history");
+      })}>Load current creative version and history</button>}
     {creative&&versionHistory.length>0&&<div style={{marginTop:12}}>
      <label style={label}>Version history (read-only comparisons)
       <select style={input} value={historyId} onChange={e=>{
