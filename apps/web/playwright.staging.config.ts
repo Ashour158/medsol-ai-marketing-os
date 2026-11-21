@@ -40,7 +40,7 @@ export default defineConfig({
    url:'http://127.0.0.1:3216/__health',timeout:40000,reuseExistingServer:false,
    env:{...process.env,MARKETING_R3Y_STAGING_CI_ONLY:'1'}},
   {command:'node ../api/dist/main.js',
-   url:'http://127.0.0.1:3210/health',timeout:60000,reuseExistingServer:false,
+   url:'http://127.0.0.1:3210/readyz',timeout:60000,reuseExistingServer:false,
    env:{...process.env,...base,PORT:'3210',NODE_ENV:'production',
     NODE_EXTRA_CA_CERTS:'/tmp/medsol-r3y-jwks/cert.pem',
     MARKETING_OIDC_JWKS_URL:'https://127.0.0.1:3215/.well-known/jwks.json',
