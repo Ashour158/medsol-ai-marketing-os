@@ -60,7 +60,8 @@ describe('T1E self-hosted staging OIDC must never become production or tenant by
    MARKETING_STAGING_OIDC_CLIENT_SECRET:'short'})).toThrow();
  });
  it('derives deterministic issuer-specific immutable subject and exact scope',()=>{
-  expect(stagingOidcSubject(issuer,'opaque-user-id')).toMatch(/^staging-oidc:[a-f0-9]{64}$/);
+  expect(stagingOidcSubject(issuer,'opaque-user-id'))
+   .toBe('staging-oidc:'+encodeURIComponent(issuer)+'|opaque-user-id');
   expect(stagingOidcSubject(issuer,'opaque-user-id'))
    .not.toBe(stagingOidcSubject(issuer+'/changed','opaque-user-id'));
   for(const bad of ['',123,null,' bad ','x'.repeat(300)])
