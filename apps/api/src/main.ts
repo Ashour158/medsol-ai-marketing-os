@@ -10,6 +10,7 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Get('marketing/journeys/:id') offlineJourney(@Req() req:any,@Param('id') id:string){
   return this.reads.offlineJourney(req.identity.organizationId,id);
  }
+ @Get('marketing/agents/manifests/baseline/:id') agentManifestBaseline(@Req() req:any,@Param('id') id:string){return this.agentManifests.baseline(req.identity.organizationId,req.identity,id)}
  @Get('marketing/agents/manifests') agentManifestsList(@Req() req:any){return this.agentManifests.list(req.identity.organizationId,req.identity,req.query?.agentId)}
  @Post('marketing/agents/manifests') agentManifestPropose(@Req() req:any,@Body() b:any){return this.agentManifests.propose(req.identity.organizationId,req.identity,b)}
  @Post('marketing/agents/manifests/:id/approve') agentManifestApprove(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.agentManifests.approve(req.identity.organizationId,req.identity,id,b?.expectedRevision)}
