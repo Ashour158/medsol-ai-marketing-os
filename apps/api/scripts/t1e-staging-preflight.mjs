@@ -40,6 +40,20 @@ if(env.DATABASE_URL){
  try{db=new URL(env.DATABASE_URL);}catch{fail('Malformed database URL');}
  if(db.protocol!=='postgresql:'||!db.username||!db.password)
   fail('PostgreSQL runtime DSN invalid');
+ // Runtime staging must never silently negotiate plaintext or redirect to
+ // an unreviewed host. CI's disposable database is intentionally exempt.
+ if(!ci){
+  const ssl=(db.searchParams.get('sslmode')??'').toLowerCase();
+  if(ssl!=='verify-full'||db.searchParams.getAll('sslmode').length!==1)
+   fail('Staging PostgreSQL requires verified TLS (sslmode=verify-full or verify-ca)');
+  if(!db.hostname||['localhost','127.0.0.1','0.0.0.0'].includes(db.hostname))
+   fail('Staging PostgreSQL must use a dedicated non-loopback endpoint');
+  if(db.searchParams.has('sslrootcert')&&db.searchParams.getAll('sslrootcert').length!==1)
+   fail('Staging PostgreSQL must not supply duplicate trust-anchor settings');
+  if(db.searchParams.has('options')||db.searchParams.has('service')||
+     db.searchParams.has('host')||db.searchParams.has('hostaddr'))
+   fail('Staging PostgreSQL forbids connection-routing and session override parameters');
+ }
  if(!ci&&(!/staging/i.test(db.pathname)||['postgres','medsol','marketing_test'].includes(db.username)))
   fail('Stage DB must use a dedicated staging DB and application role');
 }

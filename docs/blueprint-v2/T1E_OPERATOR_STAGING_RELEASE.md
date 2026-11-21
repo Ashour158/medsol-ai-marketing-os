@@ -59,3 +59,9 @@ An explicit --apply additionally requires MARKETING_STAGING_OPERATOR_WRITE_APPRO
 ## Explicit limitations
 
 No public persistent staging URL was deployed; no external Keycloak/IdP accounts were created; no real Entra, publishing, SMTP or AI accounts were linked; no independent operator or 500-case QA signoffs were fabricated. The template at infra/staging/operator-acceptance-template.json records these as NOT_RUN. Production security and disaster recovery remain NOT_CERTIFIED.
+
+## T1F staging database connection hardening
+
+For non-disposable operator staging, the runtime `DATABASE_URL` must use a dedicated non-loopback PostgreSQL endpoint and exactly one `sslmode=verify-full` query parameter. `verify-ca`, `require`, and absent `sslmode` are not accepted: the configured certificate chain **and hostname** must be verified. Connection-routing overrides (`host`, `hostaddr`, `service`, `options`) and duplicate `sslrootcert` settings are rejected by the existing `t1e-staging-preflight.mjs` authority. The disposable CI-only mode is unchanged.
+
+This is static configuration validation, **not** a live TLS handshake or proof of server identity. Independent verification must check the actual database driver, certificate chain, restricted runtime role, FORCE RLS, rotation, and negative connection cases before production approval. Release remains `NOT_CERTIFIED`.
