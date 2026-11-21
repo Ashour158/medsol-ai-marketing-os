@@ -18,7 +18,7 @@ try{
 if(origin.protocol!=='https:'||origin.username||origin.password||
  origin.search||origin.hash||origin.pathname!=='/')
  fail('Public staging must be an exact HTTPS origin');
-if(origin.hostname===new URL(issuer).hostname)
+if(origin.origin===new URL(issuer).origin)
  fail('Issuer and frontend must have separate origins');
 if(!ci&&(origin.hostname==='127.0.0.1'||origin.hostname==='localhost'))
  fail('Real staging origin cannot be loopback');
