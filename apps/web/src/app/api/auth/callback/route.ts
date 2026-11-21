@@ -39,9 +39,10 @@ export async function GET(request: NextRequest) {
     if(cfg.identityProvider==='STAGING_OIDC'){
       // Both ID and API-access identities are independently RSA-signature verified.
       // Deny authorization-code mix-ups before the canonical Nest session is minted.
+      const audience=process.env.MARKETING_OIDC_AUDIENCE;
+      if(!audience)throw new Error("Staging API token audience required");
       const {payload:access}=await jwtVerify(tokens.access_token,keys,{
-       issuer:flow.issuer,audience:process.env.MARKETING_OIDC_AUDIENCE,
-       algorithms:["RS256","ES256"]});
+       issuer:flow.issuer,audience,algorithms:["RS256","ES256"]});
       if(stagingOidcSubject(flow.issuer,access.sub)!==
          stagingOidcSubject(flow.issuer,payload.sub)||
          access.marketing_org_id!==payload.marketing_org_id||
