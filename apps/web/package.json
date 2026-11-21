@@ -10,6 +10,7 @@
     "test:browser": "playwright test --config playwright.config.ts"
   },
   "dependencies": {
+    "@medsol/contracts": "workspace:*",
     "next": "^16.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
