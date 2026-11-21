@@ -84,7 +84,7 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
   .toHaveAttribute("src",/^data:image\/png;base64,/);
  await page.getByRole("button",{name:"Reuse historical copy in editor"}).click();
  await expect(page.getByRole("textbox",{
-  name:"Campaign copy (editable separate from flattened raster"})).not.toBeEmpty();
+  name:"Campaign copy (editable separate from flattened raster)"})).not.toBeEmpty();
  const stale=await api(page,"assets/"+assetId+"/offline-revisions",{
   expectedVersion:1,editableCopy:next.editableCopy,
   pngBase64:next.imageDataUrl.split(",")[1],
