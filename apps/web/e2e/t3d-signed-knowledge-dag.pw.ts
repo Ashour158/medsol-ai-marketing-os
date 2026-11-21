@@ -15,6 +15,7 @@ async function login(page:Page,who:Persona){
 }
 async function change(page:Page,who:Persona){
  await page.getByRole("button",{name:"Sign out"}).click();
+ await expect(page.getByText("Signed in as")).toHaveCount(0);
  await login(page,who);
 }
 async function req(page:Page,path:string,body?:unknown){
