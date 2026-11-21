@@ -26,6 +26,14 @@ const date=(v:unknown,name:string,days=365)=>{
    d.getTime()>Date.now()+days*86400_000)throw new BadRequestException('Invalid '+name+' window');
  return d;
 };
+type OfflineCreativeReceipt={
+ assetId:string;revisionId:string;version:number;brandId:string;
+ renditionDigest:string;editableCopyDigest:string;rightsExpiresAt:string;
+ sourceKind:'FLATTENED_EXPORT';layeredEditableImage:false;
+ editableCopyAvailable:true;verifiedMediaRights:false;
+ offlineOnly:true;externalEffectsAuthorized:false;
+ requestDigest?:string;
+};
 /** Reused, bounded validation for initial and subsequent offline PNG revisions.
  * A PNG header check is not full decoding, C2PA, malware scanning or rights proof.
  */
@@ -101,8 +109,7 @@ export class CreativeAssetService{
     organizationId_commandId:{organizationId,commandId}
    }});
    if(previous){
-    const receipt=previous.response as {revisionId?:string;renditionDigest?:string;
-      editableCopyDigest?:string;brandId?:string;rightsExpiresAt?:string};
+    const receipt=previous.response as OfflineCreativeReceipt;
     if(receipt.renditionDigest!==renditionDigest||receipt.brandId!==brandId||
        receipt.editableCopyDigest!==editableCopyDigest||
        receipt.rightsExpiresAt!==rightsExpiresAt.toISOString())
@@ -176,7 +183,7 @@ export class CreativeAssetService{
     organizationId_commandId:{organizationId,commandId}
    }});
    if(previous){
-    const receipt=previous.response as {requestDigest?:string};
+    const receipt=previous.response as OfflineCreativeReceipt;
     if(previous.commandType!=='ReviseOfflineRasterDraft'||
        receipt?.requestDigest!==requestDigest)
      throw new ConflictException('Offline revision idempotency key reused with different content');
