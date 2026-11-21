@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import {marketingTenantResolutionMode,resolveMarketingOrganizationId,
- disposableOidcCiAllowed} from "@medsol/contracts";
+ disposableOidcCiAllowed,marketingIdentityProvider,pinnedStagingIssuer,
+ assertStagingDiscoveryUrl} from "@medsol/contracts";
 
 export const SESSION_COOKIE = "__Host-medsol_session";
 export const FLOW_COOKIE = "__Host-medsol_oidc_flow";
@@ -40,16 +41,23 @@ export function authConfig() {
   // request-supplied tenant or a permissive onboarding organization.
   if(tenantMode==="FIXED")resolveMarketingOrganizationId({},organizationId,tenantMode);
   else if(organizationId)throw new Error("Signed-claim mode requires fixed organization unset");
-  if (issuer !== 'https://login.microsoftonline.com/' + entraTenant() + '/v2.0' &&
+  const identityProvider=marketingIdentityProvider(process.env.MARKETING_IDENTITY_PROVIDER);
+  if(identityProvider==='STAGING_OIDC'){
+   pinnedStagingIssuer(process.env);
+  }else if(issuer!=='https://login.microsoftonline.com/'+entraTenant()+'/v2.0'&&
       !disposableOidcCiAllowed(issuer,process.env))
    throw new Error('Tenant-specific Microsoft Entra issuer required');
   const url = new URL(origin);
   if (url.protocol !== "https:" && url.hostname !== "localhost") throw new Error("HTTPS origin required");
-  return { issuer, clientId, origin: url.origin,
+  return { issuer, clientId, origin: url.origin,identityProvider,
    organizationId:tenantMode==="FIXED"?organizationId:null,tenantMode };
 }
 /** Never read a CI test secret unless every disposable-safety gate passes. */
 export function oidcClientSecret(issuer:string):string|undefined{
+ if(marketingIdentityProvider(process.env.MARKETING_IDENTITY_PROVIDER)==='STAGING_OIDC'){
+  if(pinnedStagingIssuer(process.env)!==issuer)throw new Error('Staging secret issuer mismatch');
+  return process.env.MARKETING_STAGING_OIDC_CLIENT_SECRET;
+ }
  return disposableOidcCiAllowed(issuer,process.env)?
   process.env.MARKETING_OFFLINE_OIDC_CLIENT_SECRET:
   process.env.MARKETING_ENTRA_CLIENT_SECRET;

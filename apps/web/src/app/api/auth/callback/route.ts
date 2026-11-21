@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import {resolveMarketingOrganizationId} from "@medsol/contracts";
+import {resolveMarketingOrganizationId,stagingOidcSubject,
+ hasOidcScope,assertStagingDiscoveryUrl} from "@medsol/contracts";
 import { authConfig, entraTenant, oidcClientSecret, FLOW_COOKIE, SESSION_COOKIE, seal, secureCookie, unseal } from "../../../../lib/marketing-auth";
 
 type Flow = { state: string; nonce: string; verifier: string; tokenEndpoint: string; jwksUri: string; issuer: string };
@@ -9,10 +10,18 @@ export async function GET(request: NextRequest) {
   const redirect = (reason: string) => NextResponse.redirect(new URL("/?auth_error=" + encodeURIComponent(reason), cfg.origin));
   const flow = await unseal<Flow>(request.cookies.get(FLOW_COOKIE)?.value);
   const state = request.nextUrl.searchParams.get("state"), code = request.nextUrl.searchParams.get("code");
-  if (!flow || !state || flow.state !== state || !code || request.nextUrl.searchParams.has("error")) return redirect("invalid_callback");
+  if (!flow || !state || flow.state !== state || !code ||
+      flow.issuer!==cfg.issuer || request.nextUrl.searchParams.has("error"))
+    return redirect("invalid_callback");
   const response = redirect("authentication_failed");
   response.cookies.set(FLOW_COOKIE, "", secureCookie(0));
   try {
+    if(cfg.identityProvider==='STAGING_OIDC'){
+      assertStagingDiscoveryUrl(cfg.issuer,flow.tokenEndpoint);
+      assertStagingDiscoveryUrl(cfg.issuer,flow.jwksUri);
+      if(flow.jwksUri!==process.env.MARKETING_OIDC_JWKS_URL)
+       throw new Error("Unpinned staging JWKS");
+    }
     const clientSecret = oidcClientSecret(cfg.issuer);
     if (!clientSecret) throw new Error("Trusted confidential OIDC client credential required");
     const tokenResult = await fetch(flow.tokenEndpoint, {
@@ -25,7 +34,20 @@ export async function GET(request: NextRequest) {
     if (typeof tokens.id_token !== "string" || typeof tokens.access_token !== "string" || typeof tokens.expires_in !== "number") return response;
     const keys = createRemoteJWKSet(new URL(flow.jwksUri));
     const { payload } = await jwtVerify(tokens.id_token, keys, { issuer: flow.issuer, audience: cfg.clientId, algorithms: ["RS256", "ES256"] });
-    if (payload.nonce !== flow.nonce || typeof payload.sub !== "string" || !payload.sub || typeof payload.oid !== "string" || typeof payload.tid !== "string" || payload.tid.toLowerCase() !== entraTenant()) return response;
+    if(payload.nonce!==flow.nonce||typeof payload.sub!=="string"||!payload.sub)
+      return response;
+    if(cfg.identityProvider==='STAGING_OIDC'){
+      // Both ID and API-access identities are independently RSA-signature verified.
+      // Deny authorization-code mix-ups before the canonical Nest session is minted.
+      const {payload:access}=await jwtVerify(tokens.access_token,keys,{
+       issuer:flow.issuer,audience:process.env.MARKETING_OIDC_AUDIENCE,
+       algorithms:["RS256","ES256"]});
+      if(stagingOidcSubject(flow.issuer,access.sub)!==
+         stagingOidcSubject(flow.issuer,payload.sub)||
+         access.marketing_org_id!==payload.marketing_org_id||
+         !hasOidcScope(access,"marketing"))return response;
+    }else if(typeof payload.oid!=="string"||typeof payload.tid!=="string"||
+      payload.tid.toLowerCase()!==entraTenant())return response;
     // The ID-token organization is signed and separately revalidated against
     // the ACCESS token's signed claim and authoritative user on the Nest API.
     const organizationId=resolveMarketingOrganizationId(payload,cfg.organizationId,cfg.tenantMode);

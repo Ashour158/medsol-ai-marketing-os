@@ -1,7 +1,8 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import {marketingTenantResolutionMode,resolveMarketingOrganizationId,
- disposableOidcCiAllowed} from '@medsol/contracts';
+ disposableOidcCiAllowed,marketingIdentityProvider,pinnedStagingIssuer,
+ stagingOidcSubject,hasOidcScope} from '@medsol/contracts';
 import { entraSubject, entraTenantId, entraIssuer } from './entra-identity.js';
 
 export type VerifiedIdentity = { userId: string; organizationId: string; email: string; role: string; subject: string };
@@ -24,13 +25,26 @@ export async function verifyOidcIdentity(
   try {
     ({ payload } = await jwtVerify(authorization.slice(7), keys, { issuer: config.issuer, audience: config.audience, algorithms: ['RS256', 'ES256'] }));
   } catch { throw new UnauthorizedException('Invalid or expired OIDC token'); }
-  const tenant = entraTenantId();
-  if (config.issuer !== entraIssuer(tenant) &&
-    !disposableOidcCiAllowed(config.issuer,process.env))
-   throw new Error('Microsoft Entra issuer mismatch');
-  const subject = entraSubject(payload, tenant);
-  const requiredScope = process.env.MARKETING_ENTRA_API_SCOPE?.split('/').at(-1);
-  if (!requiredScope || typeof payload.scp !== 'string' || !payload.scp.split(' ').includes(requiredScope)) throw new ForbiddenException('Delegated Marketing API scope required');
+  const identityProvider=marketingIdentityProvider(process.env.MARKETING_IDENTITY_PROVIDER);
+  let subject:string;
+  let requiredScope:string|undefined;
+  if(identityProvider==='STAGING_OIDC'){
+   if(pinnedStagingIssuer(process.env)!==config.issuer ||
+      process.env.MARKETING_OIDC_JWKS_URL!==config.jwksUrl)
+    throw new Error('Staging OIDC issuer/JWKS trust mismatch');
+   try{subject=stagingOidcSubject(config.issuer,payload.sub);}
+   catch{throw new UnauthorizedException('Verified staging OIDC subject required');}
+   requiredScope='marketing';
+  }else{
+   const tenant=entraTenantId();
+   if(config.issuer!==entraIssuer(tenant) &&
+      !disposableOidcCiAllowed(config.issuer,process.env))
+    throw new Error('Microsoft Entra issuer mismatch');
+   subject=entraSubject(payload,tenant);
+   requiredScope=process.env.MARKETING_ENTRA_API_SCOPE?.split('/').at(-1);
+  }
+  if(!requiredScope||!hasOidcScope(payload,requiredScope))
+   throw new ForbiddenException('Delegated Marketing API scope required');
   // Signed tenant claim is considered only AFTER jose validates issuer/audience,
   // token signature, expiry and delegated scope. The DB membership remains decisive.
   let verifiedOrganizationId:string;

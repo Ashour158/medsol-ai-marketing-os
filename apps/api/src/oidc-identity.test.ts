@@ -49,6 +49,42 @@ describe('immutable identity binding', () => {
     vi.mocked(jwtVerify).mockResolvedValue({ payload: { tid: '11111111-1111-4111-8111-111111111111', oid: '22222222-2222-4222-8222-222222222222', scp: 'User.Read' } } as any);
     await expect(verifyOidcIdentity('Bearer valid', 'tenant', config, lookup)).rejects.toThrow('Delegated Marketing API scope required');
   });
+
+  it('binds signed staging subject to its original issuer without Entra or email fallback',async()=>{
+    const issuer='https://id.staging.medsol.example/realms/medsol';
+    process.env.MARKETING_IDENTITY_PROVIDER='STAGING_OIDC';
+    process.env.MARKETING_DEPLOYMENT_ENV='staging';
+    process.env.MARKETING_STAGING_OIDC_ENABLED='OFFLINE_OPERATOR_TEST_ONLY';
+    process.env.MARKETING_TENANT_RESOLUTION_MODE='SIGNED_OIDC_CLAIM';
+    process.env.MARKETING_AUTH_MODE='oidc';
+    process.env.MARKETING_EXTERNAL_EFFECTS_ENABLED='false';
+    process.env.MARKETING_AI_REASONING_ENABLED='false';
+    process.env.MARKETING_REAL_EMAIL_ENABLED='false';
+    process.env.MARKETING_OIDC_ISSUER=issuer;
+    process.env.MARKETING_STAGING_OIDC_TRUSTED_ISSUER=issuer;
+    process.env.MARKETING_OIDC_JWKS_URL=issuer+'/protocol/openid-connect/certs';
+    process.env.MARKETING_OIDC_CLIENT_ID='staging-browser';
+    process.env.MARKETING_OIDC_AUDIENCE='staging-api';
+    process.env.MARKETING_STAGING_OIDC_CLIENT_SECRET='operator-stage-secret-dedicated-32-bytes-long';
+    delete process.env.MARKETING_BOOTSTRAP_ORGANIZATION_ID;
+    const claims={sub:'opaque-user',marketing_org_id:'tenant-stage',scope:'openid marketing'};
+    vi.mocked(jwtVerify).mockResolvedValue({payload:claims} as any);
+    const subject='staging-oidc:'+
+     (await import('node:crypto')).createHash('sha256')
+      .update(issuer+'\0opaque-user').digest('hex');
+    lookup.mockResolvedValue({...user,oidcSubject:subject});
+    const stageCfg={issuer,audience:'staging-api',jwksUrl:process.env.MARKETING_OIDC_JWKS_URL};
+    await expect(verifyOidcIdentity('Bearer signed','',stageCfg,lookup))
+     .resolves.toMatchObject({subject,organizationId:'tenant-stage'});
+    expect(lookup).toHaveBeenCalledWith(subject,'tenant-stage');
+    lookup.mockClear();
+    await expect(verifyOidcIdentity('Bearer signed','',{
+     ...stageCfg,issuer:'https://evil.example'},lookup)).rejects.toThrow();
+    expect(lookup).not.toHaveBeenCalled();
+    vi.mocked(jwtVerify).mockResolvedValue({payload:{...claims,scope:'openid profile'}} as any);
+    await expect(verifyOidcIdentity('Bearer signed','',stageCfg,lookup))
+     .rejects.toThrow('Delegated Marketing API scope required');
+  });
   it('requires issuer and audience verification with a signed algorithm allowlist', async () => {
     await verifyOidcIdentity('Bearer valid', 'tenant', config, lookup);
     expect(jwtVerify).toHaveBeenCalledWith('valid', expect.anything(), { issuer: config.issuer, audience: config.audience, algorithms: ['RS256', 'ES256'] });
