@@ -157,6 +157,9 @@ test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creativ
   rightsExpiresAt:new Date(Date.now()+86400000).toISOString()
  });
  expect(forbidden.status).toBe(403);
+ const deniedAudit=await api(page,'journeys/'+id);
+ expect(deniedAudit.status).toBe(403); // VIEWER has no READ_AUDIT authority
+ await switchIdentity(page,'admin');await studio(page);await load(page,id);
  const still=await success(page,'journeys/'+id);
  expect(still.campaignApprovals[0].decision).toBe('PENDING');
  expect(still.creativeAssets).toHaveLength(0);
