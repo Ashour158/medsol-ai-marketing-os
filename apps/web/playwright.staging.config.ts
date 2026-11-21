@@ -40,7 +40,7 @@ export default defineConfig({
  webServer:[
   {command:'node ../api/e2e/fixtures/r3y-local-oidc.mjs',
    url:'http://127.0.0.1:3216/__health',timeout:40000,reuseExistingServer:false,
-   env:{...process.env,MARKETING_R3Y_STAGING_CI_ONLY:'1'}},
+   env:{...process.env,...base,MARKETING_R3Y_STAGING_CI_ONLY:'1'}},
   {command:'node ../api/dist/main.js',
    url:'http://127.0.0.1:3210/readyz',timeout:60000,reuseExistingServer:false,
    env:{...process.env,...base,PORT:'3210',NODE_ENV:'production',
