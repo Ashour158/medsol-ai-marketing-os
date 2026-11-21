@@ -88,7 +88,7 @@ async function independentCampaignApproval(page:Page,id:string){
  await expect(page.getByRole('status').filter({
   hasText:'Independent campaign approval recorded'})).toBeVisible();
 }
-test('T1F-001 two interactive OIDC humans finish real 13-agent, creative, social, email and learning journey',async({page})=>{
+test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social, email and learning journey',async({page})=>{
  const creator=await signIn(page,'admin');expect(creator.organizationId).toBe('r3y-tenant-a');
  await studio(page);const campaignId=await create(page);
  await page.getByRole('button',{name:'Run governed 13-agent offline brain'}).click();
@@ -142,7 +142,7 @@ test('T1F-001 two interactive OIDC humans finish real 13-agent, creative, social
  expect(journey.externalEffectsAuthorized).toBe(false);
  expect((await success(page,'agents/budget')).enabled).toBe(false);
 });
-test('T1F-002 signed maker cannot self-approve, and viewer cannot bypass creative permissions',async({page})=>{
+test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creative permissions',async({page})=>{
  await signIn(page,'admin');await studio(page);
  const id=await create(page);
  const before=await success(page,'journeys/'+id);
@@ -161,7 +161,7 @@ test('T1F-002 signed maker cannot self-approve, and viewer cannot bypass creativ
  expect(still.campaignApprovals[0].decision).toBe('PENDING');
  expect(still.creativeAssets).toHaveLength(0);
 });
-test('T1F-003 signed foreign tenant cannot read or mutate another organization campaign',async({page})=>{
+test('T17-003 signed foreign tenant cannot read or mutate another organization campaign',async({page})=>{
  await signIn(page,'admin');await studio(page);
  const id=await create(page);
  const foreign=await switchIdentity(page,'foreign');
@@ -181,7 +181,7 @@ test('T1F-003 signed foreign tenant cannot read or mutate another organization c
  });
  expect(crossHeader.status).toBe(403);
 });
-test('T1F-004 interactive reviewer can approve a campaign then maker performs consent-gated email with zero effects',async({page})=>{
+test('T17-004 interactive reviewer can approve a campaign then maker performs consent-gated email with zero effects',async({page})=>{
  await signIn(page,'admin');await studio(page);const id=await create(page);
  await independentCampaignApproval(page,id);
  await switchIdentity(page,'admin');await studio(page);await load(page,id);
@@ -196,7 +196,7 @@ test('T1F-004 interactive reviewer can approve a campaign then maker performs co
  expect(s.stages.syntheticEmailSimulated).toBe(true);
  expect(s.externalEffectsAuthorized).toBe(false);
 });
-test('T1F-005 revoking a signed browser session blocks replay across audited campaign requests',async({page})=>{
+test('T17-005 revoking a signed browser session blocks replay across audited campaign requests',async({page})=>{
  await signIn(page,'admin');await studio(page);const id=await create(page);
  const stale=(await page.context().cookies(frontend)).find(c=>c.name===SESSION_COOKIE);
  expect(stale?.httpOnly).toBe(true);
