@@ -25,7 +25,8 @@ test('T1D-001 browser signs in via real OIDC code/PKCE and actual Nest user-sess
  const session=cookies.find(c=>c.name===SESSION_COOKIE);
  expect(session?.httpOnly).toBe(true);
  expect(session?.secure).toBe(true);
- expect(session?.value).not.toContain('eyJ'); // no exposed JWT in clear text
+ expect(session?.value?.split('.')).toHaveLength(5); // AES-GCM compact JWE
+ expect(session?.value).not.toContain('r3y-stage-admin');
 });
 test('T1D-002 interactive logout revokes real server session and rejects replayed cookie',async({page})=>{
  await login(page);
