@@ -26,6 +26,36 @@ const date=(v:unknown,name:string,days=365)=>{
    d.getTime()>Date.now()+days*86400_000)throw new BadRequestException('Invalid '+name+' window');
  return d;
 };
+type OfflineCreativeReceipt={
+ assetId:string;revisionId:string;version:number;brandId:string;
+ renditionDigest:string;editableCopyDigest:string;rightsExpiresAt:string;
+ sourceKind:'FLATTENED_EXPORT';layeredEditableImage:false;
+ editableCopyAvailable:true;verifiedMediaRights:false;
+ offlineOnly:true;externalEffectsAuthorized:false;
+ requestDigest?:string;
+};
+/** Reused, bounded validation for initial and subsequent offline PNG revisions.
+ * A PNG header check is not full decoding, C2PA, malware scanning or rights proof.
+ */
+function validatedOfflineRaster(v:Record<string,unknown>){
+ const copy=clean(v.editableCopy,'editable copy',4000);
+ if(copy.length<12)throw new BadRequestException('Editable copy must contain 12+ characters');
+ const rightsExpiresAt=date(v.rightsExpiresAt,'rights expiry',730);
+ if(typeof v.pngBase64!=='string'||v.pngBase64.length<140||
+    v.pngBase64.length>1398104||!/^[A-Za-z0-9+/]+={0,2}$/.test(v.pngBase64))
+  throw new BadRequestException('Bounded base64 PNG required; never an external asset URL');
+ const bytes=Buffer.from(v.pngBase64,'base64');
+ if(bytes.length<100||bytes.length>1048576||
+    bytes.toString('base64')!==v.pngBase64||
+    bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||
+    bytes.subarray(12,16).toString('ascii')!=='IHDR'||
+    bytes.readUInt32BE(16)<16||bytes.readUInt32BE(16)>4096||
+    bytes.readUInt32BE(20)<16||bytes.readUInt32BE(20)>4096)
+  throw new BadRequestException('Unsupported or malformed bounded offline PNG header');
+ return{copy,rightsExpiresAt,
+  renditionDigest:'sha256:'+createHash('sha256').update(bytes).digest('hex'),
+  editableCopyDigest:'sha256:'+createHash('sha256').update(copy).digest('hex')};
+}
 /** Owns DAM metadata and approval requests; approval decisions still belong
  * exclusively to ApprovalService. There is no object download or publication.
  * Every query against RLS tables runs with transaction-local tenant context.
@@ -70,33 +100,18 @@ export class CreativeAssetService{
   const v=raw as Record<string,unknown>;
   const brandId=ident(v.brandId,'brand');
   const title=clean(v.title,'draft title',160);
-  const copy=clean(v.editableCopy,'editable copy',4000);
-  if(copy.length<12)throw new BadRequestException('Editable copy must contain 12+ characters');
   const requestKey=ident(v.requestKey,'offline draft command key');
-  const rightsExpiresAt=date(v.rightsExpiresAt,'rights expiry',730);
-  if(typeof v.pngBase64!=='string'||v.pngBase64.length<140||
-     v.pngBase64.length>1398104||!/^[A-Za-z0-9+/]+={0,2}$/.test(v.pngBase64))
-   throw new BadRequestException('Bounded base64 PNG required; never an external asset URL');
-  const bytes=Buffer.from(v.pngBase64,'base64');
-  if(bytes.length<100||bytes.length>1048576||
-     bytes.toString('base64')!==v.pngBase64||
-     bytes.subarray(0,8).toString('hex')!=='89504e470d0a1a0a'||
-     bytes.subarray(12,16).toString('ascii')!=='IHDR'||
-     bytes.readUInt32BE(16)<16||bytes.readUInt32BE(16)>4096||
-     bytes.readUInt32BE(20)<16||bytes.readUInt32BE(20)>4096)
-   throw new BadRequestException('Unsupported or malformed bounded offline PNG header');
-  const renditionDigest='sha256:'+createHash('sha256').update(bytes).digest('hex');
+  const {copy,rightsExpiresAt,renditionDigest,editableCopyDigest}=
+   validatedOfflineRaster(v);
   const commandId='offline-raster-'+requestKey;
   return this.scoped(organizationId,async tx=>{
    const previous=await tx.commandReceipt.findUnique({where:{
     organizationId_commandId:{organizationId,commandId}
    }});
    if(previous){
-    const receipt=previous.response as {revisionId?:string;renditionDigest?:string;
-      editableCopyDigest?:string;brandId?:string;rightsExpiresAt?:string};
-    const copyDigest='sha256:'+createHash('sha256').update(copy).digest('hex');
+    const receipt=previous.response as OfflineCreativeReceipt;
     if(receipt.renditionDigest!==renditionDigest||receipt.brandId!==brandId||
-       receipt.editableCopyDigest!==copyDigest||
+       receipt.editableCopyDigest!==editableCopyDigest||
        receipt.rightsExpiresAt!==rightsExpiresAt.toISOString())
      throw new ConflictException('Offline creative idempotency key reused with different content');
     return {...receipt,replayed:true,externalEffectsAuthorized:false};
@@ -117,7 +132,7 @@ export class CreativeAssetService{
    }});
    const result={
     assetId,revisionId,version:1,brandId,renditionDigest,
-    editableCopyDigest:'sha256:'+createHash('sha256').update(copy).digest('hex'),
+    editableCopyDigest,
     rightsExpiresAt:rightsExpiresAt.toISOString(),
     sourceKind:'FLATTENED_EXPORT' as const,
     layeredEditableImage:false as const,
@@ -134,6 +149,94 @@ export class CreativeAssetService{
     correlationId:revisionId,after:{assetId,brandId,renditionDigest,
      offlineOnly:true,layeredEditableImage:false,externalEffectsAuthorized:false}}});
    return {...result,replayed:false};
+  });
+ }
+ /**
+  * T4A — iterate an existing offline creative without creating another DAM
+  * asset. Each saved edit appends an immutable raster+copy version. Independent
+  * rights and exact-scope approval MUST be repeated for the new version.
+  */
+ async reviseOfflineRasterDraft(organizationId:string,actorId:string,
+  assetIdInput:unknown,raw:unknown){
+  ident(actorId,'actor');
+  const assetId=ident(assetIdInput,'asset');
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||
+     Object.keys(raw).some(k=>![
+      'editableCopy','pngBase64','requestKey','rightsExpiresAt','expectedVersion'
+     ].includes(k)))
+   throw new BadRequestException('Only bounded offline creative iteration fields allowed');
+  const v=raw as Record<string,unknown>;
+  const expected=v.expectedVersion;
+  if(!Number.isSafeInteger(expected)||(expected as number)<1||
+     (expected as number)>10000)
+   throw new BadRequestException('Current immutable creative version required');
+  const requestKey=ident(v.requestKey,'offline revision command key');
+  const {copy,rightsExpiresAt,renditionDigest,editableCopyDigest}=
+   validatedOfflineRaster(v);
+  const commandId='offline-raster-revision-'+requestKey;
+  const requestDigest='sha256:'+createHash('sha256').update(JSON.stringify([
+   't4a-offline-creative-revision-v1',organizationId,assetId,expected,
+   renditionDigest,editableCopyDigest,rightsExpiresAt.toISOString()
+  ])).digest('hex');
+  return this.scoped(organizationId,async tx=>{
+   const previous=await tx.commandReceipt.findUnique({where:{
+    organizationId_commandId:{organizationId,commandId}
+   }});
+   if(previous){
+    const receipt=previous.response as OfflineCreativeReceipt;
+    if(previous.commandType!=='ReviseOfflineRasterDraft'||
+       receipt?.requestDigest!==requestDigest)
+     throw new ConflictException('Offline revision idempotency key reused with different content');
+    return{...receipt,replayed:true,externalEffectsAuthorized:false as const};
+   }
+   const asset=await tx.creativeAsset.findFirst({where:{
+    organizationId,id:assetId,status:'ACTIVE'
+   }});
+   if(!asset)throw new NotFoundException('Active creative asset not found in tenant');
+   if(asset.version!==expected)
+    throw new ConflictException('Creative was revised by another operator; refresh current version');
+   const brand=await tx.brand.findFirst({where:{
+    organizationId,id:asset.brandId,status:'ACTIVE'
+   }});
+   if(!brand)throw new ConflictException('Creative brand is no longer active');
+   const current=await tx.creativeAssetRevision.findFirst({where:{
+    organizationId,assetId,version:expected
+   },select:{sourceKind:true,sourceRef:true,offlineRasterBase64:true,
+     offlineEditableCopy:true}});
+   if(current?.sourceKind!=='FLATTENED_EXPORT'||
+      !current.sourceRef.startsWith('internal:creative-source/offline/')||
+      !current.offlineRasterBase64||!current.offlineEditableCopy)
+    throw new ConflictException('Only an existing offline raster creative can be iterated');
+   const changed=await tx.creativeAsset.updateMany({where:{
+    organizationId,id:assetId,status:'ACTIVE',version:expected as number
+   },data:{version:{increment:1}}});
+   if(changed.count!==1)
+    throw new ConflictException('Concurrent creative version conflict');
+   const revisionId=randomUUID(),version=(expected as number)+1;
+   await tx.creativeAssetRevision.create({data:{
+    id:revisionId,organizationId,assetId,version,
+    sourceKind:'FLATTENED_EXPORT',
+    sourceRef:'internal:creative-source/offline/'+revisionId,
+    renditionDigest,offlineRasterBase64:v.pngBase64 as string,
+    offlineEditableCopy:copy,rightsExpiresAt,createdBy:actorId
+   }});
+   const result={assetId,revisionId,version,brandId:asset.brandId,
+    renditionDigest,editableCopyDigest,requestDigest,
+    rightsExpiresAt:rightsExpiresAt.toISOString(),
+    sourceKind:'FLATTENED_EXPORT' as const,layeredEditableImage:false as const,
+    editableCopyAvailable:true as const,verifiedMediaRights:false as const,
+    offlineOnly:true as const,externalEffectsAuthorized:false as const};
+   await tx.commandReceipt.create({data:{organizationId,commandId,
+    commandType:'ReviseOfflineRasterDraft',correlationId:revisionId,
+    status:'COMPLETED',response:result}});
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
+    actorId,action:'OFFLINE_RASTER_CREATIVE_REVISION_CREATED',
+    objectType:'CreativeAssetRevision',objectId:revisionId,correlationId:revisionId,
+    after:{assetId,version,previousVersion:expected,
+     renditionDigest,editableCopyDigest,requiresIndependentRightsReview:true,
+     previousApprovalsAreStale:true,offlineOnly:true,
+     externalEffectsAuthorized:false}}});
+   return{...result,replayed:false};
   });
  }
  async offlinePreview(organizationId:string,revisionInput:unknown){
@@ -176,11 +279,15 @@ export class CreativeAssetService{
    const asset=await tx.creativeAsset.findFirst({where:{id:assetId,organizationId},
     include:{revisions:{orderBy:{version:'desc'},take:30,select:{
      id:true,version:true,sourceKind:true,renditionDigest:true,
-     rightsExpiresAt:true,rightsReviewedBy:true,rightsReviewedAt:true,createdAt:true
+     rightsExpiresAt:true,rightsReviewedBy:true,rightsReviewedAt:true,createdAt:true,
+     sourceRef:true
     }}}});
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    const {revisions,...safe}=asset;
-   return{...safe,revisions,externalEffectsAuthorized:false};
+   return{...safe,revisions:revisions.map(({sourceRef,...revision})=>({
+    ...revision,offlinePreviewAvailable:sourceRef.startsWith(
+     'internal:creative-source/offline/')
+   })),externalEffectsAuthorized:false};
   });
  }
  async addRevision(organizationId:string,actorId:string,assetIdInput:unknown,input:{
