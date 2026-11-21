@@ -1,11 +1,14 @@
-import {createHash} from 'node:crypto';
 import {disposableOidcCiAllowed} from './disposable-oidc.js';
 
 /** Identity mapping only. Never creates a user, tenant or a session. */
 export function stagingOidcSubject(issuer:string,sub:unknown):string{
  if(typeof sub!=='string'||sub.length<1||sub.length>256||sub.trim()!==sub)
   throw new Error('A nonempty verified OIDC sub is mandatory');
- return 'staging-oidc:'+createHash('sha256').update(issuer+'\0'+sub).digest('hex');
+ // Escaped unambiguous issuer/sub binding. Contract code is browser-safe:
+ // never import Node crypto into the client-shared contracts package.
+ const result='staging-oidc:'+encodeURIComponent(issuer)+'|'+encodeURIComponent(sub);
+ if(result.length>640)throw new Error('OIDC issuer and sub exceed identity index budget');
+ return result;
 }
 export type IdentityProvider='ENTRA'|'STAGING_OIDC';
 export function marketingIdentityProvider(raw:unknown):IdentityProvider{
