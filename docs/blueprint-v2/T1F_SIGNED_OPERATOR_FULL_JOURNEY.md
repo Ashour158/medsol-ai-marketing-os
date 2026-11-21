@@ -9,11 +9,11 @@
 - Reuses the canonical R3W Playwright evidence verifier plus same-run PostgreSQL application-role and no-provider preflights; does not convert CI evidence into independent 500-case acceptance.
 
 ## Five new Chromium scenarios
-1. T1F-001: separate signed maker/checker logins complete the actual offline brief→objective→workflow→13-agent→PNG/rights→campaign and creative approvals→inert social destination→sandbox publication→synthetic consent email→quarantined learning path, with zero real external effects.
-2. T1F-002: signed maker cannot self-approve; signed viewer cannot bypass creative permissions via BFF.
-3. T1F-003: signed foreign organization user cannot read or mutate another organization's campaign/brand using forged request inputs.
-4. T1F-004: signed independent checker approves before maker simulates consent-gated email, with zero real sends.
-5. T1F-005: signed browser logout revokes session; a stolen encrypted cookie cannot access campaign or publish APIs.
+1. T17-001: separate signed maker/checker logins complete the actual offline brief→objective→workflow→13-agent→PNG/rights→campaign and creative approvals→inert social destination→sandbox publication→synthetic consent email→quarantined learning path, with zero real external effects.
+2. T17-002: signed maker cannot self-approve; signed viewer cannot bypass creative permissions via BFF.
+3. T17-003: signed foreign organization user cannot read or mutate another organization's campaign/brand using forged request inputs.
+4. T17-004: signed independent checker approves before maker simulates consent-gated email, with zero real sends.
+5. T17-005: signed browser logout revokes session; a stolen encrypted cookie cannot access campaign or publish APIs.
 
 ## Evidence and release limitations
 The T1F checker requires **exactly five** separately executed passing Chromium cases with no skips, retries, duplicates or missing wall times, the exact source hash, same-run restricted PostgreSQL RLS proof, same-run no-real-provider staging preflight and T1E disposable staging config proof. It emits commit-bound engineering evidence only.
