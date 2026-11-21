@@ -3,6 +3,7 @@
 import {pinnedStagingIssuer,disposableOidcCiAllowed} from '@medsol/contracts';
 import {createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
+import {assertStagingDatabaseDsn} from './t1g-staging-db-policy.mjs';
 const env=process.env;
 const fail=x=>{throw Error('T1E_STAGING_CONFIG_BLOCKED: '+x);};
 let issuer;
@@ -36,26 +37,8 @@ if(!keys.length||keys.length>3||keys.some(s=>{
 })||new Set(keys).size!==keys.length)
  fail('Require one to three DISTINCT 32-byte base64url session keys');
 if(env.DATABASE_URL){
- let db;
- try{db=new URL(env.DATABASE_URL);}catch{fail('Malformed database URL');}
- if(db.protocol!=='postgresql:'||!db.username||!db.password)
-  fail('PostgreSQL runtime DSN invalid');
- // Runtime staging must never silently negotiate plaintext or redirect to
- // an unreviewed host. CI's disposable database is intentionally exempt.
- if(!ci){
-  const ssl=(db.searchParams.get('sslmode')??'').toLowerCase();
-  if(ssl!=='verify-full'||db.searchParams.getAll('sslmode').length!==1)
-   fail('Staging PostgreSQL requires verified TLS (sslmode=verify-full or verify-ca)');
-  if(!db.hostname||['localhost','127.0.0.1','0.0.0.0'].includes(db.hostname))
-   fail('Staging PostgreSQL must use a dedicated non-loopback endpoint');
-  if(db.searchParams.has('sslrootcert')&&db.searchParams.getAll('sslrootcert').length!==1)
-   fail('Staging PostgreSQL must not supply duplicate trust-anchor settings');
-  if(db.searchParams.has('options')||db.searchParams.has('service')||
-     db.searchParams.has('host')||db.searchParams.has('hostaddr'))
-   fail('Staging PostgreSQL forbids connection-routing and session override parameters');
- }
- if(!ci&&(!/staging/i.test(db.pathname)||['postgres','medsol','marketing_test'].includes(db.username)))
-  fail('Stage DB must use a dedicated staging DB and application role');
+ try{assertStagingDatabaseDsn(env.DATABASE_URL,{disposableCi:ci});}
+ catch(e){fail(e instanceof Error?e.message:'Staging DB policy denied');}
 }
 if(!ci&&env.NODE_ENV!=='production')
  fail('Real operator staging must run production-compiled services');
