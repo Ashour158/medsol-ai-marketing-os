@@ -21,8 +21,10 @@ export function agentContentRisks(value:unknown):AgentContentRisk[]{
  // Normalization catches fullwidth characters, hidden-word separators and
  // control-character encoded role delimiters, without mutating evidence.
  const normalized=value.normalize('NFKC')
-  .replace(/[\u200b-\u200d\u2060\ufeff]/g,'')
-  .replace(/\r/g,'\n')
+  .replace(/[\u00ad\u034f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g,'')
+  // Preserve Unicode paragraph boundaries as actual lines before role checks.
+  // Otherwise a pasted U+2028/U+2029 can conceal a forged SYSTEM: line.
+  .replace(/\r\n?|[\u000b\u000c\u0085\u2028\u2029]/g,'\n')
   .replace(/[ \t]+/g,' ');
  const found:AgentContentRisk[]=[];
  if(ROLE_MARKER.test(normalized))found.push('ROLE_SPOOF');
