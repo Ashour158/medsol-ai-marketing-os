@@ -66,6 +66,11 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/assets/offline-raster') offlineRaster(@Req() req:any,@Body() b:any){
   return this.creativeAssets.createOfflineRasterDraft(req.identity.organizationId,req.identity.userId,b);
  }
+ @Post('marketing/assets/:id/offline-revisions') reviseOfflineCreative(@Req() req:any,
+  @Param('id') id:string,@Body() b:any){
+  return this.creativeAssets.reviseOfflineRasterDraft(
+   req.identity.organizationId,req.identity.userId,id,b);
+ }
  @Get('marketing/assets/revisions/:id/offline-preview') offlineRasterPreview(@Req() req:any,@Param('id') id:string){
   return this.creativeAssets.offlinePreview(req.identity.organizationId,id);
  }
