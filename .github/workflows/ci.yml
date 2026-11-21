@@ -216,6 +216,25 @@ jobs:
           path: |
             apps/web/t1e-playwright-report/
             apps/web/t1e-test-results/
+      - name: Reject forged, skipped or unproven T1F signed operator browser evidence
+        run: node --test scripts/quality/t1f-signed-operator-evidence.test.mjs
+      - name: Run T1F five signed-operator end-to-end browser journeys through actual Nest and PostgreSQL
+        run: pnpm --filter @medsol/web exec playwright test --config playwright.operator-full-journey.config.ts
+      - name: Bind T1F Chromium cases to real same-run RLS, offline identity and zero-provider preflight
+        env:
+          MARKETING_T1F_EVIDENCE_CI_ONLY: '1'
+        run: node scripts/quality/t1f-signed-operator-evidence.mjs --input apps/web/t1f-playwright-report/t1f-results.json --output t1f-signed-operator-evidence.json
+      - name: Preserve T1F actual browser and noncertifying operator-journey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-t1f-signed-operator-journey-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            apps/web/t1f-playwright-report/
+            apps/web/t1f-test-results/
+            t1f-signed-operator-evidence.json
       - name: Upload R3-Y real-stack Chromium traces, role proof and non-certifying manifests
         if: always()
         uses: actions/upload-artifact@v4
