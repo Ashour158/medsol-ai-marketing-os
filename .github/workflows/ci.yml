@@ -172,6 +172,18 @@ jobs:
           MARKETING_R3X_POSTGRES_GATE_PASSED: 'true'
           MARKETING_R3Y_REAL_STACK_GATE_PASSED: 'true'
         run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3y-real-stack-acceptance-evidence.json
+      - name: Reject forged independent QA handoff and incomplete 500-case proof
+        run: node --test scripts/quality/r3y-operator-handoff.test.mjs
+      - name: Generate 500-slot independent operator handoff with zero forged signatures
+        run: node scripts/quality/r3y-operator-handoff.mjs --input r3y-real-stack-acceptance-evidence.json --output r3y-operator-handoff.json
+      - name: Upload unsigned independent staging QA handoff for future operator use
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-r3y-unsigned-operator-handoff-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: r3y-operator-handoff.json
       - name: Upload R3-Y real-stack CI-only, non-certifying 500-case evidence coverage
         if: always()
         uses: actions/upload-artifact@v4
