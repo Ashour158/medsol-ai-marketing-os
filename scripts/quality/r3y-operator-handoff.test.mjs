@@ -64,7 +64,7 @@ test('R3Y rejects forged run and missing true real-stack engineering evidence',(
  const other=baseline();other.runId='99999';
  assert.throws(()=>buildOperatorHandoff(other,environment),/same-run/);
  const incomplete=baseline();incomplete.realStackExecutionEvidence.actualPassedRealStackCases=18;
- assert.throws(()=>buildOperatorHandoff(incomplete,environment),/real-stack/);
+ assert.throws(()=>buildOperatorHandoff(incomplete,environment),/cross-stack/);
  const invalid=baseline();
  assert.throws(()=>buildOperatorHandoff(invalid,{...environment,commit:'main'}),/commit/);
 });
