@@ -442,6 +442,37 @@ export class MarketingWorkflowService {
           const plan=planOfflineDag(release.manifest);
           const steps=await tx.workflowStepExecution.findMany({where:{
            workflowExecutionId:id,organizationId}});
+          if(meta.knowledgeMode==='CITATIONS_REQUIRED'){
+           // No source revocation may be bypassed by a later tick, even after
+           // the human approval was granted. Recheck in the SAME tenant TX.
+           try{
+            for(const priorStep of steps){
+             const priorInput=priorStep.input as {type?:string};
+             if(priorStep.status!=='COMPLETED'||priorInput?.type!=='AGENT_TASK')
+              continue;
+             const priorOutput=priorStep.output as {
+              knowledgeMode?:string;evidenceRefs?:unknown
+             }|null;
+             if(priorOutput?.knowledgeMode!=='CITATIONS_REQUIRED')
+              throw new ConflictException('Signed DAG evidence checkpoint missing');
+             await assertDagEvidenceCurrent(tx,organizationId,priorOutput.evidenceRefs);
+            }
+           }catch{
+            await tx.workflowExecution.updateMany({where:{id,organizationId,
+             leaseOwner:lease.owner,leaseGeneration:lease.generation,
+             status:'RUNNING'},data:{
+             status:'BLOCKED',currentStep:'CITED_KNOWLEDGE_INVALIDATED',
+             error:{reason:'Reviewed source or memory invalid at DAG tick',
+              automaticReplayAllowed:false,externalEffectsAuthorized:false},
+             completedAt:new Date(),version:{increment:1}}});
+            await tx.auditEvent.create({data:{organizationId,
+             actorType:'SYSTEM',actorId:'r3g-dag-evidence-gate',
+             action:'DAG_CITATION_INVALIDATED',objectType:'WorkflowExecution',
+             objectId:id,correlationId:wf.correlationId,
+             after:{stepCount:steps.length,externalEffectsAuthorized:false}}});
+            return{kind:'BLOCKED' as const};
+           }
+          }
           const ledger=new Map(steps.map(s=>[s.stepKey,s]));
           if(steps.length!==plan.length||steps.some(s=>!plan.some(p=>p.id===s.stepKey)))
            throw new ConflictException('Durable DAG step ledger differs from pinned graph');
