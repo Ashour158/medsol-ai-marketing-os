@@ -38,8 +38,14 @@ const entries=()=>{
  Object.assign(e.signedDagBrowser.data,{independent500CaseHumanQa:0,externalEffectsAuthorized:false});
  Object.assign(e.knowledgeDagBrowser.data,{independentlySigned500CaseQa:0,externalEffectsAuthorized:false});
  Object.assign(e.creativeBrowser.data,{independentlySigned500CaseQA:0,realCreativeAIProviderCalls:0,cases:["T20-001","T20-002"]});
- Object.assign(e.handoff.data,{plannedCases:500,independentlyExecutedStagingCases:0,
-  independentlyAcceptedCases:0,releaseAuthorizationIssued:false});
+ Object.assign(e.handoff.data,{plannedCases:500,engineeringBaselineMapped:284,
+  stillUnmappedForEngineering:216,independentlyExecutedStagingCases:0,
+  independentlyAcceptedCases:0,releaseAuthorizationIssued:false,
+  authenticProviderUatPerformed:false,productionDatabaseInspected:false,
+  signatures:[],caseRecords:Array.from({length:500},(_,i)=>({
+   id:"T"+String(i+1).padStart(3,"0"),outcome:"NOT_EXECUTED",
+   independentlySignedOff:false
+  }))});
  return e;
 };
 test("T4B emits honest same-run CI engineering handoff without release certification",()=>{
@@ -73,6 +79,8 @@ test("T4B rejects unverified RLS, fake independent QA, provider activity and mis
  assert.throws(()=>verifySprintEvidence(egress,run),/external effect/);
  const browser=entries();browser.realStackBrowser.data.caseIds.pop();
  assert.throws(()=>verifySprintEvidence(browser,run),/count/);
+ const fakeHandoff=entries();fakeHandoff.handoff.data.caseRecords[0].independentlySignedOff=true;
+ assert.throws(()=>verifySprintEvidence(fakeHandoff,run),/handoff/);
  const missingDag=entries();missingDag.signedDagBrowser.data.caseIds.pop();
  assert.throws(()=>verifySprintEvidence(missingDag,run),/signed DAG/);
 });
