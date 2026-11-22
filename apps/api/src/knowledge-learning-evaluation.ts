@@ -39,7 +39,17 @@ export function parseRetrievalCases(raw:unknown):RetrievalCase[]{
 export function evaluationMetrics(rows:readonly RetrievalObservation[],k:number){
  if(!Number.isSafeInteger(k)||k<1||k>10||rows.length===0)
   throw new BadRequestException('Evaluation cutoff and observations required');
+ const seenCases=new Set<string>();
  const cases=rows.map(row=>{
+  if(typeof row.id!=="string"||!row.id||
+     seenCases.has(row.id)||!Array.isArray(row.relevantDocumentIds)||
+     row.relevantDocumentIds.length<1||row.relevantDocumentIds.length>5||
+     new Set(row.relevantDocumentIds).size!==row.relevantDocumentIds.length||
+     !Array.isArray(row.rankedDocumentIds)||row.rankedDocumentIds.length>10||
+     row.rankedDocumentIds.some(x=>typeof x!=="string"||!x)||
+     new Set(row.rankedDocumentIds).size!==row.rankedDocumentIds.length)
+   throw new BadRequestException("Retrieval observations must have distinct bounded source IDs and case IDs");
+  seenCases.add(row.id);
   const relevant=new Set(row.relevantDocumentIds);
   const ranked=row.rankedDocumentIds.slice(0,k);
   let hits=0,rr=0,dcg=0;
