@@ -25,13 +25,18 @@ export function assertModelSimulationScenario(raw:unknown):ModelSimulationScenar
   throw new ModelGatewayError('Unknown model simulation scenario');
  return raw as ModelSimulationScenario;
 }
-export type ModelRoute={agentId:string;purpose:string;providerKey:ModelProviderKey};
+export type ModelRoute={organizationId?:string;agentId:string;purpose:string;providerKey:ModelProviderKey};
+export type ModelRouteScope="SERVER_GLOBAL"|"EXACT_TENANT";
 /** No implicit default, no automatic failover after a possibly billed call. */
 export class GovernedModelRouter implements ModelAdapter{
  private readonly routes=new Map<string,ModelProviderKey>();
  private readonly adapters=new Map<ModelProviderKey,ModelAdapter>();
- constructor(input:{routes:readonly ModelRoute[];
+ private readonly scopeMode:ModelRouteScope;
+ constructor(input:{routes:readonly ModelRoute[];scopeMode?:ModelRouteScope;
   adapters:Readonly<Partial<Record<ModelProviderKey,ModelAdapter>>>}){
+  this.scopeMode=input.scopeMode??"SERVER_GLOBAL";
+  if(!["SERVER_GLOBAL","EXACT_TENANT"].includes(this.scopeMode))
+   throw new ModelGatewayError("Unknown model route scope mode");
   if(input.routes.length<1||input.routes.length>100)
    throw new ModelGatewayError('Governed route count must be bounded');
   for(const [provider,adapter] of Object.entries(input.adapters)){
@@ -45,10 +50,17 @@ export class GovernedModelRouter implements ModelAdapter{
     throw new ModelGatewayError('Route requires canonical agent identity');
    if(!/^[A-Z][A-Z0-9_]{2,79}$/.test(route.purpose))
     throw new ModelGatewayError('Route requires fixed internal purpose');
+   const scoped=this.scopeMode==="EXACT_TENANT";
+   if(scoped&&
+      (typeof route.organizationId!=="string"||
+       !/^[A-Za-z0-9_-]{3,160}$/.test(route.organizationId)))
+    throw new ModelGatewayError("Exact tenant model route must name one bounded organization");
+   if(!scoped&&route.organizationId!==undefined)
+    throw new ModelGatewayError("Global model routes cannot conceal tenant overrides");
    const provider=assertModelProviderKey(route.providerKey);
    if(!this.adapters.has(provider))
     throw new ModelGatewayError('Route provider has no configured adapter');
-   const key=route.agentId+'\0'+route.purpose;
+   const key=(scoped?route.organizationId:"SERVER_GLOBAL")+'\0'+route.agentId+'\0'+route.purpose;
    if(this.routes.has(key))
     throw new ModelGatewayError('Duplicate governed model route');
    this.routes.set(key,provider);
@@ -56,7 +68,8 @@ export class GovernedModelRouter implements ModelAdapter{
  }
  async complete(request:ModelRequest,signal:AbortSignal):Promise<ModelResult>{
   if(signal.aborted)throw new ModelGatewayError('Model request already cancelled');
-  const provider=this.routes.get(request.agentId+'\0'+request.purpose);
+  const scope=this.scopeMode==="EXACT_TENANT"?request.organizationId:"SERVER_GLOBAL";
+  const provider=this.routes.get(scope+'\0'+request.agentId+'\0'+request.purpose);
   if(!provider)throw new ModelGatewayError('No authorized provider route for agent and purpose');
   const adapter=this.adapters.get(provider);
   if(!adapter)throw new ModelGatewayError('Provider adapter unavailable');
