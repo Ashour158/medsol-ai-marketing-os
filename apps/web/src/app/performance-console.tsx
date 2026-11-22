@@ -4,8 +4,11 @@ import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
 type PerformanceSummary={status:string;campaign:{id:string;name:string};totals:Record<string,string>;
- derived:{ctrPercent:number|null;clickToLeadPercent:number|null;spendMicrosPerLead:string|null};
- pendingReviewCount:number;independentlyVerified:boolean;attributionValidated:boolean};
+ derived:{ctrPercent:number|null;clickToLeadPercent:number|null;spendMicrosPerLead:string|null;
+ leadQualificationPercent:number|null;spendMicrosPerQualifiedLead:string|null};
+ warnings:string[];cohortAligned:false;roiValidated:false;revenueVerified:false;
+ spendCurrencyVerified:false;pendingReviewCount:number;independentlyVerified:boolean;
+ attributionValidated:boolean};
 export default function PerformanceConsole({enabled}:{enabled:boolean}){
  const [campaigns,setCampaigns]=useState<Campaign[]>([]);
  const [campaignId,setCampaignId]=useState("");
@@ -58,8 +61,19 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
      <p>CTR: {summary.derived.ctrPercent===null?"Insufficient denominator":summary.derived.ctrPercent+"%"}</p>
      <p>Click-to-lead: {summary.derived.clickToLeadPercent===null?"Insufficient denominator":summary.derived.clickToLeadPercent+"%"}</p>
      <p>Cost/lead: {summary.derived.spendMicrosPerLead??"Unknown"} micro currency units</p>
+     <p>Lead qualification: {summary.derived.leadQualificationPercent===null?
+       "Insufficient or inconsistent reviewed funnel":summary.derived.leadQualificationPercent+"%"}</p>
+     <p>Cost/qualified lead: {summary.derived.spendMicrosPerQualifiedLead??"Unknown"} micro currency units</p>
      <p>Pending reviews: {summary.pendingReviewCount}</p>
-     <small>Scientific verification and multi-touch attribution are not established.</small>
+     {summary.warnings.length>0&&<div role="note" style={{
+      background:"#f8fafc",border:"1px solid #e2e8f0",
+      borderRadius:7,padding:9,fontSize:12}}>
+      <strong>Evidence quality restrictions</strong>
+      <ul>{summary.warnings.map(w=><li key={w}>{w.replaceAll("_"," ")}</li>)}</ul>
+     </div>}
+     <small>Rates describe separately reviewed observations; a matched cohort,
+      reliable currency, revenue/ROI and multi-touch attribution have not been verified.
+      Never treat a modeled return as measured commercial revenue.</small>
     </div>}
     {summary&&<OfflineRevenueScenarioStudio key={summary.campaign.id} summary={summary}/>}
    </div>
