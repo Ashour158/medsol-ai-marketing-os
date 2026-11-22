@@ -1,5 +1,6 @@
 "use client";
 import {useState} from "react";
+import {prepareOfflineWorkflowDraft} from "../lib/blueprint-offline-handoff";
 
 const EXAMPLE=JSON.stringify({
  id:"campaign-creative-review",version:1,nodes:[
@@ -34,13 +35,16 @@ type Result={status:"SIMULATED"|"BLOCKED";saved:boolean;replayed:boolean;
  }};
 const button={background:"#124d83",color:"white",border:0,borderRadius:8,
  padding:"10px 16px",cursor:"pointer",fontWeight:650} as const;
-export function BlueprintVirtualStudio(){
+export function BlueprintVirtualStudio({onPrepareOfflineWorkflow}:{
+ onPrepareOfflineWorkflow?:(json:string)=>void
+}){
  const [draft,setDraft]=useState(EXAMPLE);
  const [requestKey,setRequestKey]=useState("");
  const [result,setResult]=useState<Result|null>(null);
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
- const handleChange=(s:string)=>{setDraft(s);setRequestKey("");setResult(null);setError("");};
+ const [handoffNotice,setHandoffNotice]=useState("");
+ const handleChange=(s:string)=>{setDraft(s);setRequestKey("");setResult(null);setError("");setHandoffNotice("");};
  async function run(){
   setBusy(true);setError("");
   try{
@@ -91,6 +95,21 @@ export function BlueprintVirtualStudio(){
     onClick={()=>handleChange(EXAMPLE)}>Load safe example</button>
   </div>
   {error&&<p role="alert" style={{color:"#b91c1c",fontSize:13}}>{error}</p>}
+  {handoffNotice&&<p role="status" style={{fontSize:13,color:"#124d83"}}>{handoffNotice}</p>}
+  {onPrepareOfflineWorkflow&&result?.status==="SIMULATED"&&
+   result.preview.validDraft&&<button type="button" style={{...button,marginTop:10}}
+    disabled={busy}
+    onClick={()=>{
+     try{
+      const manifest=prepareOfflineWorkflowDraft(JSON.parse(draft) as unknown);
+      onPrepareOfflineWorkflow(JSON.stringify(manifest,null,2));
+      setError("");
+      setHandoffNotice("Prepared a bounded offline workflow draft in Workflow Studio. It is NOT signed, approved, activated or executable until the canonical server release process authorizes it.");
+     }catch(e){setHandoffNotice("");
+      setError(e instanceof Error?e.message:"Offline handoff not permitted");}
+    }}>
+    Prepare for signed offline Workflow Studio
+   </button>}
   {result&&<div style={{marginTop:14}}>
    <p role="status" style={{fontSize:13}}>
     Result: <strong>{result.status}</strong> ·
