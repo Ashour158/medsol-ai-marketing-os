@@ -63,8 +63,21 @@ describe('R3-E signed MCP/A2A registration with PostgreSQL tenant security',()=>
    const inspection=await registry.inspect(org,checker,draft.id,
     'search_citations','read_internal');
    expect(inspection).toMatchObject({approvedMetadata:true,
+    metadataIntegrityVerified:true,signatureTrusted:true,
     declaredTool:true,declaredScope:true,remoteExecutionAuthorized:false,
     mcpCalls:0,a2aCalls:0,readyForNetwork:false});
+   // Signed metadata approval cannot survive lost/replaced trust. Even the
+   // offline inspector must retract its "approved" classification.
+   process.env.MARKETING_TOOL_REGISTRY_TRUSTED_KEY_ID='rotated-untrusted';
+   try{
+    const untrusted=await registry.inspect(org,checker,draft.id,
+     'search_citations','read_internal');
+    expect(untrusted).toMatchObject({registrationStatus:'APPROVED',
+     metadataIntegrityVerified:false,signatureTrusted:false,
+     approvedMetadata:false,remoteExecutionAuthorized:false,readyForNetwork:false});
+   }finally{
+    process.env.MARKETING_TOOL_REGISTRY_TRUSTED_KEY_ID='trusted-release-key';
+   }
    const missing=await registry.inspect(org,checker,draft.id,
     'write_prices','read_internal');
    expect(missing.declaredTool).toBe(false);
