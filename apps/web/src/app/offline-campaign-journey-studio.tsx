@@ -175,7 +175,13 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  const activeApproval=journey?.campaignApprovals.find(a=>a.decision==="PENDING");
  const proposedCreative=journey?.creativeAssets.find(a=>a.revisionId===creative?.revisionId);
  const approvalForCreative=proposedCreative?.approvals.find(a=>a.decision==="PENDING");
-  const creativeIsCurrent=selectedCreativeIsCurrent(journey?.creativeAssets??[],creative);
+  // Brand-scoped offline artwork can be rights-reviewed before a campaign
+  // is loaded, provided its actual server preview was read back as current.
+  // Once a journey is loaded, require its newer authoritative revision census.
+  const creativeIsCurrent=journey
+   ?selectedCreativeIsCurrent(journey.creativeAssets,creative)
+   :!!creative&&!!preview&&preview.current===true&&
+    preview.assetId===creative.assetId&&preview.revisionId===creative.revisionId;
  const blocked=!identity||busy;
  const approve=async(approvalId:string)=>{
   if(!identity)throw new Error("Sign in as a different authorized human reviewer");
