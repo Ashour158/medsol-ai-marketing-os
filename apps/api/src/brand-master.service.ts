@@ -49,7 +49,11 @@ export class BrandMasterService{
   if(!sourceReference.startsWith('https://')&&!sourceReference.startsWith('internal:'))
     throw new BadRequestException('Provide an HTTPS reference or an internal approved document reference');
   const rules=parseRules(raw?.rules);
-  try{return await withMarketingTenant(this.db,organizationId,async tx=>{
+  // The transaction contains DB writes + an audit event only. A PostgreSQL
+  // P2034 abort rolls ALL of them back; bounded retry is therefore safe here,
+  // unlike broad retries around commands with external side effects.
+  for(let attempt=0;attempt<3;attempt++){
+   try{return await withMarketingTenant(this.db,organizationId,async tx=>{
     const latest=await tx.brandMasterRevision.findFirst({where:{organizationId},orderBy:{version:'desc'},select:{version:true}});
     const created=await tx.brandMasterRevision.create({data:{
       id:randomUUID(),organizationId,version:(latest?.version??0)+1,status:'DRAFT',
@@ -59,8 +63,19 @@ export class BrandMasterService{
       action:'BRAND_MASTER_REVISION_PROPOSED',objectType:'BrandMasterRevision',objectId:created.id,
       correlationId:created.id,after:{version:created.version,status:'DRAFT',sourceReference}}});
     return{revisionId:created.id,version:created.version,status:'DRAFT',releaseAuthorized:false};
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
-  catch(error){if((error as {code?:string})?.code==='P2002')throw new ConflictException('Concurrent brand revision; refresh and retry');throw error;}
+   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
+   catch(error){
+    const code=(error as {code?:string})?.code;
+    if(code==='P2034'&&attempt<2){
+     await new Promise<void>(resolve=>setTimeout(resolve,12*(attempt+1)));
+     continue;
+    }
+    if(code==='P2002'||code==='P2034')
+     throw new ConflictException('Concurrent brand revision; refresh and retry');
+    throw error;
+   }
+  }
+  throw new ConflictException('Concurrent brand revision; refresh and retry');
  }
  async decide(organizationId:string,actorId:string,revisionId:string,decision:'APPROVE'|'REJECT',reason:string){
   if(!['APPROVE','REJECT'].includes(decision))throw new BadRequestException('Invalid brand decision');
