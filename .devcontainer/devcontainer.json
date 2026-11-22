@@ -1,0 +1,36 @@
+{
+  "name": "Medsol AI Marketing OS — free offline engineering rehearsal",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "sudo corepack enable && corepack prepare pnpm@10.12.4 --activate && pnpm install --no-frozen-lockfile && pnpm exec prisma generate --schema prisma/schema.prisma && pnpm --filter './packages/**' build",
+  "forwardPorts": [
+    3000
+  ],
+  "portsAttributes": {
+    "3000": {
+      "label": "Medsol local preview — GitHub authenticated only",
+      "onAutoForward": "notify",
+      "visibility": "private"
+    }
+  },
+  "remoteEnv": {
+    "MARKETING_EXTERNAL_EFFECTS_ENABLED": "false",
+    "MARKETING_AI_REASONING_ENABLED": "false",
+    "MARKETING_REAL_EMAIL_ENABLED": "false",
+    "MARKETING_REAL_PROVIDER_PUBLISHING_ENABLED": "false",
+    "MARKETING_PROVIDER_EGRESS_ENABLED": "false",
+    "MARKETING_LIVE_DELIVERY_ENABLED": "false",
+    "MARKETING_LIVE_CAMPAIGN_EXECUTION_ENABLED": "false"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "Prisma.prisma",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}

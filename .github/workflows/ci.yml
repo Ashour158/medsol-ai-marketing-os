@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -44,6 +45,8 @@ jobs:
           node-version: 22
       - name: Install
         run: pnpm install --no-frozen-lockfile
+      - name: Check free GitHub Codespaces offline port and manual CI policies
+        run: node --test scripts/quality/t7c-free-github.nodecheck.mjs
       - name: Generate Prisma client
         run: pnpm exec prisma generate --schema prisma/schema.prisma
       - name: Build workspace libraries
