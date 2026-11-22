@@ -5,7 +5,7 @@ const root=new URL('../../',import.meta.url);
 const config=JSON.parse(readFileSync(new URL('.devcontainer/devcontainer.json',root),'utf8'));
 const workflow=readFileSync(new URL('.github/workflows/ci.yml',root),'utf8');
 test('T7C GitHub Actions manual dispatch reuses same canonical CI without shadow workflow',()=>{
- assert.match(workflow,/^on:\n  push:\n    branches: \[main\]\n  pull_request:\n  workflow_dispatch:/);
+ assert.match(workflow,/(?:^|\n)on:\n  push:\n    branches: \[main\]\n  pull_request:\n  workflow_dispatch:/);
  assert.match(workflow,/Run 19 Chromium cases with compiled Nest API, PostgreSQL/);
  assert.match(workflow,/Run T1F five signed-operator end-to-end browser journeys/);
 });
