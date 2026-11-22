@@ -13,8 +13,11 @@ const actor=(role:string):VerifiedIdentity=>({
  email:"offline@example.invalid",subject:"oidc-offline",role
 });
 describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
- it("T03-025 covers all 149 real API method/path decorators in the single permission registry",()=>{
-  expect(endpoints).toHaveLength(149);
+ it("T03-025 covers all 150 real API method/path decorators in the single permission registry",()=>{
+  expect(endpoints).toHaveLength(150);
+  expect(endpoints).toContainEqual({method:"POST",
+   pattern:"/marketing/learning/knowledge/agent-context-preview",
+   route:"/marketing/learning/knowledge/agent-context-preview"});
    expect(endpoints.some(e=>e.method==='POST'&&
     e.pattern==='/marketing/assets/:id/offline-revisions')).toBe(true);
   expect(new Set(endpoints.map(r=>r.method+" "+r.pattern)).size).toBe(endpoints.length);
