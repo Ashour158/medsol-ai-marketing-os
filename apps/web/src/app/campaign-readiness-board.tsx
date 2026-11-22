@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import {CAMPAIGN_STAGE_ORDER,campaignReadiness,isCampaignSummary,campaignReadinessPageBounds,
  portfolioReadinessSummary,type PortfolioReadinessRow} from "../lib/campaign-readiness";
+import {createReadinessEvidenceSnapshot} from "../lib/readiness-evidence-snapshot";
 
 type Identity={userId:string;organizationId:string;email:string;role:string};
 const section={padding:20,borderRadius:14,background:"#fff",marginTop:20,
@@ -94,6 +95,19 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
    setError(e instanceof Error?e.message:"Campaign page unavailable");}
   finally{if(current===epoch.current)setLoading(false);}
  }
+ function exportInspectedPage(){
+  if(!identity||!loaded||loading)return;
+  try{
+   const report=createReadinessEvidenceSnapshot({
+    rows,page,listingCount:count,inspectedAt:new Date().toISOString()
+   });
+   const blob=new Blob([JSON.stringify(report,null,2)],{type:"application/json"});
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement("a");
+   a.href=url;a.download="medsol-offline-readiness-page-"+(page+1)+".json";
+   document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  }catch(e){setError(e instanceof Error?e.message:"Inspection export unavailable");}
+ }
  const summary=portfolioReadinessSummary(rows);
  const visible=rows.filter(x=>filter==="ALL"||
   (x.kind==="UNKNOWN"?filter==="UNKNOWN":x.item.state===filter));
@@ -116,6 +130,13 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
     Inspected page {page+1} of {Math.max(1,Math.ceil(count/25))}:
     {summary.campaignsChecked} of {count} listed campaigns (maximum 25 per page, 100 per listing).
    </p>
+   <p style={{fontSize:12,color:"#64748b"}}>
+    Downloaded inspection evidence is unsigned, current-page only, and NOT production certification.
+   </p>
+   <button type="button" disabled={!identity||loading} onClick={exportInspectedPage}
+    style={{...button,marginBottom:14}}>
+    Export unsigned page inspection (JSON)
+   </button>
    <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
     <button type="button" disabled={loading||page===0}
      onClick={()=>void changePage(page-1)}>Previous 25</button>
