@@ -48,8 +48,8 @@ describe("T4C canonical campaign readiness",()=>{
    const x=fullyStaged();x.workflow={status};
    expect(campaignReadiness(x,"campaign-123").state).toBe("INCOMPLETE");
   }
-  const x=fullyStaged();x.workflow=null;
-  expect(campaignReadiness(x,"campaign-123").state).toBe("INCOMPLETE");
+  const missingWorkflow={...fullyStaged(),workflow:null};
+  expect(campaignReadiness(missingWorkflow,"campaign-123").state).toBe("INCOMPLETE");
  });
  it("refuses forged identity, loose stage types and absent offline guarantees",()=>{
   const x=valid();
