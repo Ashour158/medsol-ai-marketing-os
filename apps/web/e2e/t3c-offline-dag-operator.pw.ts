@@ -152,3 +152,21 @@ test("T18-003 foreign signed identity denied; same-tenant viewer can only read, 
  expect(viewerDecision.status).toBe(403);
  expect((await ok(page,"workflows/"+runId)).status).toBe("WAITING_APPROVAL");
 });
+
+test("T18-004 operator run key invalidates when workflow input scope changes",async({page})=>{
+ await login(page,"admin");
+ const studio=page.locator("section[aria-label='R3-G governed offline DAG console']");
+ const key=studio.getByRole("textbox",{name:"Stable request key"});
+ const objective=studio.getByRole("textbox",{name:"Objective",exact:true});
+ const market=studio.getByRole("textbox",{name:"Market (optional)"});
+ const blueprint=studio.getByRole("textbox",{name:"Blueprint ID"});
+ await key.fill("manual-key-bound-to-old-scope");
+ await objective.fill("Changed business objective");
+ await expect(key).toHaveValue("");
+ await key.fill("manual-key-bound-to-old-market");
+ await market.fill("AE");
+ await expect(key).toHaveValue("");
+ await key.fill("manual-key-bound-to-old-blueprint");
+ await blueprint.fill("different-signed-blueprint");
+ await expect(key).toHaveValue("");
+});
