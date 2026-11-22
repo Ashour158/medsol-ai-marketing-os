@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 type Identity={userId:string;organizationId:string;role:string};
 type Source={id:string;title:string;status:string;accessMode:string;agentScope:string[]};
 type Memory={memoryId:string;documentId:string;agentId:string;status:string;
@@ -32,6 +32,8 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
   actorScope:string;data:unknown
  }|null>(null);
  const actorScope=identity?identity.organizationId+":"+identity.userId:"";
+ const scopeRef=useRef(actorScope);
+ scopeRef.current=actorScope;
  const [last,setLast]=useState<unknown>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  const authorized=!!identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase());
@@ -48,7 +50,9 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
   return result;
  }
  async function refresh(){
+  const requestScope=scopeRef.current;
   const [a,b]=await Promise.all([api("knowledge"),api("memories")]);
+  if(requestScope!==scopeRef.current)return;
   setSources(Array.isArray(a)?a as Source[]:[]);
   setMemories(Array.isArray(b)?b as Memory[]:[]);
  }
