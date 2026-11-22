@@ -2,6 +2,7 @@ export type WorkspaceLink={id:string;label:string;category:'Execute'|'Intelligen
 export const WORKSPACE_LINKS:readonly WorkspaceLink[]=[
  {id:'identity',label:'Sign in & organization',category:'Govern'},
  {id:'portfolio',label:'Portfolio & objectives',category:'Operate'},
+ {id:'readiness-board',label:'Campaign readiness & blockers',category:'Operate'},
  {id:'journey',label:'Campaign journey',category:'Execute'},
  {id:'strategy',label:'Strategy & campaign intake',category:'Intelligence'},
  {id:'creative',label:'Creative governance',category:'Execute'},
