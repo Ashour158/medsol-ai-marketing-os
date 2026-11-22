@@ -336,6 +336,20 @@ jobs:
         run: node --test scripts/quality/r3y-operator-handoff.test.mjs
       - name: Generate 500-slot independent operator handoff with zero forged signatures
         run: node scripts/quality/r3y-operator-handoff.mjs --input r3y-real-stack-acceptance-evidence.json --output r3y-operator-handoff.json
+      - name: Reject fabricated, cross-run or incorrectly certified sprint evidence
+        run: node --test scripts/quality/t4b-sprint-engineering-evidence.nodecheck.mjs
+      - name: Assemble same-run non-certifying seven-day engineering handoff
+        env:
+          MARKETING_T4B_EVIDENCE_CI_ONLY: '1'
+        run: node scripts/quality/t4b-sprint-engineering-evidence.mjs --output t4b-seven-day-engineering-handoff.json
+      - name: Preserve actual CI engineering handoff (NOT independent staging or production QA)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-t4b-seven-day-engineering-handoff-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: t4b-seven-day-engineering-handoff.json
       - name: Upload unsigned independent staging QA handoff for future operator use
         if: always()
         uses: actions/upload-artifact@v4
