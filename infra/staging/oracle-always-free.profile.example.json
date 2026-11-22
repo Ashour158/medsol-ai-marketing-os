@@ -1,0 +1,22 @@
+{
+  "schema": "medsol-oracle-always-free-staging-profile-v1",
+  "provider": "OCI",
+  "environment": "staging",
+  "shape": "VM.Standard.A1.Flex",
+  "architecture": "arm64",
+  "ocpus": 2,
+  "memoryGb": 12,
+  "bootVolumeGb": 50,
+  "otherBlockVolumesGb": 0,
+  "homeRegionOnly": true,
+  "alwaysFreeEligibleConfirmed": false,
+  "regionCapacityConfirmed": false,
+  "monthlyBudgetUsd": 0,
+  "publicHttpsOrigin": null,
+  "oidcHttpsOrigin": null,
+  "immutableApiImage": null,
+  "immutableWebImage": null,
+  "realProviderEffectsEnabled": false,
+  "releaseVerdict": "NOT_CERTIFIED",
+  "deploymentStatus": "NOT_DEPLOYED"
+}
