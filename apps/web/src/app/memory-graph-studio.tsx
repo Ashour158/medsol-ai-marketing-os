@@ -28,6 +28,7 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
  const [feedbackLabel,setFeedbackLabel]=useState("RELEVANT");
  const [evalCases,setEvalCases]=useState("[]");
  const [feedback,setFeedback]=useState<unknown>(null);
+ const [contextPreview,setContextPreview]=useState<unknown>(null);
  const [last,setLast]=useState<unknown>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  const authorized=!!identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase());
@@ -178,6 +179,36 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
     </tr>)}</tbody>
    </table>
   </div>
+  <h4>Inspect an agent's actual scoped knowledge context</h4>
+  <p style={{fontSize:12,color:"#475569"}}>
+   Read-only inspection uses the same canonical retrieval as the Brain:
+   approved agent-scoped documents, unexpired reviewed human memory and reviewed
+   graph relations. Source content is untrusted evidence, not instructions.
+   Inspection makes zero AI, MCP, A2A, skill promotion or memory-write calls.
+  </p>
+  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+   <button disabled={busy||agentId.trim().length<3||
+    feedbackQuery.trim().length<3||feedbackQuery.length>200} style={btn}
+    onClick={()=>void task(async()=>{
+     setContextPreview(await api("knowledge/agent-context-preview",{
+      agentId,query:feedbackQuery.trim()
+     }));
+    })}>
+    Inspect scoped context for this agent
+   </button>
+   <button disabled={busy} style={{...btn,background:"#475569"}}
+    onClick={()=>setContextPreview(null)}>Clear inspection</button>
+  </div>
+  {contextPreview!==null&&<div style={{marginTop:10}}>
+   <p style={{fontSize:12,color:"#92400e"}}>
+    Human-reviewed source context, not verified scientific claims or production model output.
+   </p>
+   <pre aria-label="Read-only agent context inspection" style={{fontSize:12,
+    padding:10,background:"#f8fafc",borderRadius:8,
+    whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>
+    {JSON.stringify(contextPreview,null,2)}
+   </pre>
+  </div>}
   <h4>Feedback and retrieval-quality evaluation</h4>
   <p style={{fontSize:12,color:"#64748b"}}>
    Use a real chunk ID from a reviewed search result. Evaluation accepts
