@@ -66,7 +66,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
  if(!identity||!["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase()))return null;
  const active=releases.find(r=>r.blueprintId===blueprintId&&r.status==="ACTIVE");
  const selected=releases.filter(r=>r.blueprintId===blueprintId);
- const currentRunScope=offlineDagRunScope({blueprintId,activeReleaseId:active?.id??"",objective,market});
+ const currentRunScope=offlineDagRunScope({organizationId:identity.organizationId,blueprintId,activeReleaseId:active?.id??"",objective,market});
  return <section aria-label="R3-G governed offline DAG console" style={{
   border:"1px solid #cbd5e1",background:"#fff",padding:18,borderRadius:12,
   marginTop:20}}>
