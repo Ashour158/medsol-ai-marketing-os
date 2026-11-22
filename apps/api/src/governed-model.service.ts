@@ -1,6 +1,40 @@
 import { Injectable } from '@nestjs/common';
-import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario, AnthropicMessagesAdapter, GeminiGenerateContentAdapter } from '@medsol/agent-runtime';
+import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario, AnthropicMessagesAdapter, GeminiGenerateContentAdapter, type ModelRoute } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
+
+
+/** Server-configured, simulation-only per-tenant/agent routing; never user-selected.
+ * Missing routes are DENIED, without falling back to a different tenant or
+ * globally shared provider. No keys, network destinations or model calls.
+ */
+export function parseSimulatedTenantRoutes(raw:string):ModelRoute[]{
+ if(raw.length>20000)throw Error("Bounded tenant model routing configuration required");
+ let data:unknown;
+ try{data=JSON.parse(raw)}catch{throw Error("Invalid tenant model routing JSON");}
+ if(!data||typeof data!=="object"||Array.isArray(data))
+  throw Error("Tenant model routing must map organizations to canonical agent routes");
+ const tenants=Object.entries(data as Record<string,unknown>);
+ if(tenants.length<1||tenants.length>20)
+  throw Error("Tenant model route count must be between 1 and 20");
+ const routes:ModelRoute[]=[];
+ for(const [organizationId,agentConfig] of tenants){
+  if(!/^[A-Za-z0-9_-]{3,160}$/.test(organizationId)||
+     !agentConfig||typeof agentConfig!=="object"||Array.isArray(agentConfig))
+   throw Error("Invalid exact tenant model route");
+  const entries=Object.entries(agentConfig as Record<string,unknown>);
+  if(entries.length<1||entries.length>13)
+   throw Error("Tenant agent model routing must be bounded");
+  for(const [agentId,rawProvider] of entries){
+   if(!AGENT_ROSTER.some(agent=>agent.id===agentId))
+    throw Error("Tenant model routing requires canonical agent");
+   const providerKey=assertModelProviderKey(rawProvider);
+   routes.push({organizationId,agentId,
+    purpose:"INTERNAL_MARKETING_DRAFT",providerKey});
+  }
+ }
+ if(routes.length>100)throw Error("Tenant model route count exceeds safe bound");
+ return routes;
+}
 
 @Injectable()
 export class GovernedModelService {
@@ -23,11 +57,14 @@ export class GovernedModelService {
         GEMINI:new SimulatedModelAdapter({providerKey:'GEMINI',scenario}),
         LOCAL:new SimulatedModelAdapter({providerKey:'LOCAL',scenario})
       };
+      const tenantRoutes=process.env.MARKETING_SIMULATED_MODEL_TENANT_ROUTES_JSON;
       adapter = new GovernedModelRouter({
-        routes:AGENT_ROSTER.map(agent=>({
-          agentId:agent.id,purpose:'INTERNAL_MARKETING_DRAFT',
-          providerKey:selected
-        })),adapters
+        scopeMode:tenantRoutes?"EXACT_TENANT":"SERVER_GLOBAL",
+        routes:tenantRoutes?parseSimulatedTenantRoutes(tenantRoutes):
+          AGENT_ROSTER.map(agent=>({
+           agentId:agent.id,purpose:"INTERNAL_MARKETING_DRAFT",
+           providerKey:selected
+          })),adapters
       });
     } else if (provider === 'openai') {
       const key = process.env.OPENAI_API_KEY ?? '';

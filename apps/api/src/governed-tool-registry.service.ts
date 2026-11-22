@@ -191,9 +191,14 @@ export class GovernedToolRegistryService{
    const manifest=parseToolManifest(row.manifest);
    const signatureTrusted=verifyTrustedToolSignature(manifest,
     row.signature,row.signerKeyId,trustConfig());
+   const digestTrusted=toolManifestDigest(manifest)===row.manifestDigest;
+   // An approved DB status is NOT a trusted grant if the signed bytes, registry
+   // digest or server-trusted signer no longer validate. Inspect fail-closed.
+   const effectiveStatus=signatureTrusted&&digestTrusted?row.status:"QUARANTINED";
    return{registrationId:id,manifestDigest:row.manifestDigest,
-    signatureTrusted,registrationStatus:row.status,
-    ...inspectToolInvocation(manifest,toolKey,requestedScope,row.status),
+    signatureTrusted,metadataIntegrityVerified:signatureTrusted&&digestTrusted,
+    registrationStatus:row.status,
+    ...inspectToolInvocation(manifest,toolKey,requestedScope,effectiveStatus),
     readyForNetwork:false as const};
   });
  }

@@ -30,6 +30,9 @@ export default function Home() {
   const [agents, setAgents] = useState<unknown>(null);
   const [pendingApprovals, setPendingApprovals] = useState<unknown>(null);
   const [identity, setIdentity] = useState<{userId:string;organizationId:string;email:string;role:string}|null>(null);
+  const [offlineHandoff,setOfflineHandoff]=useState<{
+   organizationId:string;manifest:string;revision:number
+  }|null>(null);
   const [approvalRationale, setApprovalRationale] = useState("");
   const [selectedApprovalId, setSelectedApprovalId] = useState("");
   const [assessment, setAssessment] = useState<unknown>(null);
@@ -301,8 +304,14 @@ export default function Home() {
             <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify({brains:blueprintInventory.brains,personas:blueprintInventory.personas},null,2)}</pre>
           </details>
         </>}
-        <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio/>}</div>
-        <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio identity={identity}/></div>
+        <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio
+         onPrepareOfflineWorkflow={manifest=>setOfflineHandoff(previous=>({
+          organizationId:identity.organizationId,manifest,revision:(previous?.revision??0)+1
+         }))}/>}</div>
+        <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio
+         key={identity?.organizationId??"signed-out"} identity={identity}
+         importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
+          offlineHandoff:null}/></div>
         <div id="knowledge" style={{scrollMarginTop:120}}><KnowledgeFabricStudio identity={identity}/></div>
         <div id="memory" style={{scrollMarginTop:120}}><MemoryGraphStudio identity={identity}/></div>
         <div id="acceptance" style={{scrollMarginTop:120}}><R3AcceptanceStudio identity={identity}/></div>

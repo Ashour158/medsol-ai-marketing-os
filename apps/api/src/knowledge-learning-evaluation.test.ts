@@ -37,4 +37,22 @@ describe('R3-I bounded offline retrieval evaluation',()=>{
   expect(feedbackDigest(' genomics ')).toEqual(feedbackDigest('genomics'));
   expect(feedbackDigest('proteomics')).not.toEqual(feedbackDigest('genomics'));
  });
+ it('fails closed on inflated duplicate ranked documents and case identities',()=>{
+  const safe={id:'case-a',rankedDocumentIds:['doc-a','doc-b'],
+   relevantDocumentIds:['doc-a','doc-b']};
+  for(const invalid of [
+   {...safe,rankedDocumentIds:['doc-a','doc-a','doc-b']},
+   {...safe,relevantDocumentIds:['doc-a','doc-a']},
+   {...safe,rankedDocumentIds:Array.from({length:11},(_,i)=>'document-'+i)},
+   {...safe,rankedDocumentIds:['doc-a','']},
+  ]){
+   expect(()=>evaluationMetrics([invalid],3)).toThrow('distinct bounded');
+  }
+  expect(()=>evaluationMetrics([safe,safe],3)).toThrow('distinct bounded');
+  const genuine=evaluationMetrics([safe],3);
+  expect(genuine.recallAtK).toBe(1);
+  expect(genuine.precisionAtK).toBeCloseTo(2/3,5);
+  expect(genuine.modelOrSkillPromotionAuthorized).toBe(false);
+ });
+
 });

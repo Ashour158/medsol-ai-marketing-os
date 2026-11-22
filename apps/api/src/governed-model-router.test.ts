@@ -2,7 +2,7 @@ import {describe,expect,it,vi,afterEach} from 'vitest';
 import {BoundedModelGateway,GovernedModelRouter,SimulatedModelAdapter,
  MODEL_PROVIDER_KEYS,MODEL_SIMULATION_SCENARIOS,ModelGatewayError,
  type ModelAdapter,type ModelRequest} from '@medsol/agent-runtime';
-import {GovernedModelService} from './governed-model.service.js';
+import {GovernedModelService,parseSimulatedTenantRoutes} from './governed-model.service.js';
 afterEach(()=>vi.unstubAllEnvs());
 const request:ModelRequest={organizationId:'tenant-a',correlationId:'corr-a',
  agentId:'MKT-CMO-001',purpose:'INTERNAL_MARKETING_DRAFT',
@@ -84,4 +84,65 @@ describe('R3-C governed offline model provider routing',()=>{
   vi.stubEnv('MARKETING_SIMULATED_MODEL_SCENARIO','REAL_POST');
   expect(()=>new GovernedModelService({} as any)).toThrow('Unknown model simulation');
  });
+ it('routes to exact tenant+agent only, without cross-tenant or global fallback',async()=>{
+  const openai=new SimulatedModelAdapter({providerKey:'OPENAI',scenario:'SUCCESS'});
+  const gemini=new SimulatedModelAdapter({providerKey:'GEMINI',scenario:'SUCCESS'});
+  const router=new GovernedModelRouter({
+   scopeMode:'EXACT_TENANT',
+   routes:[
+    {organizationId:'tenant-a',agentId:request.agentId,purpose:request.purpose,providerKey:'OPENAI'},
+    {organizationId:'tenant-b',agentId:request.agentId,purpose:request.purpose,providerKey:'GEMINI'}
+   ],
+   adapters:{OPENAI:openai,GEMINI:gemini}
+  });
+  const gateway=new BoundedModelGateway(router);
+  expect((await gateway.complete(request)).model).toBe('synthetic:openai');
+  expect((await gateway.complete({...request,organizationId:'tenant-b'})).model)
+   .toBe('synthetic:gemini');
+  await expect(gateway.complete({...request,organizationId:'tenant-c'}))
+   .rejects.toThrow('No authorized provider route');
+  await expect(gateway.complete({...request,agentId:'MKT-SCI-001'}))
+   .rejects.toThrow('No authorized provider route');
+  expect(()=>new GovernedModelRouter({
+   scopeMode:'EXACT_TENANT',routes:[{agentId:request.agentId,
+    purpose:request.purpose,providerKey:'OPENAI'}],adapters:{OPENAI:openai}
+  })).toThrow('Exact tenant');
+  expect(()=>new GovernedModelRouter({
+   routes:[{organizationId:'tenant-a',agentId:request.agentId,
+    purpose:request.purpose,providerKey:'OPENAI'}],adapters:{OPENAI:openai}
+  })).toThrow('Global model routes');
+  expect(()=>new GovernedModelRouter({
+   scopeMode:'EXACT_TENANT',routes:[
+    {organizationId:'tenant-a',agentId:request.agentId,purpose:request.purpose,providerKey:'OPENAI'},
+    {organizationId:'tenant-a',agentId:request.agentId,purpose:request.purpose,providerKey:'GEMINI'}
+   ],adapters:{OPENAI:openai,GEMINI:gemini}
+  })).toThrow('Duplicate governed model route');
+ });
+ it('uses only server-owned tenant routing configuration in offline simulation',async()=>{
+  const config=JSON.stringify({
+   'tenant-a':{'MKT-CMO-001':'ANTHROPIC'},
+   'tenant-b':{'MKT-CMO-001':'GEMINI','MKT-SCI-001':'LOCAL'}
+  });
+  expect(parseSimulatedTenantRoutes(config)).toHaveLength(3);
+  vi.stubEnv('MARKETING_MODEL_PROVIDER','simulation');
+  vi.stubEnv('MARKETING_SIMULATED_MODEL_TENANT_ROUTES_JSON',config);
+  vi.stubEnv('MARKETING_SIMULATED_MODEL_PROVIDER','LOCAL');
+  const budgets={reserve:vi.fn().mockResolvedValue({id:'reservation',replay:false}),
+   settle:vi.fn().mockResolvedValue(undefined)};
+  const service=new GovernedModelService(budgets as any);
+  expect((await service.complete('tenant-a-request',request)).model)
+   .toBe('synthetic:anthropic');
+  expect((await service.complete('tenant-b-request',
+   {...request,organizationId:'tenant-b'})).model).toBe('synthetic:gemini');
+  await expect(service.complete('tenant-c-request',
+   {...request,organizationId:'tenant-c'})).rejects.toThrow('No authorized provider route');
+  expect(budgets.settle).toHaveBeenCalledTimes(2);
+  for(const invalid of [
+   '{}','[]','{"tenant-a":{"FAKE-AGENT":"OPENAI"}}',
+   '{"tenant-a":{"MKT-CMO-001":"UNREVIEWED"}}',
+   '{"tenant-a":[]}','{"tenant-a":{}}',
+   JSON.stringify({'../../tenant':{'MKT-CMO-001':'OPENAI'}})
+  ])expect(()=>parseSimulatedTenantRoutes(invalid)).toThrow();
+ });
+
 });

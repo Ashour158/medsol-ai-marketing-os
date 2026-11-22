@@ -3,6 +3,7 @@ import {useEffect,useState} from "react";
 import OfflineDagGraphEditor from "./offline-dag-graph-editor";
 import OfflineDagRunInspector from "./offline-dag-run-inspector";
 import {offlineDagRunScope,mayReuseOfflineDagRequestKey} from "../lib/offline-dag-run-scope";
+import {readOfflineEditorManifest} from "../lib/offline-dag-graph";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Release={id:string;blueprintId:string;revision:number;digest:string;
  status:string;canaryPercent:number;stepCount:number;signatureTrusted:boolean;
@@ -18,7 +19,10 @@ const button={padding:"9px 13px",borderRadius:8,border:0,color:"#fff",
  background:"#124d83",cursor:"pointer",fontWeight:650} as const;
 const field={padding:9,border:"1px solid #cbd5e1",borderRadius:8,
  width:"100%",boxSizing:"border-box" as const};
-export default function OfflineDagStudio({identity}:{identity:Identity|null}){
+export default function OfflineDagStudio({identity,importedWorkflow}:{
+ identity:Identity|null;
+ importedWorkflow?:{organizationId:string;manifest:string;revision:number}|null
+}){
  const [releases,setReleases]=useState<Release[]>([]);
  const [manifest,setManifest]=useState(EXAMPLE);
  const [signature,setSignature]=useState("");
@@ -35,6 +39,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
  const [reason,setReason]=useState("");
+ const [handoffNotice,setHandoffNotice]=useState("");
  async function call(path:string,body?:unknown):Promise<unknown>{
   const response=await fetch("/api/marketing/architecture/"+path,{
    method:body===undefined?"GET":"POST",credentials:"same-origin",
@@ -58,6 +63,21 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
  useEffect(()=>{if(identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase())){
   void refresh().catch(e=>setError(e instanceof Error?e.message:"Unable to load"));
  }},[identity?.userId,identity?.organizationId,identity?.role]);
+ useEffect(()=>{
+  if(!identity||!importedWorkflow||
+     importedWorkflow.organizationId!==identity.organizationId)return;
+  try{
+   const parsed=readOfflineEditorManifest(importedWorkflow.manifest);
+   setManifest(JSON.stringify(parsed,null,2));
+   setBlueprintId(parsed.draft.id);
+   setSignature("");setSignerKeyId("");setRunKey("");setRunKeyScope("");
+   setRunId("");setLookupRunId("");setRunState(null);setError("");
+   setHandoffNotice("Unsigned draft imported from Blueprint Studio. Independent signature, maker-checker approval and explicit activation are still required.");
+  }catch(e){
+   setHandoffNotice("");
+   setError(e instanceof Error?e.message:"Blueprint handoff invalid");
+  }
+ },[identity?.organizationId,importedWorkflow?.revision]);
  async function task(action:()=>Promise<void>){
   setBusy(true);setError("");
   try{await action();}catch(e){setError(e instanceof Error?e.message:"Operation failed");}
@@ -71,6 +91,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
   border:"1px solid #cbd5e1",background:"#fff",padding:18,borderRadius:12,
   marginTop:20}}>
   <h3 style={{marginTop:0}}>R3-G · Signed Offline DAG Deployment</h3>
+  {handoffNotice&&<p role="status" style={{color:"#124d83",fontSize:13}}>{handoffNotice}</p>}
   <p style={{fontSize:13,color:"#475569"}}>
    Manage independently reviewed, cryptographically signed versions of canonical
    workflows. <strong>Internal deterministic execution only:</strong> no provider calls,
