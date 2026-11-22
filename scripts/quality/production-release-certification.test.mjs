@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign} from 'node:crypto';
-import {verifyReleaseCertification,digest} from './production-release-certification.mjs';
+import {verifyReleaseCertification,verifyPersistentStagingEvidence,digest} from './production-release-certification.mjs';
 
 const hex='sha256:'+'f'.repeat(64);
 const commit='a'.repeat(40);
@@ -12,18 +12,38 @@ const canonical=value=>JSON.stringify(value,(_key,item)=>{
  return Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b)));
 });
 function sample(){
- const cases=Array.from({length:500},(_,i)=>({
-  id:'T99-'+String(i+1).padStart(3,'0'),
+ const allocation=[35,30,30,35,35,30,30,40,40,45,25,25,30,20,30,20];
+ const caseIds=allocation.flatMap((count,index)=>
+  Array.from({length:count},(_,i)=>'T'+String(index+1).padStart(2,'0')+
+   '-'+String(i+1).padStart(3,'0')));
+ const cases=caseIds.map((id,i)=>({
+  id,
   status:'PASS',evidenceClass:'INDEPENDENT_E2E',artifactDigest:hex,
   operatorId:i%2?'synthetic_operator_b':'synthetic_operator_a',
   runId:'synthetic-run-'+i,executedAt:'2026-11-20T00:00:00Z',
   triageReference:'synthetic-triage-'+i
  }));
- const index={cases:cases.map(({id})=>({id})),releaseVerdict:'NOT_CERTIFIED'};
+ const index={schema:'medsol-r3y-real-stack-500-case-acceptance-index-v1',
+  plannedE2eCases:500,cases:cases.map(({id})=>({id})),
+  releaseVerdict:'NOT_CERTIFIED'};
  const payload={
   releaseClass:'PRODUCTION',repository:'Ashour158/medsol-ai-marketing-os',
   commit,environment:'production',deploymentId:'synthetic-disposable-probe',
   externalEffectsAuthorized:true,cases,
+  canonicalCaseIndexDigest:digest(index.cases.map(c=>c.id)),
+  staging:{
+   schema:'medsol-independent-staging-evidence-v1',
+   environment:'persistent-staging',commit,
+   httpsOrigin:'https://synthetic-operator-staging.org',
+   providerEgressDisabled:true,actualDeploymentObserved:true,
+   separatelyOperatedOidcMfaVerified:true,tenantAgencyIsolationPassed:true,
+   nonBypassRlsAppRoleProven:true,tlsChainIndependentlyVerified:true,
+   backupRestoreAndRollbackObserved:true,
+   immutableImageDigest:hex,operatorProofDigest:hex,
+   independentOperatorId:'synthetic-operator',
+   firstIndependentCheckAt:new Date(Date.now()-48*3600000).toISOString(),
+   lastIndependentCheckAt:new Date(Date.now()-3600000).toISOString()
+  },
   database:{allTenantOwnedTablesForceRls:true,uncoveredTenantTables:0,
    applicationRoleBypassRls:false,sessionContextIsolationPassed:true,
    censusArtifactDigest:hex,environment:'production'},
@@ -68,6 +88,38 @@ test('altered signed deployment/evidence invalidates all operator signatures',()
 test('signer cannot double-sign a role or impersonate independent security review',()=>{
  const v=sample(),c=v.certificate();c.signatures[2].keyId=c.signatures[1].keyId;
  assert.throws(()=>verifyReleaseCertification(c,v.trust,v.index,commit),/independent roles/);
+});
+test('persistent staging is mandatory; CI, fake hosts and short/future observations fail closed',()=>{
+ const v=sample();
+ assert.throws(()=>verifyReleaseCertification({
+  ...v.certificate(),payload:{...v.payload,staging:undefined}
+ },v.trust,v.index,commit),/persistent staging/);
+ for(const override of [
+  {httpsOrigin:'http://localhost:3000'},
+  {httpsOrigin:'https://staging.example'},
+  {httpsOrigin:'https://127.0.0.1'},
+  {actualDeploymentObserved:false},
+  {nonBypassRlsAppRoleProven:false},
+  {firstIndependentCheckAt:new Date(Date.now()-2*3600000).toISOString()},
+  {lastIndependentCheckAt:new Date(Date.now()+7*86400000).toISOString()}
+ ]){
+  assert.throws(()=>verifyPersistentStagingEvidence({
+   ...v.payload.staging,...override
+  },commit),/RELEASE_CERTIFICATION_BLOCKED/);
+ }
+});
+test('acceptance must bind the authoritative 500 distinct blueprint case identifiers',()=>{
+ const v=sample(),c=v.certificate();
+ c.payload.canonicalCaseIndexDigest='sha256:'+'a'.repeat(64);
+ assert.throws(()=>verifyReleaseCertification(c,v.trust,v.index,commit),/canonical 500-case index/);
+ const spoof=sample();
+ spoof.index.cases[0]={id:'T99-999'};
+ assert.throws(()=>verifyReleaseCertification(spoof.certificate(),spoof.trust,
+  spoof.index,commit),/canonical 500-slot/);
+ const duplicate=sample();
+ duplicate.index.cases[1]=duplicate.index.cases[0];
+ assert.throws(()=>verifyReleaseCertification(duplicate.certificate(),duplicate.trust,
+  duplicate.index,commit),/canonical 500-slot/);
 });
 test('undisclosed database gaps, BYPASSRLS and absent provider UAT block production',()=>{
  for(const change of [
