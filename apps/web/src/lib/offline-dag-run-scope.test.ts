@@ -2,7 +2,7 @@ import {describe,it,expect} from "vitest";
 import {offlineDagRunScope,mayReuseOfflineDagRequestKey}
  from "./offline-dag-run-scope";
 const base={
- blueprintId:"offline-science",activeReleaseId:"signed-v1",
+ organizationId:"tenant-one",blueprintId:"offline-science",activeReleaseId:"signed-v1",
  objective:"Evidence-based scientific education",market:"EG"
 };
 describe("T2H offline DAG UI idempotency key scope",()=>{
@@ -15,6 +15,7 @@ describe("T2H offline DAG UI idempotency key scope",()=>{
  it("invalidates keys on blueprint, active release, objective and market changes",()=>{
   const issued=offlineDagRunScope(base);
   for(const change of [
+   {organizationId:"tenant-two"},
    {blueprintId:"another-blueprint"},
    {activeReleaseId:"signed-v2"},
    {objective:"Different business objective"},
