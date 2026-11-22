@@ -1,5 +1,6 @@
 "use client";
 import {useState} from "react";
+import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
 type PerformanceSummary={status:string;campaign:{id:string;name:string};totals:Record<string,string>;
@@ -60,6 +61,7 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
      <p>Pending reviews: {summary.pendingReviewCount}</p>
      <small>Scientific verification and multi-touch attribution are not established.</small>
     </div>}
+    {summary&&<OfflineRevenueScenarioStudio key={summary.campaign.id} summary={summary}/>}
    </div>
    <div>
     <h4 style={{margin:"0 0 10px"}}>Import source observation</h4>
