@@ -50,7 +50,9 @@ export function modelOfflineRevenueScenarios(input:RevenueScenarioInput):{
   const rate=BigInt(s.closeRateBasisPoints);
   const wins=leads*rate;
   const revenue=(wins*value+5000n)/10000n;
-  const gross=(revenue*BigInt(margin)+5000n)/10000n;
+  // Round once from the exact rational product; rounding illustrative revenue first
+  // would inflate small-population contribution estimates (double rounding).
+  const gross=(wins*value*BigInt(margin)+50000000n)/100000000n;
   return {
    ...s,
    expectedWinsHundredths:((wins*100n+5000n)/10000n).toString(),
