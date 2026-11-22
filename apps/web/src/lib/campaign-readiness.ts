@@ -88,3 +88,12 @@ export function portfolioReadinessSummary(rows:readonly PortfolioReadinessRow[])
   incomplete:known.filter(r=>r.item.state==="INCOMPLETE").length,
   productionReady:false,independentlyCertified:false};
 }
+
+/** Bounded, zero-based page window over the authenticated listing only. */
+export function campaignReadinessPageBounds(total:number,page:number){
+ if(!Number.isSafeInteger(total)||total<0||total>100||
+    !Number.isSafeInteger(page)||page<0||page>=Math.max(1,Math.ceil(total/25)))
+  throw Error("Invalid bounded readiness page");
+ return {start:page*25,end:Math.min(total,(page+1)*25),
+  pages:Math.max(1,Math.ceil(total/25))};
+}
