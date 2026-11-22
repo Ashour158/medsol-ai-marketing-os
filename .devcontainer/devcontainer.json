@@ -4,7 +4,7 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "postCreateCommand": "corepack enable && corepack prepare pnpm@10.12.4 --activate && pnpm install --no-frozen-lockfile && pnpm exec prisma generate --schema prisma/schema.prisma && pnpm --filter './packages/**' build",
+  "postCreateCommand": "sudo corepack enable && corepack prepare pnpm@10.12.4 --activate && pnpm install --no-frozen-lockfile && pnpm exec prisma generate --schema prisma/schema.prisma && pnpm --filter './packages/**' build",
   "forwardPorts": [
     3000
   ],
