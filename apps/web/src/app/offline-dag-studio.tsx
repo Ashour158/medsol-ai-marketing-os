@@ -2,6 +2,7 @@
 import {useEffect,useState} from "react";
 import OfflineDagGraphEditor from "./offline-dag-graph-editor";
 import OfflineDagRunInspector from "./offline-dag-run-inspector";
+import {offlineDagRunScope,mayReuseOfflineDagRequestKey} from "../lib/offline-dag-run-scope";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Release={id:string;blueprintId:string;revision:number;digest:string;
  status:string;canaryPercent:number;stepCount:number;signatureTrusted:boolean;
@@ -26,6 +27,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
  const [objective,setObjective]=useState("Evidence-based scientific education");
  const [market,setMarket]=useState("");
  const [runKey,setRunKey]=useState("");
+ const [runKeyScope,setRunKeyScope]=useState("");
  const [runId,setRunId]=useState("");
  const [lookupRunId,setLookupRunId]=useState("");
  const [runRefreshKey,setRunRefreshKey]=useState(0);
@@ -64,6 +66,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
  if(!identity||!["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase()))return null;
  const active=releases.find(r=>r.blueprintId===blueprintId&&r.status==="ACTIVE");
  const selected=releases.filter(r=>r.blueprintId===blueprintId);
+ const currentRunScope=offlineDagRunScope({blueprintId,activeReleaseId:active?.id??"",objective,market});
  return <section aria-label="R3-G governed offline DAG console" style={{
   border:"1px solid #cbd5e1",background:"#fff",padding:18,borderRadius:12,
   marginTop:20}}>
@@ -105,7 +108,7 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
     onClick={()=>void task(refresh)}>Refresh release history</button>
   </div>
   <label style={{fontSize:13,display:"block",marginTop:16}}>Blueprint ID
-   <input value={blueprintId} onChange={e=>setBlueprintId(e.target.value)}
+   <input value={blueprintId} onChange={e=>{setBlueprintId(e.target.value);setRunKey("");setRunKeyScope("");setRunId("");setRunState(null);}}
     style={field}/></label>
   <div style={{overflowX:"auto",marginTop:12}}>
    <table style={{borderCollapse:"collapse",width:"100%",fontSize:12}}>
@@ -146,17 +149,24 @@ export default function OfflineDagStudio({identity}:{identity:Identity|null}){
   <h4>Offline workflow run</h4>
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:10}}>
    <label style={{fontSize:13}}>Objective
-    <input value={objective} onChange={e=>setObjective(e.target.value)} style={field}/></label>
+    <input value={objective} onChange={e=>{setObjective(e.target.value);setRunKey("");setRunKeyScope("");}} style={field}/></label>
    <label style={{fontSize:13}}>Market (optional)
-    <input value={market} onChange={e=>setMarket(e.target.value)} style={field}/></label>
+    <input value={market} onChange={e=>{setMarket(e.target.value);setRunKey("");setRunKeyScope("");}} style={field}/></label>
    <label style={{fontSize:13}}>Stable request key
-    <input value={runKey} onChange={e=>setRunKey(e.target.value)}
+    <input value={runKey} onChange={e=>{setRunKey(e.target.value);setRunKeyScope(currentRunScope);}}
      placeholder="Auto-created once" style={field}/></label>
   </div>
+  {runKey&&!mayReuseOfflineDagRequestKey(runKey,runKeyScope,currentRunScope)&&
+   <p role="status" style={{fontSize:12,color:"#92400e"}}>
+    Signed release or run inputs changed. A fresh idempotency key will be generated on launch.
+   </p>}
   <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
    <button disabled={busy||!active} style={button}
     onClick={()=>void task(async()=>{
-     const key=runKey||crypto.randomUUID();if(!runKey)setRunKey(key);
+     const key=mayReuseOfflineDagRequestKey(runKey,runKeyScope,currentRunScope)
+      ?runKey:crypto.randomUUID();
+     if(key!==runKey)setRunKey(key);
+     setRunKeyScope(currentRunScope);
      const result=await call("runs",{blueprintId,requestKey:key,objective,market}) as
       {workflowExecutionId:string|null;status:string};
      if(result.workflowExecutionId){setRunId(result.workflowExecutionId);setRunRefreshKey(k=>k+1);}
