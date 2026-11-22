@@ -14,8 +14,11 @@ export function selectedCreativeIsCurrent(
  selected:SelectedCreativeRevision|null
 ):boolean{
  if(!selected?.assetId||!selected.revisionId||!selected.brandId)return false;
- const current=observed.filter(x=>x.assetId===selected.assetId&&x.current===true);
- // Fail closed on ambiguous or missing canonical current-version evidence.
- return current.length===1&&current[0]!.revisionId===selected.revisionId&&
-  current[0]!.brandId===selected.brandId;
+ const versions=observed.filter(x=>x.assetId===selected.assetId);
+ if(!versions.length||versions.some(x=>x.brandId!==selected.brandId)||
+    new Set(versions.map(x=>x.revisionId)).size!==versions.length)
+  return false;
+ const current=versions.filter(x=>x.current===true);
+ // Fail closed on ambiguous, cross-brand or missing current-version evidence.
+ return current.length===1&&current[0]!.revisionId===selected.revisionId;
 }
