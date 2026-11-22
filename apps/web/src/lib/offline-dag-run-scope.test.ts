@@ -25,7 +25,7 @@ describe("T2H offline DAG UI idempotency key scope",()=>{
   }
  });
  it("cannot collide by injecting separators or special characters",()=>{
-  const a=offlineDagRunScope({...base,blueprintId:"x,\\"y"});
+  const a=offlineDagRunScope({...base,blueprintId:"x,y"});
   const b=offlineDagRunScope({...base,blueprintId:"x",activeReleaseId:"y,signed-v1"});
   expect(a).not.toBe(b);
  });
