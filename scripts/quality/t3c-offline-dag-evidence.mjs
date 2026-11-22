@@ -14,9 +14,9 @@ export function verifyT3CDagEvidence(report,source,run,role,preflight,staging,ra
  if(!/^\d{5,18}$/.test(run?.id??"")||!/^[a-f0-9]{40}$/.test(run?.commit??""))
   deny("exact GitHub run and commit required");
  const registered=indexedCases([{file,source}]);
- const expected=["T18-001","T18-002","T18-003"];
- if(registered.size!==3||expected.some(id=>!registered.has(id)))
-  deny("three immutable signed DAG operator cases required");
+ const expected=["T18-001","T18-002","T18-003","T18-004"];
+ if(registered.size!==4||expected.some(id=>!registered.has(id)))
+  deny("four immutable signed DAG operator cases required");
  let ids;
  try{ids=verifyPlaywrightReport(report,registered);}
  catch(e){deny("actual Chromium results invalid: "+String(e));}
@@ -51,13 +51,13 @@ export function verifyT3CDagEvidence(report,source,run,role,preflight,staging,ra
   for(const child of suite.suites??[])visit(child);
  }
  for(const suite of report.suites)visit(suite);
- if(durations.length!==3||new Set(durations.map(x=>x.caseId)).size!==3)
+ if(durations.length!==4||new Set(durations.map(x=>x.caseId)).size!==4)
   deny("real Chromium timings incomplete");
  return{
   schema:"medsol-t3c-signed-dag-operator-evidence-v1",
   runId:run.id,commit:run.commit,releaseVerdict:"NOT_CERTIFIED",
   classification:"CI_DISPOSABLE_SIGNED_ED25519_OIDC_CHROMIUM_NEXT_NEST_POSTGRES",
-  actualPassingBrowserCases:3,caseIds:ids,
+  actualPassingBrowserCases:4,caseIds:ids,
   observedTestWallDurationsMs:durations.sort((a,b)=>a.caseId.localeCompare(b.caseId)),
   sourceDigest:hash(source),reportDigest:hash(raw),
   roleProofDigest:hash(JSON.stringify(role)),preflightDigest:hash(JSON.stringify(preflight)),
