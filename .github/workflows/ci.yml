@@ -164,6 +164,8 @@ jobs:
         run: node --test scripts/quality/r3y-real-stack-evidence.test.mjs
       - name: Bind R3-Y real browser passes to same-run non-bypass RLS and no-provider preflight
         run: node scripts/quality/r3y-real-stack-evidence.mjs --input apps/web/r3y-playwright-report/r3y-results.json --output r3y-real-stack-evidence.json
+      - name: Enforce operator staging PostgreSQL TLS and routing negative regression corpus
+        run: node --test apps/api/scripts/t1g-staging-db-policy.nodecheck.mjs
       - name: Validate T1E staging configuration and dry-run operator provisioning with no external contact
         env:
           MARKETING_R3Y_STAGING_CI_ONLY: '1'
