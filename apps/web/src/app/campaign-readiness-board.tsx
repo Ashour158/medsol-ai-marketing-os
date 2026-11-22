@@ -28,51 +28,70 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
  const [error,setError]=useState("");
  const [loaded,setLoaded]=useState(false);
  const [count,setCount]=useState(0);
+ const [campaignList,setCampaignList]=useState<Array<{id:string;name:string;code:string;status:string}>>([]);
+ const [page,setPage]=useState(0);
  const [filter,setFilter]=useState("ALL");
  const epoch=useRef(0);
  useEffect(()=>{
   epoch.current++;setRows([]);setLoaded(false);setLoading(false);setError("");
-  setCount(0);setFilter("ALL");
+  setCount(0);setCampaignList([]);setPage(0);setFilter("ALL");
  },[identity?.organizationId,identity?.userId]);
+ async function loadPage(
+  list:Array<{id:string;name:string;code:string;status:string}>,
+  nextPage:number,current:number
+ ){
+  const source=list.slice(nextPage*25,(nextPage+1)*25);
+  const results:PortfolioReadinessRow[]=Array(source.length);
+  let cursor=0;
+  // Bound fan-out at four tenant-authenticated reads, never combine tenant data.
+  const workers=Array.from({length:Math.min(source.length,4)},async()=>{
+   while(true){
+    const pos=cursor++;
+    if(pos>=source.length)return;
+    const campaign=source[pos]!;
+    try{
+     const journey=await get("journeys/"+encodeURIComponent(campaign.id));
+     if(current!==epoch.current)return;
+     results[pos]={kind:"KNOWN",item:campaignReadiness(journey,campaign.id)};
+    }catch(e){
+     results[pos]=unknown(campaign.id,campaign.name,
+      e instanceof Error?e.message:"Journey unavailable");
+    }
+   }
+  });
+  await Promise.all(workers);
+  if(current!==epoch.current)return;
+  setRows(results);setPage(nextPage);setCount(list.length);setLoaded(true);
+ }
  async function refresh(){
   if(!identity||loading)return;
   const current=++epoch.current;
   setLoading(true);setError("");setLoaded(false);setRows([]);setCount(0);
+  setCampaignList([]);setPage(0);
   try{
    const list=await get("campaigns");
-   if(!Array.isArray(list)||list.length>100||
-      !list.every(isCampaignSummary))
-    throw Error("Authoritative tenant campaign listing is malformed");
-   const source=list.slice(0,25);
-   const ids=new Set(source.map(x=>x.id));
-   if(ids.size!==source.length)
+   if(!Array.isArray(list)||list.length>100||!list.every(isCampaignSummary))
+    throw Error("Authoritative tenant campaign listing is malformed or exceeds 100");
+   const ids=new Set(list.map(x=>x.id));
+   if(ids.size!==list.length)
     throw Error("Campaign listing contains duplicate identities");
-   // Bound fan-out at four workers and 25 tenant-owned campaigns.
-   const results:PortfolioReadinessRow[]=Array(source.length);
-   let cursor=0;
-   const workers=Array.from({length:Math.min(source.length,4)},async()=>{
-    while(true){
-     const pos=cursor++;
-     if(pos>=source.length)return;
-     const campaign=source[pos]!;
-     try{
-      const journey=await get("journeys/"+encodeURIComponent(campaign.id));
-      if(current!==epoch.current)return;
-      results[pos]={kind:"KNOWN",item:campaignReadiness(journey,campaign.id)};
-     }catch(e){
-      results[pos]=unknown(campaign.id,campaign.name,
-       e instanceof Error?e.message:"Journey unavailable");
-     }
-    }
-   });
-   await Promise.all(workers);
    if(current!==epoch.current)return;
-   setRows(results);setCount(list.length);setLoaded(true);
+   setCampaignList(list);
+   await loadPage(list,0,current);
   }catch(e){
    if(current===epoch.current)setError(e instanceof Error?e.message:"Portfolio retrieval failed");
   }finally{
    if(current===epoch.current)setLoading(false);
   }
+ }
+ async function changePage(nextPage:number){
+  if(!identity||loading||nextPage<0||nextPage>=Math.ceil(campaignList.length/25))return;
+  const current=++epoch.current;
+  setLoading(true);setError("");setRows([]);setLoaded(false);setFilter("ALL");
+  try{await loadPage(campaignList,nextPage,current);}
+  catch(e){if(current===epoch.current)
+   setError(e instanceof Error?e.message:"Campaign page unavailable");}
+  finally{if(current===epoch.current)setLoading(false);}
  }
  const summary=portfolioReadinessSummary(rows);
  const visible=rows.filter(x=>filter==="ALL"||
@@ -93,9 +112,16 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
   {error&&<p role="alert" style={{color:"#b91c1c"}}>{error}</p>}
   {loaded&&<>
    <p role="status" style={{fontSize:13,color:"#475569"}}>
-    Inspected {summary.campaignsChecked} of {count} listed campaigns (maximum 25 per refresh).
-    {count>25?" Additional campaigns require a later page of this read-only view.":""}
+    Inspected page {page+1} of {Math.max(1,Math.ceil(count/25))}:
+    {summary.campaignsChecked} of {count} listed campaigns (maximum 25 per page, 100 per listing).
    </p>
+   <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+    <button type="button" disabled={loading||page===0}
+     onClick={()=>void changePage(page-1)}>Previous 25</button>
+    <span style={{fontSize:13}}>Campaigns {count===0?0:page*25+1}–{Math.min(count,(page+1)*25)}</span>
+    <button type="button" disabled={loading||(page+1)*25>=count}
+     onClick={()=>void changePage(page+1)}>Next 25</button>
+   </div>
    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
     {[
      ["Inspected",summary.campaignsChecked],
