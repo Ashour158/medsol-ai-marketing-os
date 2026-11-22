@@ -29,6 +29,28 @@ describe("T4C canonical campaign readiness",()=>{
   x.workflow={status:"NEEDS_INTERVENTION"};
   expect(campaignReadiness(x,"campaign-123").state).toBe("BLOCKED");
  });
+ it("never marks rejected, cancelled, failed, or unknown canonical status as complete",()=>{
+  const fullyStaged=()=>{const x=valid();x.stages=Object.fromEntries(
+   CAMPAIGN_STAGE_ORDER.map(([key])=>[key,true]));return x;};
+  for(const status of ["REJECTED","CANCELLED","FAILED","ARCHIVED"]){
+   const x=fullyStaged();x.campaign.status=status;
+   expect(campaignReadiness(x,"campaign-123").state).toBe("BLOCKED");
+  }
+  for(const status of ["FAILED","CANCELLED","REJECTED","TIMED_OUT"]){
+   const x=fullyStaged();x.workflow={status};
+   expect(campaignReadiness(x,"campaign-123").state).toBe("BLOCKED");
+  }
+  for(const status of ["UNKNOWN","DRAFT","RUNNING"]){
+   const x=fullyStaged();x.campaign.status=status;
+   expect(campaignReadiness(x,"campaign-123").state).toBe("INCOMPLETE");
+  }
+  for(const status of ["UNKNOWN","RUNNING","NOT_STARTED"]){
+   const x=fullyStaged();x.workflow={status};
+   expect(campaignReadiness(x,"campaign-123").state).toBe("INCOMPLETE");
+  }
+  const x=fullyStaged();x.workflow=null;
+  expect(campaignReadiness(x,"campaign-123").state).toBe("INCOMPLETE");
+ });
  it("refuses forged identity, loose stage types and absent offline guarantees",()=>{
   const x=valid();
   expect(()=>campaignReadiness(x,"campaign-456")).toThrow("identity mismatch");
