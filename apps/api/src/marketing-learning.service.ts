@@ -9,6 +9,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from './prisma.service.js';
 import { AGENT_ROSTER } from '@medsol/agent-runtime';
+import {reviewedMarketSignals} from './market-signal-diagnostics.js';
 
 type SignalInput={topic:string;sector:string;sourceUrl:string;sourceTitle:string;observedAt:string;sourcePublishedAt?:string;evidence:{summary:string;excerpt?:string}};
 function required(value:unknown,name:string,max=1000):string {
@@ -840,23 +841,8 @@ export class MarketingLearningService {
    orderBy:{observedAt:'desc'},take:200,
    select:{id:true,topic:true,sector:true,sourceUrl:true,sourceTitle:true,sourcePublishedAt:true,observedAt:true}
   }));
-  const groups=new Map<string,{topic:string;sector:string;signals:typeof signals}>();
-  for(const item of signals){
-   const key=item.sector.toLowerCase()+'::'+item.topic.toLowerCase();
-   const group=groups.get(key)??{topic:item.topic,sector:item.sector,signals:[]};
-   group.signals.push(item);groups.set(key,group);
-  }
-  const now=Date.now();
-  const topics=[...groups.values()].map(group=>{
-   const recent=group.signals.filter(item=>now-item.observedAt.getTime()<=90*86400000).length;
-   const distinctSources=new Set(group.signals.map(item=>{try{return new URL(item.sourceUrl).hostname}catch{return item.sourceUrl}})).size;
-   return{topic:group.topic,sector:group.sector,evidenceCount:group.signals.length,recentSignals90Days:recent,distinctSourceHosts:distinctSources,
-    evidence:group.signals.slice(0,10).map(item=>({signalId:item.id,title:item.sourceTitle,url:item.sourceUrl,publishedAt:item.sourcePublishedAt})),
-    priority:recent>=3&&distinctSources>=2?'RESEARCH_PRIORITY':'MONITOR',
-    status:'HUMAN_REVIEWED_NOT_INDEPENDENTLY_VERIFIED',inferenceAuthorized:false};
-  }).sort((a,b)=>b.recentSignals90Days-a.recentSignals90Days||b.distinctSourceHosts-a.distinctSourceHosts);
-  return{organizationId,sector:normalized??null,topics,processed:signals.length,sourceType:'LEARNING_SIGNAL_REGISTRY',
-   independentVerification:false,externalPublishingEnabled:false};
+  return{organizationId,sector:normalized??null,
+   ...reviewedMarketSignals(signals,new Date())};
  }
  async signals(organizationId:string){
   return this.knowledgeTx(organizationId,tx=>tx.learningSignal.findMany({

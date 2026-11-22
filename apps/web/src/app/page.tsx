@@ -9,6 +9,7 @@ import IntegrationGovernanceStudio from "./integration-governance-studio";
 import {BlueprintVirtualStudio} from "./blueprint-virtual-studio";
 import OfflineDagStudio from "./offline-dag-studio";
 import KnowledgeFabricStudio from "./knowledge-fabric-studio";
+import MarketIntelligenceStudio from "./market-intelligence-studio";
 import MemoryGraphStudio from "./memory-graph-studio";
 import R3AcceptanceStudio from "./r3-release-acceptance-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
@@ -142,7 +143,8 @@ export default function Home() {
     <div id="agent-studio" style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/></div>
     <div id="provider-trials" style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
     <div id="integrations" style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
-    <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole identity={identity} onRunSelected={id => {
+    <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
+      identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
     }} /></div>
@@ -312,6 +314,9 @@ export default function Home() {
          key={identity?.organizationId??"signed-out"} identity={identity}
          importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
           offlineHandoff:null}/></div>
+        <div style={{scrollMarginTop:120}}><MarketIntelligenceStudio
+         key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
+         identity={identity}/></div>
         <div id="knowledge" style={{scrollMarginTop:120}}><KnowledgeFabricStudio identity={identity}/></div>
         <div id="memory" style={{scrollMarginTop:120}}><MemoryGraphStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
         <div id="acceptance" style={{scrollMarginTop:120}}><R3AcceptanceStudio identity={identity}/></div>

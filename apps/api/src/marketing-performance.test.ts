@@ -56,6 +56,14 @@ describe('governed marketing performance evidence',()=>{
   expect(result.derived.ctrPercent).toBe(5);
   expect(result.derived.clickToLeadPercent).toBe(10);
   expect(result.derived.spendMicrosPerLead).toBe('12000000');
+  expect(result.derived.leadQualificationPercent).toBeNull();
+  expect(result.derived.spendMicrosPerQualifiedLead).toBeNull();
+  expect(result.warnings).toContain('OBSERVATION_COHORTS_NOT_RECONCILED');
+  expect(result.warnings).toContain('QUARANTINED_OBSERVATIONS_EXCLUDED');
+  expect(result.warnings).toContain('SPEND_CURRENCY_NOT_RECONCILED');
+  expect(result.cohortAligned).toBe(false);
+  expect(result.roiValidated).toBe(false);
+  expect(result.revenueVerified).toBe(false);
   expect(result.attributionValidated).toBe(false);
   expect(result.pendingReviewCount).toBe(2);
  });

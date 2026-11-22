@@ -14,6 +14,7 @@ export const WORKSPACE_LINKS:readonly WorkspaceLink[]=[
  {id:'agent-studio',label:'Signed Agent Studio',category:'Govern'},
  {id:'workflow-studio',label:'Workflow Studio',category:'Execute'},
  {id:'blueprint-studio',label:'Blueprint Studio',category:'Execute'},
+ {id:'market-intelligence',label:'Market intelligence',category:'Intelligence'},
  {id:'knowledge',label:'Knowledge Fabric',category:'Intelligence'},
  {id:'memory',label:'Governed memory',category:'Intelligence'},
  {id:'tool-registry',label:'MCP & A2A tool registry',category:'Govern'},
