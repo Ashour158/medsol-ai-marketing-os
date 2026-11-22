@@ -24,3 +24,7 @@ The complete GitHub verify job must also pass, including signed browser, non-byp
 Persistent secured staging and operator-controlled OIDC identities; human MFA; independently executed 500-case QA; external penetration test; production-like PITR/restore/RTO/RPO and rollback; regulatory/privacy and accessibility review; official provider sandbox entitlements and receipts; independent business/security release signatures.
 
 **Engineering CI acceptance is neither Blueprint v2.1 feature completion nor commercial production certification.**
+
+## Discovered serializable contention and bounded domain fix
+
+During the first PR CI, the existing R3-P PostgreSQL integration case T08-032 intermittently hit Prisma P2034 on BrandMasterService.propose. That transaction contains only a versioned Brand Master insert and its audit write, both in one serializable PostgreSQL transaction. The authoritative Brand Master service now retries only a confirmed aborted P2034 at most twice more, then returns an explicit conflict; unique version P2002 still fails closed. Independent Vitest cases assert one persisted/audited write after a transient abort and no ghost write after exhausted retries. Do not generalize this retry to commands with external effects. The post-fix GitHub CI result is required; no success is assumed until it passes.
