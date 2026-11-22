@@ -14,7 +14,7 @@ function setup(){
   auditEvent:{create:vi.fn().mockResolvedValue({})}
  };
  const db:any={...tx,$transaction:vi.fn(async(callback:any)=>callback(tx))};
- return{tx,service:new BrandMasterService(db)};
+ return{tx,db,service:new BrandMasterService(db)};
 }
 const rules={voice:'Clear scientific communications, no hype',primaryColor:'#125A83',prohibitedClaims:['Guaranteed cure'],requiredDisclaimers:['For research use only where applicable']};
 describe('authoritative versioned Brand Master',()=>{
@@ -25,6 +25,27 @@ describe('authoritative versioned Brand Master',()=>{
   expect(result).toMatchObject({version:3,status:'DRAFT',releaseAuthorized:false});
   expect(tx.brandMasterRevision.create).toHaveBeenCalledWith({data:expect.objectContaining({organizationId:'tenant',version:3,status:'DRAFT',proposedBy:'author'})});
   expect(tx.auditEvent.create).toHaveBeenCalledWith({data:expect.objectContaining({action:'BRAND_MASTER_REVISION_PROPOSED'})});
+ });
+ it('retries aborted serializable Brand Master writes without duplicate audit evidence',async()=>{
+  const {tx,db,service}=setup();
+  db.$transaction.mockRejectedValueOnce(Object.assign(new Error('serialization conflict'),{code:'P2034'}));
+  const result=await service.propose('tenant','author',{
+   sourceReference:'internal:approved-brand-guidelines-v1',rules
+  });
+  expect(result).toMatchObject({version:1,status:'DRAFT'});
+  expect(db.$transaction).toHaveBeenCalledTimes(2);
+  expect(tx.brandMasterRevision.create).toHaveBeenCalledTimes(1);
+  expect(tx.auditEvent.create).toHaveBeenCalledTimes(1);
+ });
+ it('fails closed after bounded serializable conflict retries, with no ghost audit',async()=>{
+  const {tx,db,service}=setup();
+  const conflict=Object.assign(new Error('transaction serialization'),{code:'P2034'});
+  db.$transaction.mockRejectedValueOnce(conflict).mockRejectedValueOnce(conflict).mockRejectedValueOnce(conflict);
+  await expect(service.propose('tenant','author',{
+   sourceReference:'internal:approved-brand-guidelines-v1',rules
+  })).rejects.toThrow('Concurrent brand revision');
+  expect(db.$transaction).toHaveBeenCalledTimes(3);
+  expect(tx.auditEvent.create).not.toHaveBeenCalled();
  });
  it('blocks unsupported styling and duplicate terms',async()=>{
   const {service}=setup();
