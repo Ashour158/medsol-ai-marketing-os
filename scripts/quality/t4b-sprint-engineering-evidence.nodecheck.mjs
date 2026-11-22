@@ -27,7 +27,7 @@ const entries=()=>{
  set("postgres","actualPassedDatabaseCases",Array.from({length:37},(_,i)=>"DB-"+i));
  set("syntheticBrowser","actualExecutedBrowserCases",Array.from({length:51},(_,i)=>"WEB-"+i));
  set("realStackBrowser","actualPassedRealStackCases",Array.from({length:19},(_,i)=>"REAL-"+i));
- set("operatorBrowser","actualPassingSignedOperatorJourneys",Array.from({length:5},(_,i)=>"OP-"+i));
+ set("operatorBrowser","actualPassingSignedOperatorJourneys",Array.from({length:5},(_,i)=>"T17-00"+(i+1)));
  set("signedDagBrowser","actualPassingBrowserCases",["T18-001","T18-002","T18-003","T18-004"]);
  set("knowledgeDagBrowser","actualPassingBrowserCases",["T19-001","T19-002","T19-003"]);
  set("creativeBrowser","actualPassingBrowserCases",["T20-001","T20-002"]);
@@ -54,6 +54,8 @@ test("T4B emits honest same-run CI engineering handoff without release certifica
  assert.equal(a.verifiedSameRunEngineeringProofs,10);
  assert.equal(a.actualPassedIsolatedPostgresqlCases,37);
  assert.equal(a.actualPassedChromiumCasesAcrossIndependentSuites,84);
+ assert.equal(a.signedOperatorIntegratedJourney.caseId,"T17-001");
+ assert.equal(a.signedOperatorIntegratedJourney.independentOperatorCertification,false);
  assert.equal(a.independentlySignedE2eCases,0);
  assert.equal(a.actualPersistentStagingDeployed,false);
  assert.equal(a.productionReady,false);
@@ -81,6 +83,8 @@ test("T4B rejects unverified RLS, fake independent QA, provider activity and mis
  assert.throws(()=>verifySprintEvidence(browser,run),/count/);
  const fakeHandoff=entries();fakeHandoff.handoff.data.caseRecords[0].independentlySignedOff=true;
  assert.throws(()=>verifySprintEvidence(fakeHandoff,run),/handoff/);
+ const substituted=entries();substituted.operatorBrowser.data.caseIds[0]="OP-000";
+ assert.throws(()=>verifySprintEvidence(substituted,run),/full-journey/);
  const missingDag=entries();missingDag.signedDagBrowser.data.caseIds.pop();
  assert.throws(()=>verifySprintEvidence(missingDag,run),/signed DAG/);
 });
