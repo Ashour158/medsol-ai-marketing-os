@@ -22,7 +22,7 @@ describe("T3E current creative version guard (presentation only)",()=>{
  it("fails closed on cross-brand or conflicting current-version claims",()=>{
   expect(selectedCreativeIsCurrent([current],{...current,brandId:"brand-b"})).toBe(false);
   expect(selectedCreativeIsCurrent([current,{...old,current:true}],current)).toBe(false);
-  expect(selectedCreativeIsCurrent([{...old,current:true},old],old)).toBe(true);
+  expect(selectedCreativeIsCurrent([{...old,current:true},old],old)).toBe(false);
  });
  it("does not treat an earlier publication-linked version as current",()=>{
   expect(selectedCreativeIsCurrent([old,current],old)).toBe(false);
