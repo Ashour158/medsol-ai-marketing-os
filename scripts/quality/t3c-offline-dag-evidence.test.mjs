@@ -2,11 +2,11 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {verifyT3CDagEvidence} from "./t3c-offline-dag-evidence.mjs";
 const run={id:"123456",commit:"b".repeat(40)};
-const source=Array.from({length:3},(_,i)=>"test('T18-00"+(i+1)+" case',async()=>{});").join("\n");
+const source=Array.from({length:4},(_,i)=>"test('T18-00"+(i+1)+" case',async()=>{});").join("\n");
 const valid=()=>({suites:[{title:"t3c-offline-dag-operator.pw.ts",
- specs:Array.from({length:3},(_,i)=>({title:"T18-00"+(i+1)+" case",ok:true,
+ specs:Array.from({length:4},(_,i)=>({title:"T18-00"+(i+1)+" case",ok:true,
   tests:[{status:"expected",results:[{status:"passed",retry:0,duration:i+20}]}]}))}],
- stats:{expected:3,unexpected:0,flaky:0,skipped:0}});
+ stats:{expected:4,unexpected:0,flaky:0,skipped:0}});
 const role={schema:"medsol-r3y-runtime-role-rls-proof-v1",
  runId:run.id,dbRole:"marketing_r3y_runtime",superuser:false,bypassRls:false,
  tenantARowsVisible:3,tenantBRowsVisible:1,
@@ -20,10 +20,10 @@ const staging={schema:"medsol-t1e-operator-staging-config-preflight-v1",
  externalProviderEffectsAllowed:false,releaseVerdict:"NOT_CERTIFIED"};
 const verify=(report=valid(),s=source,r=role,pre=preflight,stage=staging)=>
  verifyT3CDagEvidence(report,s,run,r,pre,stage,JSON.stringify(report));
-test("T3C evidence only claims three real CI cases and zero independent QA",()=>{
+test("T3C evidence only claims four real CI cases and zero independent QA",()=>{
  const a=verify();
- assert.equal(a.actualPassingBrowserCases,3);
- assert.deepEqual(a.caseIds,["T18-001","T18-002","T18-003"]);
+ assert.equal(a.actualPassingBrowserCases,4);
+ assert.deepEqual(a.caseIds,["T18-001","T18-002","T18-003","T18-004"]);
  assert.equal(a.independent500CaseHumanQa,0);
  assert.equal(a.externalStagingDeployed,false);
 });
