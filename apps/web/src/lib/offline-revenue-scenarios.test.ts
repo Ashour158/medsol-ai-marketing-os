@@ -30,6 +30,22 @@ describe("T3F offline scenario math is bounded, hypothetical and source-labelled
   expect(()=>modelOfflineRevenueScenarios({...base,closeRateBasisPoints:10001})).toThrow();
   expect(()=>modelOfflineRevenueScenarios({...base,marginBasisPoints:Number.NaN})).toThrow();
  });
+ it("rounds gross contribution from exact rational inputs rather than rounded revenue",()=>{
+  const r=modelOfflineRevenueScenarios({...base,
+   reviewedQualifiedLeads:"1",assumedDealValueMajor:"1",
+   closeRateBasisPoints:5000,marginBasisPoints:5000});
+  expect(r.scenarios[1]?.illustrativeGrossRevenueMajor).toBe("1");
+  // 0.5 expected wins x 1 major unit x 50% margin = 0.25, rounds to zero.
+  expect(r.scenarios[1]?.illustrativeGrossContributionMajor).toBe("0");
+ });
+ it("preserves exact large-number contribution at full margin",()=>{
+  const r=modelOfflineRevenueScenarios({...base,
+   reviewedQualifiedLeads:"999999999999999",
+   assumedDealValueMajor:"999999999999",
+   closeRateBasisPoints:10000,marginBasisPoints:10000});
+  expect(BigInt(r.scenarios[1]!.illustrativeGrossContributionMajor))
+   .toBe(999999999999999n*999999999999n);
+ });
  it("never coerces large reviewed values through imprecise floating point math",()=>{
   const r=modelOfflineRevenueScenarios({...base,
    reviewedQualifiedLeads:"999999999999999",
