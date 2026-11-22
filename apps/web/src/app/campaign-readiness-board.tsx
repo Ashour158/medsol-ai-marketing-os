@@ -1,6 +1,6 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {CAMPAIGN_STAGE_ORDER,campaignReadiness,isCampaignSummary,
+import {CAMPAIGN_STAGE_ORDER,campaignReadiness,isCampaignSummary,campaignReadinessPageBounds,
  portfolioReadinessSummary,type PortfolioReadinessRow} from "../lib/campaign-readiness";
 
 type Identity={userId:string;organizationId:string;email:string;role:string};
@@ -40,7 +40,8 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
   list:Array<{id:string;name:string;code:string;status:string}>,
   nextPage:number,current:number
  ){
-  const source=list.slice(nextPage*25,(nextPage+1)*25);
+  const bounds=campaignReadinessPageBounds(list.length,nextPage);
+  const source=list.slice(bounds.start,bounds.end);
   const results:PortfolioReadinessRow[]=Array(source.length);
   let cursor=0;
   // Bound fan-out at four tenant-authenticated reads, never combine tenant data.
@@ -85,7 +86,7 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
   }
  }
  async function changePage(nextPage:number){
-  if(!identity||loading||nextPage<0||nextPage>=Math.ceil(campaignList.length/25))return;
+  if(!identity||loading||nextPage<0||nextPage>=campaignReadinessPageBounds(campaignList.length,0).pages)return;
   const current=++epoch.current;
   setLoading(true);setError("");setRows([]);setLoaded(false);setFilter("ALL");
   try{await loadPage(campaignList,nextPage,current);}
