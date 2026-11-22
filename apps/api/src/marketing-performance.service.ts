@@ -2,6 +2,7 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
+import {summarizeReviewedCommercialMetrics} from './commercial-metric-calculation.js';
 
 const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads','spend_micros']);
 const SOURCE_SYSTEMS=new Set(['MANUAL_EXPORT','APPROVED_CONNECTOR_EXPORT']);
@@ -103,18 +104,9 @@ export class MarketingPerformanceService{
     _sum:{value:true},_count:{_all:true}}),
    tx.marketingMetricObservation.count({where:{organizationId,campaignId,status:'QUARANTINED'}})
   ]);
-  const totals:Record<string,string>={};const observations:Record<string,number>={};
-  for(const row of rows){totals[row.metricKey]=(row._sum.value??0n).toString();observations[row.metricKey]=row._count._all;}
-  const toBig=(key:string):bigint|null=>key in totals?BigInt(totals[key]!):null;
-  const rate=(a:bigint|null,b:bigint|null):number|null=>a!==null&&b!==null&&b>0n?
-    Number(a*10000n/b)/100:null;
-  const impressions=toBig('impressions'),clicks=toBig('clicks'),leads=toBig('leads'),
-    spend=toBig('spend_micros');
-  return{organizationId,campaign,totals,observationCounts:observations,
-   derived:{ctrPercent:rate(clicks,impressions),clickToLeadPercent:rate(leads,clicks),
-     spendMicrosPerLead:spend!==null&&leads!==null&&leads>0n?(spend/leads).toString():null},
-   pendingReviewCount:pending,status:rows.length?'REVIEWED_SOURCE_EVIDENCE':'INSUFFICIENT_REVIEWED_DATA',
-   independentlyVerified:false,attributionValidated:false,spendUnit:'micro currency units'};
+  const metrics=summarizeReviewedCommercialMetrics(rows,pending);
+  return{organizationId,campaign,...metrics,
+   independentlyVerified:false,spendUnit:'micro currency units'};
   });
  }
 }
