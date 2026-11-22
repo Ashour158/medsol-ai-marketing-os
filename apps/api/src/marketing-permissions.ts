@@ -140,7 +140,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    /^\/marketing\/learning\/(graph|memories)\/[^/]+\/(review|revoke)$/.test(path)
   ))return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/learning/knowledge')return 'READ_AUDIT';
-  if(method==='POST'&&path==='/marketing/learning/knowledge/search')return 'READ_AUDIT';
+  if(method==='POST'&&(path==='/marketing/learning/knowledge/search'||
+    path==='/marketing/learning/knowledge/agent-context-preview'))return 'READ_AUDIT';
   if(method==='POST'&&(path==='/marketing/learning/knowledge'||
     /^\/marketing\/learning\/knowledge\/[^/]+\/(review|revoke|promote)$/.test(path)))
    return 'MANAGE_TENANT';

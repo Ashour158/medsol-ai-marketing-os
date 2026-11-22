@@ -313,7 +313,7 @@ export default function Home() {
          importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
           offlineHandoff:null}/></div>
         <div id="knowledge" style={{scrollMarginTop:120}}><KnowledgeFabricStudio identity={identity}/></div>
-        <div id="memory" style={{scrollMarginTop:120}}><MemoryGraphStudio identity={identity}/></div>
+        <div id="memory" style={{scrollMarginTop:120}}><MemoryGraphStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
         <div id="acceptance" style={{scrollMarginTop:120}}><R3AcceptanceStudio identity={identity}/></div>
       </div>
       {brainPlan !== null && <details open><summary>Brain stages and nervous-system handoffs</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainPlan,null,2)}</pre></details>}

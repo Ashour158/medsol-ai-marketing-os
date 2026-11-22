@@ -355,10 +355,11 @@ export class MarketingLearningService {
   await this.knowledgeTx(org,tx=>this.knowledgeActor(tx,org,identity,'READ_AUDIT'));
   return this.knowledgeRetrieve(org,query,undefined,limit);
  }
- async contextForAgent(org:string,agentId:string,query:unknown){
+ async contextForAgent(org:string,agentId:string,query:unknown,
+  existingTx?:Prisma.TransactionClient){
   if(!AGENT_ROSTER.some(a=>a.id===agentId))
    throw new ForbiddenException('Unknown canonical agent cannot retrieve knowledge');
-  return this.knowledgeTx(org,async tx=>{
+  const load=async(tx:Prisma.TransactionClient)=>{
    const base=await this.knowledgeRetrieve(org,query,agentId,3,tx);
    const now=new Date();
    // Every memory is anchored to a still-reviewed, still-allowed source.
@@ -402,8 +403,31 @@ export class MarketingLearningService {
     externalEffectsAuthorized:false
    })),
    agentMemoryWritesAllowed:false as const,graphTruthVerified:false as const};
+  };
+  return existingTx?load(existingTx):this.knowledgeTx(org,load);
+ }
+ /** Same-canonical-context, zero-egress operator readback for inspecting which
+  * reviewed source, scoped memory and approved graph evidence a particular
+  * agent may see. OIDC membership and all source reads share one tenant tx.
+  * No model prompts, tool calls, memory writes or skill promotions occur.
+  */
+ async previewAgentContext(org:string,identity:VerifiedIdentity,raw:{
+  agentId?:unknown;query?:unknown
+ }){
+  const agentId=raw?.agentId;
+  if(typeof agentId!=="string"||!AGENT_ROSTER.some(a=>a.id===agentId))
+   throw new ForbiddenException("Canonical agent identity required");
+  return this.knowledgeTx(org,async tx=>{
+   await this.knowledgeActor(tx,org,identity,"READ_AUDIT");
+   const context=await this.contextForAgent(org,agentId,raw?.query,tx);
+   return{...context,agentId,
+    inspectionOnly:true as const,sourceReviewIsScientificTruth:false as const,
+    realModelInvocations:0 as const,mcpCalls:0 as const,a2aCalls:0 as const,
+    autonomousMemoryWrites:0 as const,skillPromotions:0 as const,
+    externalEffectsAuthorized:false as const};
   });
  }
+
  /**
   * Source-approved learning can only create a QUARANTINED LearningSignal.
   * The pre-existing verify -> propose -> evaluate -> code-review pipeline

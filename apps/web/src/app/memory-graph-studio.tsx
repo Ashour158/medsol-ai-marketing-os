@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 type Identity={userId:string;organizationId:string;role:string};
 type Source={id:string;title:string;status:string;accessMode:string;agentScope:string[]};
 type Memory={memoryId:string;documentId:string;agentId:string;status:string;
@@ -28,6 +28,12 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
  const [feedbackLabel,setFeedbackLabel]=useState("RELEVANT");
  const [evalCases,setEvalCases]=useState("[]");
  const [feedback,setFeedback]=useState<unknown>(null);
+ const [contextPreview,setContextPreview]=useState<{
+  actorScope:string;data:unknown
+ }|null>(null);
+ const actorScope=identity?identity.organizationId+":"+identity.userId:"";
+ const scopeRef=useRef(actorScope);
+ scopeRef.current=actorScope;
  const [last,setLast]=useState<unknown>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  const authorized=!!identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase());
@@ -44,12 +50,17 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
   return result;
  }
  async function refresh(){
+  const requestScope=scopeRef.current;
   const [a,b]=await Promise.all([api("knowledge"),api("memories")]);
+  if(requestScope!==scopeRef.current)return;
   setSources(Array.isArray(a)?a as Source[]:[]);
   setMemories(Array.isArray(b)?b as Memory[]:[]);
  }
  useEffect(()=>{if(authorized)void refresh().catch(e=>setError(String(e)));},
   [identity?.organizationId,identity?.userId,authorized]);
+ useEffect(()=>{setContextPreview(null);setGraph(null);setSources([]);
+  setMemories([]);setLast(null);setFeedback(null);},
+  [identity?.organizationId,identity?.userId]);
  async function task(run:()=>Promise<void>){
   setBusy(true);setError("");
   try{await run();}catch(e){setError(e instanceof Error?e.message:"Operation denied");}
@@ -178,6 +189,39 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
     </tr>)}</tbody>
    </table>
   </div>
+  <h4>Inspect an agent's actual scoped knowledge context</h4>
+  <p style={{fontSize:12,color:"#475569"}}>
+   Read-only inspection uses the same canonical retrieval as the Brain:
+   approved agent-scoped documents, unexpired reviewed human memory and reviewed
+   graph relations. Source content is untrusted evidence, not instructions.
+   Inspection makes zero AI, MCP, A2A, skill promotion or memory-write calls.
+  </p>
+  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+   <button disabled={busy||agentId.trim().length<3||
+    feedbackQuery.trim().length<3||feedbackQuery.length>200} style={btn}
+    onClick={()=>void task(async()=>{
+     const ownerScope=actorScope;
+     const data=await api("knowledge/agent-context-preview",{
+      agentId,query:feedbackQuery.trim()
+     });
+     setContextPreview({actorScope:ownerScope,data});
+    })}>
+    Inspect scoped context for this agent
+   </button>
+   <button disabled={busy} style={{...btn,background:"#475569"}}
+    onClick={()=>setContextPreview(null)}>Clear inspection</button>
+  </div>
+  {contextPreview!==null&&contextPreview.actorScope===actorScope&&
+   <div style={{marginTop:10}}>
+   <p style={{fontSize:12,color:"#92400e"}}>
+    Human-reviewed source context, not verified scientific claims or production model output.
+   </p>
+   <pre aria-label="Read-only agent context inspection" style={{fontSize:12,
+    padding:10,background:"#f8fafc",borderRadius:8,
+    whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>
+    {JSON.stringify(contextPreview.data,null,2)}
+   </pre>
+  </div>}
   <h4>Feedback and retrieval-quality evaluation</h4>
   <p style={{fontSize:12,color:"#64748b"}}>
    Use a real chunk ID from a reviewed search result. Evaluation accepts

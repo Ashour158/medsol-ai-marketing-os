@@ -65,8 +65,12 @@ afterEach(()=>vi.unstubAllGlobals());
 afterAll(()=>{process.env={...initial};});
 describe("R3-U authenticated web boundary contract across actual API inventory",()=>{
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
-  // 149 API routes including T4A creative revision, minus two public probes and two OIDC sessions.
-  expect(endpoints).toHaveLength(145);
+  // The single added T5B audited context-preview route extends the original
+  // 145-route authenticated inventory. All routes must stay BFF-allowlisted.
+  expect(endpoints).toHaveLength(146);
+  expect(endpoints).toContainEqual({method:"POST",
+   template:"/marketing/learning/knowledge/agent-context-preview",
+   path:"/marketing/learning/knowledge/agent-context-preview"});
   expect(endpoints).toContainEqual({method:"POST",
    template:"/marketing/assets/:id/offline-revisions",
    path:"/marketing/assets/id-acceptance/offline-revisions"});

@@ -130,7 +130,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length===3&&id==="knowledge"&&action==="feedback"&&["GET","POST"].includes(request.method))||
         (path.length===3&&id==="knowledge"&&action==="evaluate"&&request.method==="POST")||
         (path.length===2&&id==="knowledge"&&["GET","POST"].includes(request.method))||
-        (path.length===3&&id==="knowledge"&&action==="search"&&request.method==="POST")||
+        (path.length===3&&id==="knowledge"&&
+         ["search","agent-context-preview"].includes(action??"")&&request.method==="POST")||
         (path.length===4&&id==="knowledge"&&!!action&&
          ["review","revoke","promote"].includes(operation??"")&&request.method==="POST")||
         (path.length === 3 && id === "skills" && (action === "evaluate" || action === "decide") && request.method === "POST") ||
