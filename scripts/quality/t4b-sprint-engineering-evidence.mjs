@@ -77,11 +77,18 @@ export function verifySprintEvidence(entries,run){
   e.handoff.productionReady!==true
  ];
  if(noClaims.some(x=>!x))fail("invalid independent QA claims or staging proof");
- if(e.handoff.plannedE2eCases!==500&&e.handoff.plannedCases!==500){
-  // The handoff may carry its 500-case allocation as actual case rows instead.
-  if(!Array.isArray(e.handoff.cases)||e.handoff.cases.length!==500)
-   fail("canonical 500-slot unsigned independent handoff absent");
- }
+ if(e.handoff.plannedCases!==500||
+    e.handoff.engineeringBaselineMapped!==284||
+    e.handoff.stillUnmappedForEngineering!==216||
+    e.handoff.releaseAuthorizationIssued!==false||
+    e.handoff.authenticProviderUatPerformed!==false||
+    e.handoff.productionDatabaseInspected!==false||
+    !Array.isArray(e.handoff.signatures)||e.handoff.signatures.length!==0||
+    !Array.isArray(e.handoff.caseRecords)||e.handoff.caseRecords.length!==500||
+    new Set(e.handoff.caseRecords.map(c=>c.id)).size!==500||
+    e.handoff.caseRecords.some(c=>c.outcome!=="NOT_EXECUTED"||
+     c.independentlySignedOff!==false))
+  fail("canonical 500-slot unsigned independent handoff absent or forged");
  if(e.operatorBrowser.providerAccountsConnected!==0||
     e.realStackBrowser.actualProviderCredentials!==0||
     e.creativeBrowser.realCreativeAIProviderCalls!==0||
