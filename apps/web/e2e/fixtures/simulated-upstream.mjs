@@ -46,7 +46,7 @@ function journey(campaignId=jid){
   campaignApprovals:[{id:aid,decision:state.campaignApproved?'APPROVED':'PENDING',decidedBy:state.campaignApproved?'browser-reviewer':null}],
   brainRuns:state.brainRuns,
   creativeAssets:state.creativeExists?[{
-   assetId:'asset-e2e',revisionId:rid,title:'Synthetic raster',
+   assetId:'asset-e2e',revisionId:rid,brandId:'brand-e2e',version:1,current:true,title:'Synthetic raster',
    rightsReviewedAt:state.rightsReviewed?new Date().toISOString():null,
    renditionDigest:'sha256:offline-r3v',
    publicationLinked:state.publications.length>0,
