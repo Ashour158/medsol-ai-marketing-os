@@ -79,6 +79,10 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
           path: r3n-rls-inventory.json
+      - name: Validate Oracle Always Free staging profile and prevent paid-shape drift
+        run: |
+          node --test scripts/quality/oracle-always-free-profile.test.mjs
+          node scripts/quality/oracle-always-free-profile.mjs --profile infra/staging/oracle-always-free.profile.example.json
       - name: Reject unsafe disposable staging configuration and spoofed offline safety proofs
         run: node --test scripts/quality/r3x-staging-preflight.test.mjs
       - name: Require same-run FORCE RLS census and no real provider access for R3-X staging
