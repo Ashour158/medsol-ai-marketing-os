@@ -59,6 +59,15 @@ export function verifySprintEvidence(entries,run){
   if(e[name][field]!==expected||!Array.isArray(e[name].caseIds??e[name].cases)||
      (e[name].caseIds??e[name].cases).length!==expected)
    fail("real executed case count/provenance mismatch for "+name);
+ // Full signed-operator campaign acceptance must execute in the same CI run.
+ // T17-001 also verifies review-only performance, all ten canonical journey
+ // gates, tenant command-board readback and unsigned operator JSON export.
+ // These are assertions exercised by the real Chromium test, not new signatures.
+ if(!e.operatorBrowser.caseIds.includes("T17-001")||
+    !e.operatorBrowser.caseIds.includes("T17-002")||
+    !e.operatorBrowser.caseIds.includes("T17-003")||
+    new Set(e.operatorBrowser.caseIds).size!==5)
+  fail("signed full-journey or cross-tenant real-stack operator coverage missing");
  const dagCount=e.signedDagBrowser.actualPassingBrowserCases;
  if(!Number.isSafeInteger(dagCount)||dagCount<3||dagCount>32||
     !Array.isArray(e.signedDagBrowser.caseIds)||
@@ -106,6 +115,11 @@ export function verifySprintEvidence(entries,run){
   postgresqlTenantTablesWithForceRls:46,uncoveredTenantTables:0,
   actualPassedIsolatedPostgresqlCases:37,
   actualPassedChromiumCasesAcrossIndependentSuites:browserCases,
+  signedOperatorIntegratedJourney:{
+   caseId:"T17-001",browserReportVerifiedInSameRun:true,
+   scope:"13-agent brain, independent campaign and creative decisions, offline social, consent-gated synthetic email, quarantined learning, independently reviewed metric, ten-gate board and unsigned inspection export",
+   realProviderDeliveryVerified:false,independentOperatorCertification:false
+  },
   canonicalPlannedIndependentE2eCases:500,
   independentlyExecutedStagingE2eCases:0,independentlySignedE2eCases:0,
   actualPersistentStagingDeployed:false,
