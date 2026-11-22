@@ -82,6 +82,30 @@ describe('R3-I source-bound agent memory, document graph and retrieval quality g
    await svc.reviewAgentMemory(org,reviewer,memory.memoryId,
     'APPROVE','Reviewed scoped short-lived evidence reminder');
    const science=await svc.contextForAgent(org,'MKT-SCI-001','proteomics');
+   const operatorPreview=await svc.previewAgentContext(org,reviewer,{
+    agentId:'MKT-SCI-001',query:'proteomics'});
+   expect(operatorPreview).toMatchObject({
+    agentId:'MKT-SCI-001',inspectionOnly:true,
+    realModelInvocations:0,mcpCalls:0,a2aCalls:0,
+    autonomousMemoryWrites:0,skillPromotions:0,
+    externalEffectsAuthorized:false,sourceReviewIsScientificTruth:false
+   });
+   expect(operatorPreview.memories).toMatchObject([{
+    memoryId:memory.memoryId,humanReviewed:true,independentlyVerified:false
+   }]);
+   expect(operatorPreview.relations).toMatchObject([{
+    edgeId:edge.edgeId,scientificTruthVerified:false
+   }]);
+   await expect(svc.previewAgentContext(other,reviewer,{
+    agentId:'MKT-SCI-001',query:'proteomics'}))
+    .rejects.toThrow(/tenant knowledge authority/);
+   await expect(svc.previewAgentContext(org,{
+    ...reviewer,subject:'forged-context-identity'},{
+    agentId:'MKT-SCI-001',query:'proteomics'}))
+    .rejects.toThrow(/matching tenant OIDC/);
+   await expect(svc.previewAgentContext(org,reviewer,{
+    agentId:'FAKE-AGENT',query:'proteomics'}))
+    .rejects.toThrow(/Canonical agent/);
    expect(science.memories).toMatchObject([{
     memoryId:memory.memoryId,humanReviewed:true,independentlyVerified:false}]);
    expect(science.relations).toMatchObject([{
@@ -118,6 +142,10 @@ describe('R3-I source-bound agent memory, document graph and retrieval quality g
    expect(revoked).toMatchObject({status:'REVOKED',scrubbedMemories:1,
     revokedGraphEdges:1});
    const post=await svc.contextForAgent(org,'MKT-SCI-001','proteomics');
+   const postPreview=await svc.previewAgentContext(org,reviewer,{
+    agentId:'MKT-SCI-001',query:'proteomics'});
+   expect(postPreview.memories).toHaveLength(0);
+   expect(postPreview.relations).toHaveLength(0);
    expect(post.memories).toHaveLength(0);
    expect(post.relations).toHaveLength(0);
    expect((await db.agentKnowledgeMemory.findFirstOrThrow({
@@ -166,6 +194,10 @@ describe('R3-I source-bound agent memory, document graph and retrieval quality g
    '/marketing/learning/knowledge/feedback',
    '/marketing/learning/knowledge/evaluate'])
    expect(permissionForMarketingRoute('POST',route)).toBe('MANAGE_TENANT');
+  expect(permissionForMarketingRoute('POST',
+   '/marketing/learning/knowledge/agent-context-preview')).toBe('READ_AUDIT');
+  expect(()=>permissionForMarketingRoute('POST',
+   '/marketing/learning/knowledge/agent-context-preview/send')).toThrow('permission registry');
   expect(permissionForMarketingRoute('GET','/marketing/learning/memories')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('GET','/marketing/learning/graph/doc-001')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('POST','/marketing/learning/memories/xyz/review'))
