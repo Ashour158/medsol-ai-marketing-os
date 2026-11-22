@@ -332,6 +332,18 @@ jobs:
           MARKETING_R3X_POSTGRES_GATE_PASSED: 'true'
           MARKETING_R3Y_REAL_STACK_GATE_PASSED: 'true'
         run: node scripts/quality/r3l-acceptance-case-index.mjs --output r3y-real-stack-acceptance-evidence.json
+      - name: Verify canonical 500-case operator packets reject fabricated signoffs
+        run: node --test scripts/quality/independent-qa-packets.test.mjs
+      - name: Generate ten unsigned 50-case independent operator packets (NOT executed)
+        run: node scripts/quality/independent-qa-packets.mjs --index r3y-real-stack-acceptance-evidence.json --output-dir independent-qa-operator-packets
+      - name: Upload unexecuted independent operator work packets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-unsigned-operator-packets-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: independent-qa-operator-packets/
       - name: Reject forged independent QA handoff and incomplete 500-case proof
         run: node --test scripts/quality/r3y-operator-handoff.test.mjs
       - name: Generate 500-slot independent operator handoff with zero forged signatures
