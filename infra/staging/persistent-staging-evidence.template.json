@@ -1,0 +1,19 @@
+{
+  "schema": "medsol-independent-staging-evidence-v1",
+  "environment": "persistent-staging",
+  "commit": null,
+  "httpsOrigin": null,
+  "providerEgressDisabled": true,
+  "actualDeploymentObserved": false,
+  "separatelyOperatedOidcMfaVerified": false,
+  "tenantAgencyIsolationPassed": false,
+  "nonBypassRlsAppRoleProven": false,
+  "tlsChainIndependentlyVerified": false,
+  "backupRestoreAndRollbackObserved": false,
+  "immutableImageDigest": null,
+  "operatorProofDigest": null,
+  "independentOperatorId": null,
+  "firstIndependentCheckAt": null,
+  "lastIndependentCheckAt": null,
+  "_instructions": "UNSIGNED BLANK TEMPLATE ONLY. Obtain real HTTPS infrastructure, independent operator identities, two observed checks at least 24h apart, test tenant/agency RLS and OIDC MFA, restore/rollback, attach immutable artifact hashes. Integrate the verified facts (without _instructions) into a five-role separately signed production-release payload. No CI case or local simulator may populate these fields as true."
+}

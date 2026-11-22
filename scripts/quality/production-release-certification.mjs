@@ -14,6 +14,48 @@ const REQUIRED_ROLES=[
  'PLATFORM_SECURITY','DISASTER_RECOVERY','BUSINESS_OWNER'
 ];
 const HASH=/^sha256:[a-f0-9]{64}$/;
+const CANONICAL_CASE_ID=/^T(?:0[1-9]|1[0-6])-[0-9]{3}$/;
+/** Requires independently signed evidence of a *persistent*, public-HTTPS,
+ * tenant-isolated staging operator deployment, not localhost / ephemeral CI.
+ * This is provenance validation, not a live DNS/TLS/uptime verification.
+ */
+export function verifyPersistentStagingEvidence(stage,commit,nowMs=Date.now()){
+ if(!stage||stage.schema!=="medsol-independent-staging-evidence-v1"||
+    stage.environment!=="persistent-staging"||
+    stage.commit!==commit||
+    stage.providerEgressDisabled!==true||
+    stage.actualDeploymentObserved!==true||
+    stage.separatelyOperatedOidcMfaVerified!==true||
+    stage.tenantAgencyIsolationPassed!==true||
+    stage.nonBypassRlsAppRoleProven!==true||
+    stage.tlsChainIndependentlyVerified!==true||
+    stage.backupRestoreAndRollbackObserved!==true||
+    !HASH.test(stage.immutableImageDigest)||
+    !HASH.test(stage.operatorProofDigest)||
+    typeof stage.independentOperatorId!=="string"||
+    stage.independentOperatorId.length<8)
+  fail("independently observed persistent staging, tenant and operator proof required");
+ let url;
+ try{url=new URL(stage.httpsOrigin)}catch{fail("independent staging HTTPS origin required");}
+ const host=url.hostname.toLowerCase();
+ if(url.protocol!=="https:"||url.origin!==stage.httpsOrigin||
+    url.username||url.password||url.search||url.hash||url.pathname!=="/"||
+    url.port||!host.includes(".")||host.includes("..")||
+    host==="localhost"||host.endsWith(".localhost")||
+    host.endsWith(".local")||host.endsWith(".invalid")||
+    host.endsWith(".example")||host.endsWith(".test")||
+    host.endsWith(".internal")||host.endsWith(".arpa")||
+    /^\d+(?:\.\d+){3}$/.test(host)||host.includes(":"))
+  fail("public HTTPS staging origin without local, fake or IP destination required");
+ const first=Date.parse(stage.firstIndependentCheckAt??"");
+ const last=Date.parse(stage.lastIndependentCheckAt??"");
+ if(!Number.isFinite(first)||!Number.isFinite(last)||
+    first>last-24*3600000||last>nowMs+5*60000||
+    last<nowMs-7*86400000)
+  fail("fresh independent staging observations at least 24 hours apart required");
+ return{stagingOrigin:stage.httpsOrigin,continuousUptimeNotIndependentlyProven:true,
+  externalDeploymentEvidenceRequired:true};
+}
 function fail(message){throw new Error('RELEASE_CERTIFICATION_BLOCKED: '+message)}
 const stable=value=>JSON.stringify(value,(key,item)=>{
  if(!item||typeof item!=='object'||Array.isArray(item))return item;
@@ -27,7 +69,11 @@ export function verifyReleaseCertification(certificate,trust,caseIndex,expectedC
     !Array.isArray(trust.keys)||trust.keys.length<REQUIRED_ROLES.length)
   fail('externally provisioned independent public-key trust required');
  if(!Array.isArray(caseIndex?.cases)||caseIndex.cases.length!==500||
-    caseIndex.releaseVerdict!=='NOT_CERTIFIED')
+    caseIndex.releaseVerdict!=='NOT_CERTIFIED'||
+    caseIndex.schema!=="medsol-r3y-real-stack-500-case-acceptance-index-v1"||
+    caseIndex.plannedE2eCases!==500||
+    new Set(caseIndex.cases.map(c=>c.id)).size!==500||
+    caseIndex.cases.some(c=>!CANONICAL_CASE_ID.test(c.id)))
   fail('actual canonical 500-slot blueprint acceptance index required');
  const p=certificate.payload;
  if(!p||p.releaseClass!=='PRODUCTION'||p.repository!=='Ashour158/medsol-ai-marketing-os'||
@@ -35,6 +81,9 @@ export function verifyReleaseCertification(certificate,trust,caseIndex,expectedC
   !p.environment||p.environment!=='production'||!p.deploymentId||
   p.externalEffectsAuthorized!==true)
   fail('production environment, exact commit and explicit external-effects approval required');
+ if(p.canonicalCaseIndexDigest!==digest(caseIndex.cases.map(c=>c.id)))
+  fail("signed acceptance must bind exact canonical 500-case index");
+ verifyPersistentStagingEvidence(p.staging,expectedCommit);
  if(!Array.isArray(p.cases)||p.cases.length!==500||new Set(p.cases.map(c=>c.id)).size!==500)
   fail('all 500 distinct operator-executed E2E cases required');
  const ids=new Set(caseIndex.cases.map(c=>c.id));
@@ -116,6 +165,9 @@ export function verifyReleaseCertification(certificate,trust,caseIndex,expectedC
   commit:expectedCommit,
   signedOperatorRoles:REQUIRED_ROLES,
   independentlyExecutedE2eCases:500,
+  canonicalCaseIndexDigest:p.canonicalCaseIndexDigest,
+  verifiedPersistentStagingAttestation:true,
+  stagingUptimeNotCryptographicallyProven:true,
   evidenceDigest:digest(p),
   // This is evidence validation, not a declaration that the service is
   // currently deployed or that future configuration stays secure.
