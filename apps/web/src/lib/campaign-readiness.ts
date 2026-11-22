@@ -67,13 +67,19 @@ export function campaignReadiness(j:unknown,expectedId:string):CampaignReadiness
  }
  const blockers=CAMPAIGN_STAGE_ORDER.filter(([key])=>!stepValues[key])
   .map(([key,label,workspace])=>({key,label,workspace}));
- const blocked=x.campaign.status==="REJECTED"||
-  ["BLOCKED","FAILED","CANCELLED","NEEDS_INTERVENTION"].includes(wfStatus);
+ // Stage flags alone are not sufficient to certify a successful simulation.
+ // Only an explicit, successful campaign and workflow terminal state may be complete.
+ // Everything else fails closed: terminal failures block; other/unknown states
+ // remain incomplete pending authoritative readback.
+ const campaignStatus=x.campaign.status;
+ const blocked=["REJECTED","CANCELLED","CANCELED","FAILED","BLOCKED","ARCHIVED"].includes(campaignStatus)||
+  ["BLOCKED","FAILED","CANCELLED","CANCELED","REJECTED","NEEDS_INTERVENTION","TIMED_OUT"].includes(wfStatus);
+ const successfulTerminal=campaignStatus==="APPROVED"&&wfStatus==="COMPLETED";
  return{id:x.campaign.id,name:x.campaign.name,code:x.campaign.code,
   campaignStatus:x.campaign.status,workflowStatus:wfStatus,
   completed:CAMPAIGN_STAGE_ORDER.length-blockers.length,
   total:CAMPAIGN_STAGE_ORDER.length,stageCompletion:stepValues,blockers,
-  state:blocked?"BLOCKED":blockers.length===0?"SIMULATION_COMPLETE":"INCOMPLETE",
+  state:blocked?"BLOCKED":blockers.length===0&&successfulTerminal?"SIMULATION_COMPLETE":"INCOMPLETE",
   externalEffectsAuthorized:false,productionReady:false,independentlyCertified:false};
 }
 export type PortfolioReadinessRow=
