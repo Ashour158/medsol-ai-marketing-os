@@ -1,5 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {SESSION_COOKIE} from '../src/lib/marketing-auth';
 
 /**
@@ -141,6 +142,51 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  expect(journey.learningSignals.some((x:{status:string})=>x.status==='QUARANTINED')).toBe(true);
  expect(journey.externalEffectsAuthorized).toBe(false);
  expect((await success(page,'agents/budget')).enabled).toBe(false);
+ // Cross-module sprint closeout: independently reviewed source evidence must
+ // become the tenth *offline* readiness gate, never verified revenue or live ROI.
+ const recorded=await success(page,'performance/ingest',{
+  campaignId,sourceSystem:'MANUAL_EXPORT',
+  sourceRecordId:'t4f-'+uid(),metricKey:'qualified_leads',value:3,
+  observedAt:new Date(Date.now()-120000).toISOString(),
+  sourceReference:'internal:t4f-disposable-offline-reviewed-metric'
+ });
+ expect(recorded.status).toBe('QUARANTINED');
+ const selfReview=await api(page,'performance/review',{
+  observationId:recorded.observationId,
+  rationale:'Author cannot independently approve this observation'
+ });
+ expect(selfReview.status).toBe(403);
+ await switchIdentity(page,'reviewer');
+ const reviewed=await success(page,'performance/review',{
+  observationId:recorded.observationId,
+  rationale:'Independent signed reviewer examined disposable local source evidence'
+ });
+ expect(reviewed).toMatchObject({status:'REVIEWED',independentlyVerified:false});
+ await switchIdentity(page,'admin');
+ const inspected=await success(page,'journeys/'+campaignId);
+ expect(inspected.workflow.status).toBe('COMPLETED');
+ expect(inspected.campaign.status).toBe('APPROVED');
+ expect(Object.values(inspected.stages).every(x=>x===true)).toBe(true);
+ expect(inspected.offlineSimulationOnly).toBe(true);
+ expect(inspected.productionCertified).toBe(false);
+ expect(inspected.realProvidersConnectedByJourney).toBe(false);
+ await page.getByRole('button',{name:'Refresh campaign readiness'}).click();
+ const card=page.locator('#readiness-board article').filter({
+  hasText:inspected.campaign.name
+ }).first();
+ await expect(card).toContainText('10/10 offline gates');
+ await expect(card).toContainText('SIMULATION COMPLETE');
+ const [download]=await Promise.all([
+  page.waitForEvent('download'),
+  page.getByRole('button',{name:'Export unsigned page inspection (JSON)'}).click()
+ ]);
+ const report=JSON.parse(await readFile(await download.path(),'utf8'));
+ expect(report).toMatchObject({
+  assertion:'OPERATOR_INSPECTION_ONLY',productionStatus:'NOT_CERTIFIED',
+  signed:false,independentlyVerified:false,realProviderExecution:false
+ });
+ expect(report.items.find((x:{id:string})=>x.id===campaignId))
+  .toMatchObject({state:'SIMULATION_COMPLETE',missingGates:[]});
 });
 test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creative permissions',async({page})=>{
  await signIn(page,'admin');await studio(page);
