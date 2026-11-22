@@ -143,7 +143,8 @@ export default function Home() {
     <div id="agent-studio" style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/></div>
     <div id="provider-trials" style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
     <div id="integrations" style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
-    <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole identity={identity} onRunSelected={id => {
+    <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
+      identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
     }} /></div>
