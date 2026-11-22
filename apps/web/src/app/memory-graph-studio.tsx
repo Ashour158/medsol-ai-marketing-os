@@ -28,7 +28,10 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
  const [feedbackLabel,setFeedbackLabel]=useState("RELEVANT");
  const [evalCases,setEvalCases]=useState("[]");
  const [feedback,setFeedback]=useState<unknown>(null);
- const [contextPreview,setContextPreview]=useState<unknown>(null);
+ const [contextPreview,setContextPreview]=useState<{
+  actorScope:string;data:unknown
+ }|null>(null);
+ const actorScope=identity?identity.organizationId+":"+identity.userId:"";
  const [last,setLast]=useState<unknown>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  const authorized=!!identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase());
@@ -51,6 +54,9 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
  }
  useEffect(()=>{if(authorized)void refresh().catch(e=>setError(String(e)));},
   [identity?.organizationId,identity?.userId,authorized]);
+ useEffect(()=>{setContextPreview(null);setGraph(null);setSources([]);
+  setMemories([]);setLast(null);setFeedback(null);},
+  [identity?.organizationId,identity?.userId]);
  async function task(run:()=>Promise<void>){
   setBusy(true);setError("");
   try{await run();}catch(e){setError(e instanceof Error?e.message:"Operation denied");}
@@ -190,23 +196,26 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
    <button disabled={busy||agentId.trim().length<3||
     feedbackQuery.trim().length<3||feedbackQuery.length>200} style={btn}
     onClick={()=>void task(async()=>{
-     setContextPreview(await api("knowledge/agent-context-preview",{
+     const ownerScope=actorScope;
+     const data=await api("knowledge/agent-context-preview",{
       agentId,query:feedbackQuery.trim()
-     }));
+     });
+     setContextPreview({actorScope:ownerScope,data});
     })}>
     Inspect scoped context for this agent
    </button>
    <button disabled={busy} style={{...btn,background:"#475569"}}
     onClick={()=>setContextPreview(null)}>Clear inspection</button>
   </div>
-  {contextPreview!==null&&<div style={{marginTop:10}}>
+  {contextPreview!==null&&contextPreview.actorScope===actorScope&&
+   <div style={{marginTop:10}}>
    <p style={{fontSize:12,color:"#92400e"}}>
     Human-reviewed source context, not verified scientific claims or production model output.
    </p>
    <pre aria-label="Read-only agent context inspection" style={{fontSize:12,
     padding:10,background:"#f8fafc",borderRadius:8,
     whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>
-    {JSON.stringify(contextPreview,null,2)}
+    {JSON.stringify(contextPreview.data,null,2)}
    </pre>
   </div>}
   <h4>Feedback and retrieval-quality evaluation</h4>
