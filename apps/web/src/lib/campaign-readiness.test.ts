@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {CAMPAIGN_STAGE_ORDER,campaignReadiness,isCampaignSummary,
- portfolioReadinessSummary} from "./campaign-readiness";
+ portfolioReadinessSummary,campaignReadinessPageBounds} from "./campaign-readiness";
 const stage=()=>Object.fromEntries(CAMPAIGN_STAGE_ORDER.map(([key])=>[key,false]));
 const valid=()=>({campaign:{id:"campaign-123",name:"Research initiative",
  code:"MKT-001",status:"APPROVED"},workflow:{status:"COMPLETED"},
@@ -69,5 +69,24 @@ describe("T4C canonical campaign readiness",()=>{
     name:"Outdated source",reason:"Access forbidden"}]))
    .toMatchObject({campaignsChecked:2,known:1,unknown:1,
     simulatedComplete:0,productionReady:false});
+ });
+});
+
+describe("T4E bounded readiness paging",()=>{
+ it("covers every tenant listing index once including final partial page",()=>{
+  const indices:number[]=[];
+  for(let p=0;p<4;p++){
+   const b=campaignReadinessPageBounds(87,p);
+   for(let i=b.start;i<b.end;i++)indices.push(i);
+   expect(b.pages).toBe(4);
+  }
+  expect(indices).toEqual(Array.from({length:87},(_,i)=>i));
+ });
+ it("fails closed for invalid pages, oversized lists and fractional indices",()=>{
+  expect(campaignReadinessPageBounds(0,0)).toMatchObject({start:0,end:0,pages:1});
+  for(const [total,page] of [[101,0],[25,1],[87,-1],[87,4],[3,0.5],[-1,0],
+    [Number.NaN,0],[Number.MAX_SAFE_INTEGER+1,0]]){
+   expect(()=>campaignReadinessPageBounds(total!,page!)).toThrow();
+  }
  });
 });
