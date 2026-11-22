@@ -46,7 +46,7 @@ function journey(campaignId=jid){
   campaignApprovals:[{id:aid,decision:state.campaignApproved?'APPROVED':'PENDING',decidedBy:state.campaignApproved?'browser-reviewer':null}],
   brainRuns:state.brainRuns,
   creativeAssets:state.creativeExists?[{
-   assetId:'asset-e2e',revisionId:rid,title:'Synthetic raster',
+   assetId:'asset-e2e',revisionId:rid,brandId:'brand-e2e',version:1,current:true,title:'Synthetic raster',
    rightsReviewedAt:state.rightsReviewed?new Date().toISOString():null,
    renditionDigest:'sha256:offline-r3v',
    publicationLinked:state.publications.length>0,
@@ -165,7 +165,7 @@ const server=createServer(async(req,res)=>{
  if(is('POST','/marketing/media/evidence/'+rid+'/verify-offline'))
   return json(res,200,{status:'OFFLINE_VERIFIED'});
  if(is('GET','/marketing/assets/revisions/'+rid+'/offline-preview'))
-  return json(res,200,{revisionId:rid,editableCopy:'Editable offline source copy',imageDataUrl:preview,renditionDigest:'sha256:offline-r3v',offlineOnly:true});
+  return json(res,200,{assetId:'asset-e2e',revisionId:rid,version:1,current:true,editableCopy:'Editable offline source copy',imageDataUrl:preview,renditionDigest:'sha256:offline-r3v',offlineOnly:true});
  if(is('POST','/marketing/assets/revisions/'+rid+'/rights-review')){
   if(actor.userId==='browser-admin')return json(res,403,{message:'Separate reviewer required'});
   state.rightsReviewed=true;return json(res,200,{status:'REVIEWED'});

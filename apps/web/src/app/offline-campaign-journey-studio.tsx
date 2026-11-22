@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
 type Brand={id:string;name:string};
@@ -8,7 +9,7 @@ type Journey={
  workflow:{id:string;status:string;currentStep:string}|null;
  campaignApprovals:Array<{id:string;decision:string;decidedBy:string|null}>;
  brainRuns:Array<{id:string;status:string;steps:Array<{stage:string;agentId:string;status:string}>}>;
- creativeAssets:Array<{assetId:string;revisionId:string;title:string;
+ creativeAssets:Array<{assetId:string;revisionId:string;brandId:string;version:number;current:boolean;title:string;
   rightsReviewedAt:string|null;publicationLinked:boolean;renditionDigest:string;
   approvals:Array<{id:string;decision:string}>}>;
  publications:Array<{id:string;status:string;version:number;
@@ -174,6 +175,13 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  const activeApproval=journey?.campaignApprovals.find(a=>a.decision==="PENDING");
  const proposedCreative=journey?.creativeAssets.find(a=>a.revisionId===creative?.revisionId);
  const approvalForCreative=proposedCreative?.approvals.find(a=>a.decision==="PENDING");
+  // Brand-scoped offline artwork can be rights-reviewed before a campaign
+  // is loaded, provided its actual server preview was read back as current.
+  // Once a journey is loaded, require its newer authoritative revision census.
+  const creativeIsCurrent=journey
+   ?selectedCreativeIsCurrent(journey.creativeAssets,creative)
+   :!!creative&&!!preview&&preview.current===true&&
+    preview.assetId===creative.assetId&&preview.revisionId===creative.revisionId;
  const blocked=!identity||busy;
  const approve=async(approvalId:string)=>{
   if(!identity)throw new Error("Sign in as a different authorized human reviewer");
@@ -374,6 +382,10 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
        if(campaignId)await refresh();
       })}>Save revised PNG and text as new version</button>}
     {creative&&<p style={{fontSize:12}}>Revision {creative.revisionId} · {creative.renditionDigest}</p>}
+     {creative&&!creativeIsCurrent&&<p role="alert" style={{fontSize:13,color:"#b91c1c"}}>
+      This selected artwork is not confirmed as the current revision in the latest campaign timeline.
+      Use “Load current creative version and history” before rights review, exact approval or new publishing intent.
+     </p>}
     {creative&&<button style={{...secondary,marginTop:10}} disabled={blocked||!manager}
       onClick={()=>void run(async()=>{
        const detail=await api("assets/"+encodeURIComponent(creative.assetId)) as CreativeDetail;
@@ -439,7 +451,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
     <label style={label}>Rights review rationale
      <input style={input} value={rightsReason} onChange={e=>setRightsReason(e.target.value)}/>
     </label>
-    <button style={secondary} disabled={blocked||!manager||!creative}
+    <button style={secondary} disabled={blocked||!manager||!creative||!creativeIsCurrent}
      onClick={()=>void run(async()=>{
       await api("assets/revisions/"+encodeURIComponent(creative!.revisionId)+"/rights-review",{
        reason:rightsReason
@@ -463,7 +475,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
      <input style={input} value={brandPolicyVersion} onChange={e=>setBrandPolicyVersion(e.target.value)}
       placeholder="v1 (must be currently approved)"/>
     </label>
-    <button style={button} disabled={blocked||!manager||!creative||!destinationRef||!brandPolicyVersion}
+    <button style={button} disabled={blocked||!manager||!creative||!creativeIsCurrent||!destinationRef||!brandPolicyVersion}
      onClick={()=>void run(async()=>{
       const approval=await api("assets/revisions/"+
        encodeURIComponent(creative!.revisionId)+"/submit-approval",{
@@ -475,7 +487,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
      })}>Submit exact offline creative for approval</button>
     <p style={{fontSize:12}}>Creative approval: {creativeApprovalId||approvalForCreative?.id||"not requested"}</p>
     <button style={secondary}
-     disabled={blocked||!manager||!(creativeApprovalId||approvalForCreative?.id)}
+     disabled={blocked||!manager||!creativeIsCurrent||!(creativeApprovalId||approvalForCreative?.id)}
      onClick={()=>void run(async()=>{
       await approve(creativeApprovalId||approvalForCreative!.id);
       setNotice("Independent exact-scope creative approval recorded");
@@ -484,7 +496,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
 
    <div style={section}>
     <h3 style={{marginTop:0}}>6 · Social sandbox — zero external publishing</h3>
-    <button style={button} disabled={blocked||!manager||!campaignId||
+    <button style={button} disabled={blocked||!manager||!campaignId||!creativeIsCurrent||
       !(creativeApprovalId||proposedCreative?.approvals.find(a=>a.decision==="APPROVED")?.id)}
      onClick={()=>void run(async()=>{
       const id=creativeApprovalId||
