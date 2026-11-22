@@ -41,11 +41,12 @@ export function modelOfflineRevenueScenarios(input:RevenueScenarioInput):{
  const value=boundedDecimal(input.assumedDealValueMajor,"Assumed deal value",12);
  const close=basisPoints(input.closeRateBasisPoints,"Close rate");
  const margin=basisPoints(input.marginBasisPoints,"Gross margin");
- const scenarios:RevenueScenario[]=[
+ const rates:Array<Pick<RevenueScenario,"name"|"closeRateBasisPoints">>=[
   {name:"Downside",closeRateBasisPoints:Math.floor(close/2)},
   {name:"Base",closeRateBasisPoints:close},
   {name:"Upside",closeRateBasisPoints:Math.min(10000,Math.floor(close*3/2))}
- ].map(s=>{
+ ];
+ const scenarios:RevenueScenario[]=rates.map(s=>{
   const rate=BigInt(s.closeRateBasisPoints);
   const wins=leads*rate;
   const revenue=(wins*value+5000n)/10000n;
