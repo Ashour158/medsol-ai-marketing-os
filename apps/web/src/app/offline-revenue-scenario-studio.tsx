@@ -104,7 +104,7 @@ export default function OfflineRevenueScenarioStudio({summary}:{
     style={{marginTop:12,padding:"9px 13px",borderRadius:7,border:0,
      background:"#475569",color:"white",cursor:"pointer"}}
     onClick={()=>{
-     if(!exportInput)return;
+     if(!exportInput||!result)return;
      try{saveOfflineCsv(revenueScenarioCsv(exportInput,result,summary.campaign.id),
       "medsol-hypothetical-revenue-scenarios.csv");setError("");}
      catch(e){setError(e instanceof Error?e.message:"Scenario export blocked");}
