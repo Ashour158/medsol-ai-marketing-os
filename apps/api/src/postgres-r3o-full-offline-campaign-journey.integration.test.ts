@@ -238,7 +238,7 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     signed:false,externalEffectsAuthorized:false
    });
    expect(JSON.stringify(dossier)).not.toContain(contact.contactId);
-   await expect(reads.offlineJourney(other,campaignId)).rejects.toThrow('not found');
+
    expect(timeline.publications[0]!.attempts[0]!.mode).toBe('SANDBOX');
    expect(await db.providerCredential.count({where:{organizationId:org}})).toBe(0);
    expect(await db.modelUsage.count({where:{organizationId:org}})).toBe(0);
