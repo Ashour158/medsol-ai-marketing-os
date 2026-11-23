@@ -117,6 +117,19 @@ test('T04-012 real Chromium creates an objective and a durable workflow in Nest 
  expect(state.workflow.status).toBe('WAITING_APPROVAL');
  expect(state.stages.briefRecorded).toBe(true);
  expect(state.campaignApprovals[0].decision).toBe('PENDING');
+ const dossier=await assertSuccess(page,'journeys/'+id+'/dossier');
+ expect(dossier).toMatchObject({
+  schema:'medsol.customer_delivery_dossier.v1',
+  campaign:{id},status:'OFFLINE_EVIDENCE_ONLY',productionStatus:'NOT_CERTIFIED',
+  signed:false,externalEffectsAuthorized:false,realProviderDeliveryVerified:false,
+  pillars:{social:{realPostsPublished:0},email:{actualMessagesSent:0},
+   conversion:{causalAttributionVerified:false},
+   commercial:{roiVerified:false}}
+ });
+ await page.getByRole('combobox',{name:'Dossier campaign'}).selectOption(id);
+ await page.getByRole('button',{name:'Inspect all six engines'}).click();
+ await expect(page.getByRole('status').filter({hasText:'offline gates met'}))
+  .toContainText('NOT_CERTIFIED');
 });
 test('T04-013 new browser page rehydrates a real campaign without recreating owner state',async({page,request})=>{
  await authenticate(page,request);await studio(page);
@@ -165,6 +178,8 @@ test('T11-006 real VIEWER cannot create creative by bypassing disabled browser a
   requestKey:unique()
  });
  expect(denied.status).toBe(403);
+ const auditDenied=await bff(page,'journeys/'+unique()+'/dossier');
+ expect(auditDenied.status).toBe(403);
 });
 test('T09-011 actual publication owner rejects a forged creative approval ID',async({page,request})=>{
  await authenticate(page,request);
