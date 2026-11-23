@@ -29,7 +29,8 @@ type MarketTopics={
 };
 const reject=(message:string):never=>{throw Error('CUSTOMER_DOSSIER_BLOCKED: '+message);};
 const count=(value:unknown,max:number)=>{
- if(!Array.isArray(value)||value.length>max)reject('Unbounded source evidence');
+ if(!Array.isArray(value))return reject('Unbounded source evidence');
+ if(value.length>max)return reject('Unbounded source evidence');
  return value.length;
 };
 export function buildCustomerDeliveryDossier(
