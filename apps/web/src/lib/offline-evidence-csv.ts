@@ -1,7 +1,8 @@
 /** Shared CSV encoding for unsigned, offline customer intelligence and revenue
  * scenario exports. No side effects, new business owners or provider calls.
  */
-import {modelOfflineRevenueScenarios,type RevenueScenarioInput} from './offline-revenue-scenarios';
+import {modelOfflineRevenueScenarios,modelOfflineConversionFunnel,
+ type RevenueScenarioInput,type OfflineConversionInput} from './offline-revenue-scenarios';
 const fail=(message:string):never=>{throw Error('OFFLINE_CSV_BLOCKED: '+message);};
 const quote=(raw:unknown)=>{
  let value=raw===null||raw===undefined?'':String(raw);
@@ -179,4 +180,36 @@ export function emailSimulationCsv(report:EmailTrialExport){
   ['email','legal_consent_verified','NO','MOCK_CONSENT_IS_NOT_LEGAL_PROOF'],
   ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
  ]);
+}
+
+/** Fail-closed local-only funnel export; values are recomputed from original
+ * anonymized fixture, never represent website visits, form data or CRM leads.
+ */
+export function conversionFunnelCsv(input:OfflineConversionInput,
+ result:ReturnType<typeof modelOfflineConversionFunnel>){
+ const recalculated=modelOfflineConversionFunnel(input);
+ if(result?.externalEffectsAuthorized!==false||
+  result.measuredConversions!==false||result.crmHandoffsExecuted!==0||
+  result.actualLeadsCreated!==0||result.actualVisitorsObserved!==0||
+  result.legalConsentVerified!==false||result.causalAttributionValidated!==false||
+  result.productionStatus!=='NOT_CERTIFIED'||
+  JSON.stringify(result)!==JSON.stringify(recalculated))
+  fail('Conversion report does not match anonymous offline fixture');
+ const rows:unknown[][]=[
+  ['section','metric','value','qualification'],
+  ['source','scenario',result.scenario,'NO_REAL_FORM_SUBMISSION'],
+  ['source','status',result.status,'ANONYMOUS_SYNTHETIC_ONLY'],
+  ['funnel','virtual_visits',result.counts.visits,'NOT_OBSERVED_TRAFFIC'],
+  ['funnel','virtual_cta_clicks',result.counts.clicks,'NOT_OBSERVED_TRAFFIC'],
+  ['funnel','virtual_form_submissions',result.counts.submissions,'NOT_CRM_VERIFIED'],
+  ['funnel','virtual_qualified_leads',result.counts.qualified,'NOT_CRM_VERIFIED'],
+  ...Object.entries(result.rates).map(([key,value])=>
+   ['rate',key,value??'UNDEFINED_ZERO_DENOMINATOR','VIRTUAL_FUNNEL_ONLY']),
+  ['real','actual_visitors',0,'NO_REAL_WEBSITE'],
+  ['real','actual_leads_created',0,'NO_REAL_CRM'],
+  ['real','crm_handoffs_executed',0,'NO_REAL_CRM'],
+  ['real','legal_consent_verified','NO','SIMULATION_ONLY'],
+  ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
+ ];
+ return csv(rows);
 }

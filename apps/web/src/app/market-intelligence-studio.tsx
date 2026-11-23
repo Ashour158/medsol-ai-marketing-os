@@ -23,6 +23,7 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
  const [brief,setBrief]=useState<Brief|null>(null);
  const [sector,setSector]=useState("");
  const [query,setQuery]=useState("");
+ const [attention,setAttention]=useState<"ALL"|"RESEARCH_PRIORITY"|"STALE"|"SINGLE_SOURCE">("ALL");
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [loadedFor,setLoadedFor]=useState("");
@@ -44,7 +45,11 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
  const visible=loadedFor===scope?brief:null;
  const topics=(visible?.topics??[]).filter(x=>
   (!sector||x.sector.toLowerCase().includes(sector.trim().toLowerCase()))&&
-  (!query||x.topic.toLowerCase().includes(query.trim().toLowerCase())));
+  (!query||x.topic.toLowerCase().includes(query.trim().toLowerCase()))&&
+  (attention==="ALL"||
+   (attention==="RESEARCH_PRIORITY"&&x.priority==="RESEARCH_PRIORITY")||
+   (attention==="STALE"&&x.freshness==="STALE")||
+   (attention==="SINGLE_SOURCE"&&x.sourceCoverage==="SINGLE_OR_UNKNOWN_HOST")));
  return <section aria-label="Reviewed market intelligence" id="market-intelligence"
   style={shell}>
   <h3 style={{margin:"0 0 6px"}}>Market Intelligence · Reviewed Evidence</h3>
@@ -65,7 +70,24 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
     {visible.topics.length} grouped topics · source snapshot {visible.asOf}.
     Independent verification: <strong>not performed</strong>.
    </p>
+   <p style={{fontSize:12,color:"#475569"}}>
+    Evidence triage: {visible.topics.filter(x=>x.freshness==="STALE").length} stale
+    topic(s) · {visible.topics.filter(x=>x.priority==="RESEARCH_PRIORITY").length}
+    {" "}research-priority topic(s) ·
+    {" "}{visible.topics.filter(x=>x.sourceCoverage==="SINGLE_OR_UNKNOWN_HOST").length}
+    {" "}single/unknown source topic(s). This is a read-only review queue,
+    not a running watchlist, market fact verification or external crawler.
+   </p>
    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+    <label style={{fontSize:12}}>Evidence attention queue
+     <select style={{...control,display:"block"}} value={attention}
+      onChange={e=>setAttention(e.target.value as typeof attention)}>
+      <option value="ALL">All reviewed topics</option>
+      <option value="RESEARCH_PRIORITY">Research priority</option>
+      <option value="STALE">Stale evidence</option>
+      <option value="SINGLE_SOURCE">Single/unknown source</option>
+     </select>
+    </label>
     <label style={{fontSize:12}}>Filter sector
      <input style={{...control,display:"block"}} value={sector}
       onChange={e=>setSector(e.target.value)} maxLength={100}

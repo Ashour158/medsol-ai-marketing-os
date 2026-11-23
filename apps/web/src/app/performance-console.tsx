@@ -1,6 +1,7 @@
 "use client";
 import {useState} from "react";
 import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
+import SyntheticConversionLab from "./synthetic-conversion-lab";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
 type PerformanceSummary={status:string;campaign:{id:string;name:string};totals:Record<string,string>;
@@ -39,7 +40,7 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
   setBusy(true);setError("");setNotice("");
   try{await callback();}catch(e){setError(e instanceof Error?e.message:"Unexpected error");}finally{setBusy(false);}
  }
- return <div style={{border:"1px solid #dbe4ed",borderRadius:12,padding:18,marginTop:16,background:"#f8fafc"}}>
+ return <div id="performance" style={{border:"1px solid #dbe4ed",borderRadius:12,padding:18,marginTop:16,background:"#f8fafc",scrollMarginTop:110}}>
   <div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
    <div><h3 style={{margin:0}}>Measured campaign performance</h3>
     <p style={{fontSize:12,color:"#64748b",marginTop:5}}>Source-backed observations; imports are quarantined until an independent human reviews them.</p></div>
@@ -106,6 +107,7 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
      })}>Review performance evidence</button>
    </div>
   </div>}
+  <SyntheticConversionLab enabled={enabled}/>
   {error&&<p role="alert" style={{color:"#991b1b",marginTop:10}}>{error}</p>}
   {notice&&<p role="status" style={{color:"#166534",marginTop:10}}>{notice}</p>}
  </div>;
