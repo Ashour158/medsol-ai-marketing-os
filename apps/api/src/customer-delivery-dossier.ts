@@ -1,3 +1,4 @@
+import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
 /** T8A read-only cross-engine campaign dossier.
  * Reuses authoritative campaign, DAM, social, email, learning and performance
  * owners. No duplicate writes, customer-contact export or certification.
@@ -55,8 +56,10 @@ export function buildCustomerDeliveryDossier(
     market.independentVerification!==false||
     market.marketSizeVerified!==false)
   reject('Sources cannot authorize real effects, attribution or release');
- if(!journey.stages||Object.keys(journey.stages).length!==10||
-    Object.values(journey.stages).some(v=>typeof v!=='boolean'))
+ if(!journey.stages||Object.keys(journey.stages).length!==OFFLINE_CAMPAIGN_STAGE_KEYS.length||
+    Object.keys(journey.stages).some(k=>!OFFLINE_CAMPAIGN_STAGE_KEYS.includes(
+      k as typeof OFFLINE_CAMPAIGN_STAGE_KEYS[number]))||
+    OFFLINE_CAMPAIGN_STAGE_KEYS.some(k=>typeof journey.stages[k]!=='boolean'))
   reject('Expected the ten canonical offline journey stages');
  count(journey.creativeAssets,150);count(journey.publications,20);
  count(journey.emailSimulations,20);count(journey.learningSignals,20);
@@ -81,9 +84,8 @@ export function buildCustomerDeliveryDossier(
  const simulatedSocial=journey.publications.filter(p=>p.status==='SIMULATED'&&
   p.attempts.some(a=>a.mode==='SANDBOX'));
  const simulatedEmail=journey.emailSimulations.filter(e=>e.status==='SIMULATED');
- const stageEntries=Object.entries(journey.stages);
- const stages=stageEntries.map(([key,complete])=>({key,
-  status:complete?'OFFLINE_GATE_MET':'NOT_DEMONSTRATED'}));
+ const stages=OFFLINE_CAMPAIGN_STAGE_KEYS.map(key=>({key,
+  status:journey.stages[key]?'OFFLINE_GATE_MET':'NOT_DEMONSTRATED'}));
  const marketTopics=market.topics.slice(0,12).map(x=>({
   topic:x.topic.slice(0,180),sector:x.sector.slice(0,120),
   evidenceCount:x.evidenceCount,distinctSourceHosts:x.distinctSourceHosts,

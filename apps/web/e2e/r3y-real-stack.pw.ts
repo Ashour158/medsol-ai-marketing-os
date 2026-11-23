@@ -131,6 +131,13 @@ test('T04-012 real Chromium creates an objective and a durable workflow in Nest 
  await page.getByRole('button',{name:'Inspect all six engines'}).click();
  await expect(page.getByRole('status').filter({hasText:'offline gates met'}))
   .toContainText('NOT_CERTIFIED');
+ await expect(page.getByRole('link',{name:'Open creative workspace'}).first()).toBeVisible();
+ for(const pillar of ['creative','social','email','intelligence','conversion','commercial']){
+  const pending=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Export '+pillar+' evidence CSV'}).click();
+  const exported=await pending;
+  expect(exported.suggestedFilename()).toContain('-'+pillar+'.csv');
+ }
 });
 test('T04-013 new browser page rehydrates a real campaign without recreating owner state',async({page,request})=>{
  await authenticate(page,request);await studio(page);

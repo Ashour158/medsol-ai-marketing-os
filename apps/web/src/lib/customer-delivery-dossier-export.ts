@@ -1,3 +1,4 @@
+import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
 /** Unsigned operator exports of the server's read-only, sanitized dossier.
  * No CRM contacts, recipient identifiers, approval actors or provider secrets.
  */
@@ -35,11 +36,21 @@ export function validateDossierForExport(d:DeliveryDossier){
   d.signed!==false||d.independentlyVerified!==false||
   d.externalEffectsAuthorized!==false||d.realProviderDeliveryVerified!==false||
   d.offlineGatesTotal!==10||!Array.isArray(d.stages)||d.stages.length!==10||
-  d.stages.some(s=>!['OFFLINE_GATE_MET','NOT_DEMONSTRATED'].includes(s.status))||
+  d.stages.some((s,i)=>s.key!==OFFLINE_CAMPAIGN_STAGE_KEYS[i]||
+   !['OFFLINE_GATE_MET','NOT_DEMONSTRATED'].includes(s.status))||
   d.offlineGatesMet!==d.stages.filter(s=>s.status==='OFFLINE_GATE_MET').length||
+  !Array.isArray(d.missingOfflineGates)||
+  JSON.stringify(d.missingOfflineGates)!==JSON.stringify(d.stages.filter(s=>
+   s.status==='NOT_DEMONSTRATED').map(s=>s.key))||
   !d.pillars||d.pillars.social.realPostsPublished!==0||
   d.pillars.email.actualMessagesSent!==0||
+  d.pillars.email.legalConsentVerified!==false||
+  d.pillars.intelligence.sourceScope!=='TENANT_WIDE_NOT_CAMPAIGN_ATTRIBUTED'||
+  d.pillars.intelligence.marketClaimsIndependentlyVerified!==false||
+  d.pillars.conversion.crmQualifiedOutcomesVerified!==false||
   d.pillars.conversion.causalAttributionVerified!==false||
+  d.pillars.commercial.revenueVerified!==false||
+  d.pillars.commercial.spendCurrencyVerified!==false||
   d.pillars.commercial.roiVerified!==false)
   throw Error('Unsafe or incomplete operator dossier export');
  return d;
@@ -50,9 +61,12 @@ const cell=(v:unknown)=>{
  if(/^\s*[=+@-]/.test(value))value="'"+value;
  return '"'+value.replaceAll('"','""')+'"';
 };
-export function dossierCsv(d:DeliveryDossier){
+type DossierRow=[string,string,unknown,string];
+export const DOSSIER_PILLARS=['creative','social','email','intelligence','conversion','commercial'] as const;
+export type DossierPillar=typeof DOSSIER_PILLARS[number];
+function dossierRows(d:DeliveryDossier):DossierRow[]{
  validateDossierForExport(d);
- const rows:Array<[string,string,unknown,string]>=[
+ const rows:Array<DossierRow>=[
   ['report','campaign',d.campaign.name,'UNSIGNED_OFFLINE_ONLY'],
   ['report','campaign_id',d.campaign.id,'TENANT_SCOPED'],
   ['report','observed_at',d.observedAt,'OPERATOR_INSPECTION'],
@@ -71,6 +85,24 @@ export function dossierCsv(d:DeliveryDossier){
   ...d.pillars.commercial.evidenceWarnings.map(w=>
    ['commercial_warning',w,'PRESENT','REQUIRES_RECONCILIATION'] as [string,string,unknown,string])
  ];
- return [['section','metric','value','qualification'],...rows].map(r=>
+ return rows;
+}
+const encodeRows=(rows:DossierRow[])=>
+ [['section','metric','value','qualification'],...rows].map(r=>
   r.map(cell).join(',')).join('\r\n')+'\r\n';
+export function dossierCsv(d:DeliveryDossier){
+ return encodeRows(dossierRows(d));
+}
+/** Single-pillar export from the same sanitized dossier, never raw contact data. */
+export function dossierPillarCsv(d:DeliveryDossier,pillar:DossierPillar){
+ if(!DOSSIER_PILLARS.includes(pillar))
+  throw Error('Unsupported customer pillar');
+ const rows=dossierRows(d).filter(r=>r[0]===pillar);
+ if(rows.length===0)throw Error('Missing customer pillar evidence');
+ return encodeRows([
+  ['report','campaign_id',d.campaign.id,'TENANT_SCOPED'],
+  ['report','observed_at',d.observedAt,'OPERATOR_INSPECTION'],
+  ['report','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY'],
+  ...rows
+ ]);
 }

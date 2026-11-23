@@ -1,10 +1,11 @@
+import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
 import {describe,it,expect} from 'vitest';
 import {buildCustomerDeliveryDossier} from './customer-delivery-dossier.js';
 const now=new Date('2026-11-23T10:00:00Z');
 const journey=()=>({
  campaign:{id:'campaign-1',code:'MKT-001',name:'Offline scientific campaign',
   status:'APPROVED',brandId:'brand-1'},
- stages:Object.fromEntries(Array.from({length:10},(_,i)=>['stage'+i,i<7])),
+ stages:Object.fromEntries(OFFLINE_CAMPAIGN_STAGE_KEYS.map((key,i)=>[key,i<7])),
  creativeAssets:[{revisionId:'revision-1',publicationLinked:true,current:true,
   rightsReviewedAt:now,approvals:[{decision:'APPROVED'}]},
   {revisionId:'revision-2',publicationLinked:false,current:true,
@@ -78,6 +79,11 @@ describe('T8A six-engine read-only customer dossier',()=>{
   expect(()=>buildCustomerDeliveryDossier('tenant-1',
    {...journey(),stages:{brief:true}},performance(),market(),now))
    .toThrow('ten canonical');
+  const forged=journey();
+  forged.stages={...forged.stages,brandVerification:true};
+  delete forged.stages[OFFLINE_CAMPAIGN_STAGE_KEYS[0]!];
+  expect(()=>buildCustomerDeliveryDossier('tenant-1',forged,
+    performance(),market(),now)).toThrow('ten canonical');
   expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),
    {...performance(),totals:{leads:'-12'}},market(),now))
    .toThrow('metric');
