@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
+import {validateOfflineCreativeDownload} from "../lib/offline-creative-export";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
 type Brand={id:string;name:string};
@@ -182,6 +183,26 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
    ?selectedCreativeIsCurrent(journey.creativeAssets,creative)
    :!!creative&&!!preview&&preview.current===true&&
     preview.assetId===creative.assetId&&preview.revisionId===creative.revisionId;
+ function downloadCreative(format:"png"|"copy"){
+  if(!creative||!preview||!creativeIsCurrent||!manager){
+   setError("Load the current verified offline creative version before exporting");return;
+  }
+  try{
+   const exportable=validateOfflineCreativeDownload(creative,preview);
+   const isPng=format==="png";
+   const url=isPng?exportable.pngDataUrl:URL.createObjectURL(new Blob(
+    [exportable.editableCopy],{type:"text/plain;charset=utf-8"}));
+   const link=document.createElement("a");
+   link.href=url;link.download=isPng?exportable.pngFilename:exportable.copyFilename;
+   document.body.appendChild(link);link.click();link.remove();
+   if(!isPng)setTimeout(()=>URL.revokeObjectURL(url),1000);
+   setError("");
+   setNotice("Downloaded existing current offline creative version "+exportable.version+
+    ". This is a flattened preview/copy, not editable layered design source.");
+  }catch(e){
+   setError(e instanceof Error?e.message:"Creative export denied");
+  }
+ }
  const blocked=!identity||busy;
  const approve=async(approvalId:string)=>{
   if(!identity)throw new Error("Sign in as a different authorized human reviewer");
@@ -443,6 +464,16 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
        style={{maxWidth:"100%",border:"1px solid #cbd5e1",borderRadius:8}}/>
       <p style={{fontSize:12}}>Flattened PNG preview only. The text copy can be edited
        in a new draft; layered image source is not claimed.</p>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+       <button type="button" style={secondary}
+        disabled={blocked||!manager||!creative||!creativeIsCurrent}
+        onClick={()=>downloadCreative("png")}>
+        Download verified flattened PNG</button>
+       <button type="button" style={secondary}
+        disabled={blocked||!manager||!creative||!creativeIsCurrent}
+        onClick={()=>downloadCreative("copy")}>
+        Export editable draft copy (.txt)</button>
+      </div>
     </div>}
    </div>
 
