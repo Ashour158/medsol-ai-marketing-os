@@ -18,6 +18,7 @@ import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 import CampaignReadinessBoard from "./campaign-readiness-board";
 import CustomerDeliveryDossierStudio from "./customer-delivery-dossier-studio";
+import {gapCounts,gapInventoryCsv} from "../lib/blueprint-gap-register";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -294,6 +295,27 @@ export default function Home() {
         })}>Inspect full engine, brain and workflow inventory</button>
         {blueprintInventory && <>
           <p style={{fontWeight:700}}>v{blueprintInventory.version}: {blueprintInventory.counts.engines} engines · {blueprintInventory.counts.workflows} workflows · {blueprintInventory.counts.studios} studios · {blueprintInventory.counts.brains} brain roles · {blueprintInventory.counts.personas} personas</p>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+            <p style={{margin:0,fontSize:12,color:"#475569"}}>
+              {Object.entries(gapCounts(blueprintInventory).byState).map(([state,count])=>
+                state.replaceAll("_"," ")+": "+count).join(" · ")}
+              {" "}· Registry classification only; not live feature verification.
+            </p>
+            <button type="button" onClick={()=>{
+              try{
+                const csv=gapInventoryCsv(blueprintInventory);
+                const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+                const anchor=document.createElement("a");
+                anchor.href=url;anchor.download="medsol-blueprint-v2-1-77-capability-gap-register.csv";
+                document.body.appendChild(anchor);anchor.click();anchor.remove();
+                setTimeout(()=>URL.revokeObjectURL(url),1000);
+                setError("");
+              }catch(e){setError(e instanceof Error?e.message:"Gap register export denied");}
+            }} style={{padding:"8px 12px",borderRadius:8,border:"1px solid #94a3b8",
+              background:"#fff",cursor:"pointer"}}>
+              Export 36-engine + 41-workflow gaps (unsigned CSV)
+            </button>
+          </div>
           {([
             ["Engines",blueprintInventory.engines],["Workflows",blueprintInventory.workflows],
             ["Studios",blueprintInventory.studios]
