@@ -11,7 +11,8 @@ const canAudit=(identity:Identity|null)=>!!identity&&
  ["SUPER_ADMIN","ADMIN","MARKETING_DIRECTOR","CMO"].includes(identity.role.toUpperCase());
 async function get(path:string,signal?:AbortSignal){
  const response=await fetch("/api/marketing/"+path,{
-  method:"GET",credentials:"same-origin",cache:"no-store",signal});
+  method:"GET",credentials:"same-origin",cache:"no-store",
+  ...(signal?{signal}:{})});
  let value:unknown;
  try{value=await response.json();}catch{throw Error("Invalid API response; retry the inspection");}
  if(!response.ok){
