@@ -239,7 +239,7 @@ export function discussionTriageCsv(r:DiscussionTriageExport){
   new Set(r.escalations).size!==r.escalations.length||
   r.escalations.some(x=>!escalationTypes.includes(x))||
   (r.escalations.length>0&&r.disposition!=='HUMAN_REVIEW_REQUIRED')||
-  (r.disposition!=='ANSWERED'&&r.answerRecordedNotScientificallyVerified))
+  (r.disposition==='ANSWERED')!==r.answerRecordedNotScientificallyVerified)
   fail('Triage export must remain a bounded original-agent human decision suggestion');
  return csv([
   ['section','metric','value','qualification'],
