@@ -17,7 +17,7 @@ const journey=()=>({
  productionCertified:false,realProvidersConnectedByJourney:false
 });
 const performance=()=>({
- campaign:{id:'campaign-1'},status:'REVIEWED_SOURCE_EVIDENCE',
+ organizationId:'tenant-1',campaign:{id:'campaign-1'},status:'REVIEWED_SOURCE_EVIDENCE',
  totals:{leads:'12',qualified_leads:'5',spend_micros:'12000000'},
  derived:{ctrPercent:null,clickToLeadPercent:null,
   leadQualificationPercent:41.66,spendMicrosPerLead:'1000000',
@@ -27,7 +27,7 @@ const performance=()=>({
  independentlyVerified:false,providerAccessToken:'secret-provider-token'
 });
 const market=()=>({
- topics:[{topic:'Molecular research',sector:'Biotechnology',evidenceCount:3,
+ organizationId:'tenant-1',topics:[{topic:'Molecular research',sector:'Biotechnology',evidenceCount:3,
   distinctSourceHosts:2,priority:'RESEARCH_PRIORITY',freshness:'OBSERVED_WITHIN_90_DAYS'}],
  processed:3,independentVerification:false,marketSizeVerified:false
 });
@@ -58,6 +58,10 @@ describe('T8A six-engine read-only customer dossier',()=>{
  it('rejects cross-campaign source mixing and falsified certification or attribution',()=>{
   expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),{
    ...performance(),campaign:{id:'campaign-2'}},market(),now)).toThrow('source binding');
+  expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),{
+   ...performance(),organizationId:'foreign'},market(),now)).toThrow('source binding');
+  expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),
+   performance(),{...market(),organizationId:'foreign'},now)).toThrow('source binding');
   for(const override of [{attributionValidated:true},{roiValidated:true},
    {revenueVerified:true},{independentlyVerified:true}]){
    expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),
