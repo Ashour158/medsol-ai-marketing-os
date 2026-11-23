@@ -1,15 +1,12 @@
 "use client";
 import {useState} from "react";
+import {emailSimulationCsv,saveOfflineCsv,type EmailTrialExport}
+ from "../lib/offline-evidence-csv";
 
 type Identity={organizationId:string;userId:string;role:string};
 type Contact={contactId:string;syntheticRecipientRef:string;
  latestSimulatedConsent:string;syntheticOnly:true};
-type EmailResult={simulationId:string;status:string;audienceDigest:string;
- replayed:boolean;results:{syntheticRecipients:number;syntheticEligible:number;
- withdrawn:number;complaintSuppressed:number;missingConsent:number;
- actualMessagesSent:0;verifiedProviderReceipts:0;
- syntheticJourneyPlan?:{requiresFreshConsentAtExecution:true;steps:Array<{
- key:string;scheduledAt:string;scenario:string;virtualOutcomeUnknown:number}>}|null}};
+type EmailResult=EmailTrialExport&{simulationId:string;audienceDigest:string};
 const btn={background:"#124d83",color:"white",border:0,borderRadius:8,
  padding:"10px 14px",fontWeight:650,cursor:"pointer"} as const;
 const field={padding:"8px",border:"1px solid #cbd5e1",borderRadius:7,
@@ -196,6 +193,13 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     Complaint-suppressed: {result.results.complaintSuppressed} ·
     Missing opt-in: {result.results.missingConsent}</p>
    <p>Actual emails sent: <strong>0</strong> · Verified external receipts: <strong>0</strong></p>
+   <button type="button" style={{...btn,background:"#475569",marginTop:8}}
+    disabled={busy||!enabled}
+    onClick={()=>{
+     try{saveOfflineCsv(emailSimulationCsv(result),
+      "medsol-email-simulation-evidence.csv");setError("");}
+     catch(e){setError(e instanceof Error?e.message:"Synthetic email export denied");}
+    }}>Export synthetic email evidence (unsigned CSV)</button>
    {result.results.syntheticJourneyPlan&&<details open>
     <summary>Virtual journey schedule · Fresh consent required at execution</summary>
     <table style={{width:"100%",fontSize:12,marginTop:8}}>
