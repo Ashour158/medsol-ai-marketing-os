@@ -1,3 +1,4 @@
+import {buildCustomerDeliveryDossier} from './customer-delivery-dossier.js';
 import {assertStartupAuthConfiguration} from './runtime-auth-configuration.js';
 import {AgentManifestReleaseService} from './agent-manifest-release.service.js';
 import {ensureRuntimeReady,type RuntimeRole} from './deployment-readiness.js';
@@ -10,6 +11,15 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  }catch{throw new ServiceUnavailableException('Application not ready')}} @Post('marketing/sessions') createSession(@Body() b:any,@Req() req:any){if(!req.identity)throw new ForbiddenException('OIDC required');return this.sessions.register(req.identity.organizationId,req.identity.userId,b?.expiresAt)} @Post('marketing/sessions/revoke') revokeSession(@Req() req:any){if(!req.identity)throw new ForbiddenException('OIDC required');return this.sessions.revoke(req.identity.organizationId,req.identity.userId,req.headers['x-marketing-session-id'])} @Get('marketing/me') me(@Req() req:any){if(!req.identity)throw new ForbiddenException('Verified OIDC identity required');return {userId:req.identity.userId,organizationId:req.identity.organizationId,email:req.identity.email,role:req.identity.role}}
  @Get('marketing/journeys/:id') offlineJourney(@Req() req:any,@Param('id') id:string){
   return this.reads.offlineJourney(req.identity.organizationId,id);
+ }
+ @Get('marketing/journeys/:id/dossier') async customerDeliveryDossier(@Req() req:any,@Param('id') id:string){
+  const organizationId=req.identity.organizationId;
+  const [journey,performance,market]=await Promise.all([
+   this.reads.offlineJourney(organizationId,id),
+   this.performance.summary(organizationId,id),
+   this.learning.trendBrief(organizationId)
+  ]);
+  return buildCustomerDeliveryDossier(organizationId,journey,performance,market,new Date());
  }
  @Get('marketing/agents/manifests/baseline/:id') agentManifestBaseline(@Req() req:any,@Param('id') id:string){return this.agentManifests.baseline(req.identity.organizationId,req.identity,id)}
  @Get('marketing/agents/manifests') agentManifestsList(@Req() req:any){return this.agentManifests.list(req.identity.organizationId,req.identity,req.query?.agentId)}
