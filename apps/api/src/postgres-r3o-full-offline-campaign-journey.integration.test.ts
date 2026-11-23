@@ -1,3 +1,4 @@
+import {buildCustomerDeliveryDossier} from './customer-delivery-dossier.js';
 import {describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
@@ -223,6 +224,22 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    expect(timeline.offlineSimulationOnly).toBe(true);
    expect(timeline.externalEffectsAuthorized).toBe(false);
    expect(timeline.observations).toEqual([]);
+   const dossier=buildCustomerDeliveryDossier(org,timeline,
+    await performance.summary(org,campaignId),
+    await learning.trendBrief(org),new Date());
+   expect(dossier).toMatchObject({
+    schema:'medsol.customer_delivery_dossier.v1',
+    offlineGatesMet:9,productionStatus:'NOT_CERTIFIED',
+    pillars:{creative:{currentLinkedRightsAndApprovalReviewed:1},
+     social:{sandboxSimulated:1,realPostsPublished:0},
+     email:{syntheticSimulations:1,actualMessagesSent:0},
+     conversion:{reviewedQualifiedLeadCount:null,causalAttributionVerified:false},
+     commercial:{roiVerified:false}},
+    signed:false,externalEffectsAuthorized:false
+   });
+   expect(JSON.stringify(dossier)).not.toContain(contact.contactId);
+   await expect(reads.offlineJourney(other,campaignId)).rejects.toThrow('not found');
+
    expect(timeline.publications[0]!.attempts[0]!.mode).toBe('SANDBOX');
    expect(await db.providerCredential.count({where:{organizationId:org}})).toBe(0);
    expect(await db.modelUsage.count({where:{organizationId:org}})).toBe(0);

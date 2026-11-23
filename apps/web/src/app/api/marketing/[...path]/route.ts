@@ -17,8 +17,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   if (!resource || !routes.has(resource) || (path.length > 5 && !(resource==="tenancy" && request.method==="GET" &&
        [6,7].includes(path.length))) ||
       (resource === "me" && (path.length !== 1 || request.method !== "GET")) ||
-      (resource === "journeys" && !(path.length === 2 && !!id &&
-        /^[A-Za-z0-9_-]{1,128}$/.test(id) && request.method === "GET")) ||
+      (resource === "journeys" && !((path.length === 2 || (path.length === 3 && action === "dossier")) &&
+        !!id && /^[A-Za-z0-9_-]{1,128}$/.test(id) && request.method === "GET")) ||
       (resource === "architecture" && !(
         (path.length===2&&id==="readiness"&&request.method==="GET")||
         (path.length===4&&id==="runs"&&!!action&&operation==="recovery"&&request.method==="GET")||

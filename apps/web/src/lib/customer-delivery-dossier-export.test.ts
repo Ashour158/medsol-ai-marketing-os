@@ -1,0 +1,57 @@
+import {describe,it,expect} from 'vitest';
+import {dossierCsv,validateDossierForExport,type DeliveryDossier} from './customer-delivery-dossier-export';
+const fixture=():DeliveryDossier=>({
+ schema:'medsol.customer_delivery_dossier.v1',organizationId:'tenant-a',
+ campaign:{id:'campaign-1',code:'OFFLINE',name:'=HYPERLINK("http://evil.invalid")',
+  status:'APPROVED',brandId:'brand-a'},
+ observedAt:'2026-11-23T10:00:00.000Z',status:'OFFLINE_EVIDENCE_ONLY',
+ offlineGatesMet:8,offlineGatesTotal:10,
+ stages:Array.from({length:10},(_,i)=>({key:'stage'+i,
+  status:i<8?'OFFLINE_GATE_MET' as const:'NOT_DEMONSTRATED' as const})),
+ missingOfflineGates:['stage8','stage9'],
+ pillars:{
+  creative:{brandScopedDraftRevisions:1,campaignLinkedRevisions:1,
+   currentLinkedRightsAndApprovalReviewed:1,status:'APPROVED_OFFLINE_SCOPE'},
+  social:{publicationIntents:1,sandboxSimulated:1,status:'SANDBOX_ONLY',realPostsPublished:0},
+  email:{syntheticSimulations:1,status:'SYNTHETIC_ONLY',actualMessagesSent:0,
+   legalConsentVerified:false},
+  intelligence:{tenantWideReviewedTopics:[],tenantWideReviewedSignals:3,
+   campaignLinkedQuarantinedSignals:1,
+   sourceScope:'TENANT_WIDE_NOT_CAMPAIGN_ATTRIBUTED',
+   marketClaimsIndependentlyVerified:false},
+  conversion:{reviewedLeadCount:'12',reviewedQualifiedLeadCount:'5',
+   clickToLeadPercent:null,leadQualificationPercent:41.66,
+   crmQualifiedOutcomesVerified:false,causalAttributionVerified:false},
+  commercial:{sourceStatus:'REVIEWED_SOURCE_EVIDENCE',
+   reviewedTotals:{leads:'12',qualified_leads:'5'},
+   derived:{ctrPercent:null},pendingReviewCount:1,
+   evidenceWarnings:['OBSERVATION_COHORTS_NOT_RECONCILED'],
+   revenueVerified:false,roiVerified:false,spendCurrencyVerified:false}
+ },
+ limitations:['No real provider effects'],signed:false,independentlyVerified:false,
+ externalEffectsAuthorized:false,realProviderDeliveryVerified:false,
+ productionStatus:'NOT_CERTIFIED'
+});
+describe('T8A operator dossier export safety',()=>{
+ it('exports all six sections with explicit offline qualifications and CSV formula protection',()=>{
+  const csv=dossierCsv(fixture());
+  for(const section of ['creative','social','email','intelligence','conversion','commercial'])
+   expect(csv).toContain('"'+section+'"');
+  expect(csv).toContain("'=HYPERLINK");
+  expect(csv).toContain('NOT_CERTIFIED');
+  expect(csv).not.toContain('actual-recipient');
+ });
+ it('refuses forged release, real delivery, attribution and missing stage evidence',()=>{
+  for(const change of [
+   {productionStatus:'CERTIFIED'},{signed:true},
+   {externalEffectsAuthorized:true},{independentlyVerified:true}
+  ]){
+   expect(()=>validateDossierForExport({...fixture(),...change} as DeliveryDossier))
+    .toThrow('Unsafe');
+  }
+  const real=fixture();real.pillars.social.realPostsPublished=1 as 0;
+  expect(()=>dossierCsv(real)).toThrow('Unsafe');
+  const broken=fixture();broken.stages.pop();
+  expect(()=>dossierCsv(broken)).toThrow('Unsafe');
+ });
+});

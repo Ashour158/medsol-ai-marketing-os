@@ -27,6 +27,8 @@ describe('centralized marketing authorization', () => {
     expect(permissionForMarketingRoute('POST','/marketing/approvals/decide')).toBe('DECIDE_APPROVAL');
     expect(permissionForMarketingRoute('POST','/marketing/workflows/abc/resume')).toBe('RESUME_WORKFLOW');
     expect(permissionForMarketingRoute('GET','/marketing/campaigns/abc')).toBe('READ_AUDIT');
+    expect(permissionForMarketingRoute('GET','/marketing/journeys/abc/dossier')).toBe('READ_AUDIT');
+    expect(hasMarketingPermission(identity('VIEWER'),'READ_AUDIT')).toBe(false);
     expect(() => assertMarketingPermission(identity('USER'),'MANAGE_OBJECTIVE')).toThrow('permission denied');
   });
 });
