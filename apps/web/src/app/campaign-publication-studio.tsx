@@ -1,5 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
+import {socialSimulationCsv,saveOfflineCsv,type SocialTrialExport}
+ from "../lib/offline-evidence-csv";
 
 type Identity={userId:string;organizationId:string;email:string;role:string};
 const SIMULATED_SCENARIOS=["SUCCESS","POLICY_REJECTED","RATE_LIMITED","TOKEN_EXPIRED",
@@ -7,11 +9,9 @@ const SIMULATED_SCENARIOS=["SUCCESS","POLICY_REJECTED","RATE_LIMITED","TOKEN_EXP
  "TIMEOUT_AFTER_ACCEPT","WEBHOOK_BEFORE_READBACK","DUPLICATE_CALLBACK",
  "READBACK_MISMATCH"] as const;
 type ProviderScenario=typeof SIMULATED_SCENARIOS[number];
-type SimulationReport={status:string;replayed:boolean;sandboxReceiptOnly:true;
- simulation:{providerKey:string;scenario:ProviderScenario;outcome:string;
- transport:string;readback:string;virtualCallbackCount:number;
- deduplicatedVirtualCallbackCount:number;simulatedRemotePostRef:string|null;
- verifiedRemoteReceipts:0;realProviderRequests:0;automaticRetryAllowed:false}};
+type SimulationReport=SocialTrialExport&{
+ simulation:SocialTrialExport["simulation"]&{simulatedRemotePostRef:string|null}
+};
 
 type Campaign={id:string;code:string;name:string;status:string;brandId:string|null};
 type Publication={id:string;campaignId:string;approvalId:string;status:string;
@@ -235,6 +235,13 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
         Deduplicated: {simulationReport.simulation.deduplicatedVirtualCallbackCount}</p>
        <p>Actual provider requests: 0 · Verified real receipts: 0 ·
         Automatic retry: disabled</p>
+       <button type="button" style={{...btn,background:"#475569",marginTop:8}}
+        disabled={busy||!canSimulate}
+        onClick={()=>{
+         try{saveOfflineCsv(socialSimulationCsv(simulationReport),
+          "medsol-social-simulation-evidence.csv");setError("");}
+         catch(e){setError(e instanceof Error?e.message:"Simulated social export denied");}
+        }}>Export simulated social evidence (unsigned CSV)</button>
       </div>}
      </section>
      <section aria-label="Source-reconciled provider delivery evidence" style={{marginTop:16,padding:14,

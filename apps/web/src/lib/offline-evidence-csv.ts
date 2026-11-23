@@ -89,3 +89,94 @@ export function saveOfflineCsv(content:string,name:string){
  anchor.href=url;anchor.download=name;document.body.appendChild(anchor);
  anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
+/**
+ * Exports of *existing* social and email simulation responses only; not
+ * provider receipts or legal consent. Never serialize raw transport payloads,
+ * sender/recipient addresses, provider references, tokens or contact IDs.
+ */
+export type SocialTrialExport={
+ status:'SIMULATED'|'BLOCKED'|'OUTCOME_UNKNOWN';
+ replayed:boolean;sandboxReceiptOnly:true;externalEffectsAuthorized:false;
+ simulation:{providerKey:string;scenario:string;outcome:string;transport:string;
+  readback:string;virtualCallbackCount:number;deduplicatedVirtualCallbackCount:number;
+  realProviderRequests:0;verifiedRemoteReceipts:0;automaticRetryAllowed:false;
+  externalEffectsAuthorized:false};
+};
+const boundedCount=(value:unknown)=>
+ Number.isSafeInteger(value)&&Number(value)>=0&&Number(value)<=10000;
+const enumToken=(s:unknown)=>typeof s==='string'&&
+ /^[A-Z][A-Z0-9_]{0,79}$/.test(s);
+export function socialSimulationCsv(report:SocialTrialExport){
+ const r=report?.simulation;
+ if(!r||!['SIMULATED','BLOCKED','OUTCOME_UNKNOWN'].includes(report.status)||
+  report.status!==r.outcome||typeof report.replayed!=='boolean'||
+  report.sandboxReceiptOnly!==true||report.externalEffectsAuthorized!==false||
+  r.realProviderRequests!==0||r.verifiedRemoteReceipts!==0||
+  r.externalEffectsAuthorized!==false||r.automaticRetryAllowed!==false||
+  ![r.providerKey,r.scenario,r.outcome,r.transport,r.readback].every(enumToken)||
+  !boundedCount(r.virtualCallbackCount)||
+  !boundedCount(r.deduplicatedVirtualCallbackCount)||
+  r.deduplicatedVirtualCallbackCount>r.virtualCallbackCount)
+  fail('Social simulator provenance or safety invariants not verified');
+ return csv([
+  ['section','metric','value','qualification'],
+  ['social','provider_key',r.providerKey,'SIMULATED_PLATFORM_KEY_ONLY'],
+  ['social','scenario',r.scenario,'SYNTHETIC_RESPONSE'],
+  ['social','outcome',r.outcome,'NOT_REMOTE_DELIVERY'],
+  ['social','transport',r.transport,'SYNTHETIC_TRANSPORT'],
+  ['social','readback',r.readback,'SYNTHETIC_READBACK'],
+  ['social','virtual_callbacks',r.virtualCallbackCount,'NO_REAL_WEBHOOK'],
+  ['social','deduplicated_virtual_callbacks',r.deduplicatedVirtualCallbackCount,'NO_REAL_WEBHOOK'],
+  ['social','replay',report.replayed?'YES':'NO','OFFLINE_IDEMPOTENCY_ONLY'],
+  ['social','real_provider_requests',0,'NOT_CONNECTED'],
+  ['social','verified_remote_receipts',0,'NOT_CONNECTED'],
+  ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
+ ]);
+}
+export type EmailTrialExport={
+ status:'SIMULATED'|'BLOCKED';externalEffectsAuthorized:false;
+ replayed:boolean;
+ results:{syntheticRecipients:number;syntheticEligible:number;withdrawn:number;
+  complaintSuppressed:number;missingConsent:number;
+  actualMessagesSent:0;verifiedProviderReceipts:0;
+  syntheticJourneyPlan?:{requiresFreshConsentAtExecution:true;
+   steps:Array<{key:string;scheduledAt:string;scenario:string;
+    virtualOutcomeUnknown:number}>}|null};
+};
+export function emailSimulationCsv(report:EmailTrialExport){
+ const r=report?.results;
+ if(!r||!['SIMULATED','BLOCKED'].includes(report.status)||
+  report.externalEffectsAuthorized!==false||typeof report.replayed!=='boolean'||
+  r.actualMessagesSent!==0||r.verifiedProviderReceipts!==0||
+  ![r.syntheticRecipients,r.syntheticEligible,r.withdrawn,r.complaintSuppressed,
+   r.missingConsent].every(boundedCount)||
+  r.syntheticEligible+r.withdrawn+r.complaintSuppressed+r.missingConsent>
+   r.syntheticRecipients||
+  (report.status==='SIMULATED')!==(r.syntheticEligible>0))
+  fail('Synthetic email eligibility or no-delivery invariants not verified');
+ const steps=r.syntheticJourneyPlan?.steps??[];
+ if((r.syntheticJourneyPlan!=null&&
+   (r.syntheticJourneyPlan.requiresFreshConsentAtExecution!==true||
+    !Array.isArray(r.syntheticJourneyPlan.steps)))||
+  steps.length>20||steps.some(s=>!s||typeof s.key!=='string'||
+   !/^[A-Za-z0-9_-]{1,64}$/.test(s.key)||!enumToken(s.scenario)||
+   !Number.isFinite(Date.parse(s.scheduledAt))||
+   !boundedCount(s.virtualOutcomeUnknown)))
+  fail('Invalid or unsafe synthetic mail schedule');
+ return csv([
+  ['section','metric','value','qualification'],
+  ['email','scenario_status',report.status,'NO_REAL_DELIVERY'],
+  ['email','synthetic_recipients',r.syntheticRecipients,'ANONYMOUS_SYNTHETIC_ONLY'],
+  ['email','eligible_simulations',r.syntheticEligible,'MOCK_OPT_IN_NOT_LEGAL_CONSENT'],
+  ['email','withdrawn',r.withdrawn,'SYNTHETIC_SUPPRESSION'],
+  ['email','complaint_suppressed',r.complaintSuppressed,'SYNTHETIC_SUPPRESSION'],
+  ['email','no_mock_opt_in',r.missingConsent,'SYNTHETIC_SUPPRESSION'],
+  ...steps.map(s=>['virtual_step',s.key,s.scheduledAt,
+    'SIMULATED_'+s.scenario+'_OUTCOME_UNKNOWN_'+s.virtualOutcomeUnknown]),
+  ['email','actual_messages_sent',0,'NOT_CONNECTED'],
+  ['email','verified_remote_receipts',0,'NOT_CONNECTED'],
+  ['email','legal_consent_verified','NO','MOCK_CONSENT_IS_NOT_LEGAL_PROOF'],
+  ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
+ ]);
+}
