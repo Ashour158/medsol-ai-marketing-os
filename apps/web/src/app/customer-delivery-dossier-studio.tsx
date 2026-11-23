@@ -50,6 +50,17 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
   return()=>{controller.abort();serial.current++;};
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[key]);
+ async function refreshCampaigns(){
+  if(!canAudit(identity)||busy)return;
+  const current=++serial.current;setBusy(true);setError("");
+  try{
+   const result=await get("campaigns");
+   if(!Array.isArray(result)||result.length>100)throw Error("Campaign listing invalid");
+   if(current===serial.current)setCampaigns((result as Campaign[]).filter(x=>!!x.brandId));
+  }catch(e){
+   if(current===serial.current)setError(e instanceof Error?e.message:"Campaigns unavailable");
+  }finally{if(current===serial.current)setBusy(false);}
+ }
  async function inspect(){
   if(!identity||!canAudit(identity)||!campaignId||busy)return;
   const current=++serial.current;
@@ -116,6 +127,8 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
       {campaigns.map(c=><option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
      </select>
     </label>
+    <button type="button" style={{...btn,background:"#475569"}} disabled={busy}
+     onClick={()=>void refreshCampaigns()}>Refresh campaign list</button>
     <button type="button" style={btn} disabled={!campaignId||busy}
      onClick={()=>void inspect()}>{busy?"Inspecting…":"Inspect all six engines"}</button>
     <button type="button" style={{...btn,background:"#475569"}} disabled={!dossier}
