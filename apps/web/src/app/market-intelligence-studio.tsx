@@ -1,5 +1,6 @@
 "use client";
 import {useState} from "react";
+import {reviewedMarketCsv,saveOfflineCsv} from "../lib/offline-evidence-csv";
 
 type Identity={userId:string;organizationId:string;role:string}|null;
 type MarketTopic={topic:string;sector:string;evidenceCount:number;
@@ -74,6 +75,12 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
       onChange={e=>setQuery(e.target.value)} maxLength={100}
       placeholder="e.g. proteomics"/></label>
    </div>
+   <button type="button" style={{...control,marginTop:12,cursor:"pointer"}}
+    onClick={()=>{
+     try{saveOfflineCsv(reviewedMarketCsv(visible,topics,identity.organizationId),
+      "medsol-reviewed-market-signals.csv");setError("");}
+     catch(e){setError(e instanceof Error?e.message:"Market export blocked");}
+    }}>Export filtered reviewed intelligence (unsigned CSV)</button>
    <div style={{display:"grid",gap:12,marginTop:14}}>
     {topics.map(x=><article key={x.sector+"::"+x.topic} style={{
       border:"1px solid #dbe4ed",borderRadius:9,padding:12}}>
