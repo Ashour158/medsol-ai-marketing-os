@@ -1,6 +1,7 @@
 "use client";
 import {useState} from "react";
-import {modelOfflineRevenueScenarios} from "../lib/offline-revenue-scenarios";
+import {modelOfflineRevenueScenarios,type RevenueScenarioInput} from "../lib/offline-revenue-scenarios";
+import {revenueScenarioCsv,saveOfflineCsv} from "../lib/offline-evidence-csv";
 
 /**
  * Hypothesis workspace over the EXISTING reviewed performance read model.
@@ -15,13 +16,16 @@ export default function OfflineRevenueScenarioStudio({summary}:{
  const [closePercent,setClosePercent]=useState("10");
  const [marginPercent,setMarginPercent]=useState("35");
  const [result,setResult]=useState<ReturnType<typeof modelOfflineRevenueScenarios>|null>(null);
+ const [exportInput,setExportInput]=useState<RevenueScenarioInput|null>(null);
  const [error,setError]=useState("");
  const qualified=summary.totals.qualified_leads;
  const ready=summary.status==="REVIEWED_SOURCE_EVIDENCE"&&
   typeof qualified==="string";
  const field={width:"100%",padding:8,boxSizing:"border-box" as const,
   background:"#fff",border:"1px solid #cbd5e1",borderRadius:7,marginTop:5};
- const change=(setter:(s:string)=>void)=>(s:string)=>{setter(s);setResult(null);setError("");};
+ const change=(setter:(s:string)=>void)=>(s:string)=>{
+  setter(s);setResult(null);setExportInput(null);setError("");
+ };
  const formatMoney=(v:string)=>BigInt(v).toLocaleString("en-US");
  const formatDeals=(v:string)=>{
   const n=BigInt(v);return (n/100n).toLocaleString("en-US")+"."+
@@ -33,15 +37,17 @@ export default function OfflineRevenueScenarioStudio({summary}:{
    if(!/^\d{1,3}$/.test(closePercent)||!/^\d{1,3}$/.test(marginPercent))
     throw Error("Use whole-number percentage assumptions between 0 and 100");
    const close=Number(closePercent),margin=Number(marginPercent);
-   const output=modelOfflineRevenueScenarios({
+   const assumptions:RevenueScenarioInput={
     reviewedQualifiedLeads:qualified!,
     sourceStatus:"REVIEWED_SOURCE_EVIDENCE",
     currency:currency.trim().toUpperCase(),
     assumedDealValueMajor:dealValue.trim(),
     closeRateBasisPoints:close*100,marginBasisPoints:margin*100
-   });
-   setResult(output);setError("");
-  }catch(e){setResult(null);setError(e instanceof Error?e.message:"Scenario invalid");}
+   };
+   const output=modelOfflineRevenueScenarios(assumptions);
+   setResult(output);setExportInput(assumptions);setError("");
+  }catch(e){setResult(null);setExportInput(null);
+   setError(e instanceof Error?e.message:"Scenario invalid");}
  }
  return <section aria-label="Offline revenue scenario workbench" style={{
   marginTop:18,border:"1px solid #cbd5e1",padding:14,borderRadius:10,
@@ -94,6 +100,15 @@ export default function OfflineRevenueScenarioStudio({summary}:{
       {formatMoney(x.illustrativeGrossContributionMajor)}</td>
     </tr>)}</tbody>
    </table>
+   <button type="button" disabled={!exportInput}
+    style={{marginTop:12,padding:"9px 13px",borderRadius:7,border:0,
+     background:"#475569",color:"white",cursor:"pointer"}}
+    onClick={()=>{
+     if(!exportInput)return;
+     try{saveOfflineCsv(revenueScenarioCsv(exportInput,result,summary.campaign.id),
+      "medsol-hypothetical-revenue-scenarios.csv");setError("");}
+     catch(e){setError(e instanceof Error?e.message:"Scenario export blocked");}
+    }}>Export hypothetical scenarios (unsigned CSV)</button>
    <p style={{fontSize:12,color:"#475569"}}>
     Downside = half the assumed base close rate; upside = 1.5× (capped at 100%).
     Figures are transparent deterministic arithmetic, not audited predictions.
