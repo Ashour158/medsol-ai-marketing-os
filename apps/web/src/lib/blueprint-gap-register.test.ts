@@ -22,9 +22,9 @@ describe('T8B blueprint gap export',()=>{
  it('rejects forged counts, reordered/duplicate IDs and fake runtime statuses',()=>{
   const f=fixture();f.counts.engines=35;
   expect(()=>gapInventoryCsv(f)).toThrow();
-  const g=fixture();g.workflows[0].id='WF02';
+  const g=fixture();g.workflows[0]!.id='WF02';
   expect(()=>gapInventoryCsv(g)).toThrow();
-  const h=fixture();h.engines[0].state='PRODUCTION_CERTIFIED';
+  const h=fixture();h.engines[0]!.state='PRODUCTION_CERTIFIED';
   expect(()=>gapInventoryCsv(h)).toThrow();
   const z=fixture();z.targetStateOnly=false;
   expect(()=>gapInventoryCsv(z)).toThrow();
