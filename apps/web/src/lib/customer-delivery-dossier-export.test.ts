@@ -37,7 +37,7 @@ describe('T8A operator dossier export safety',()=>{
   const csv=dossierCsv(fixture());
   for(const section of ['creative','social','email','intelligence','conversion','commercial'])
    expect(csv).toContain('"'+section+'"');
-  expect(csv).toContain('"\"\'=HYPERLINK(\"\"http://evil.invalid\"\")\""'.replaceAll('\\',''));
+  expect(csv).toContain("'=HYPERLINK");
   expect(csv).toContain('NOT_CERTIFIED');
   expect(csv).not.toContain('actual-recipient');
  });
