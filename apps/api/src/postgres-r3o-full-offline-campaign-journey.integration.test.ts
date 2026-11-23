@@ -1,3 +1,4 @@
+import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
 import {buildCustomerDeliveryDossier} from './customer-delivery-dossier.js';
 import {describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
@@ -227,6 +228,8 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    const dossier=buildCustomerDeliveryDossier(org,timeline,
     await performance.summary(org,campaignId),
     await learning.trendBrief(org),new Date());
+   expect(dossier.stages.map(s=>s.key)).toEqual(OFFLINE_CAMPAIGN_STAGE_KEYS);
+   expect(dossier.missingOfflineGates).toEqual(['performanceReviewed']);
    expect(dossier).toMatchObject({
     schema:'medsol.customer_delivery_dossier.v1',
     offlineGatesMet:9,productionStatus:'NOT_CERTIFIED',
