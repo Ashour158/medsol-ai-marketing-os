@@ -6,7 +6,7 @@
 export type GapEntry={id:string;name:string;owner:string;release:string;state:string;
  blocker?:string;goal?:string};
 export type GapInventory={version:string;targetStateOnly:boolean;
- counts:{engines:number;workflows:number};engines:GapEntry[];workflows:GapEntry[]};
+ counts:Record<string,number>;engines:GapEntry[];workflows:GapEntry[]};
 export const GAP_STATES=['NOT_IMPLEMENTED','DRAFT_ONLY','PARTIAL','VERIFIED_IMPLEMENTED'] as const;
 export function validateGapInventory(input:GapInventory){
  if(input?.version!=='2.1'||input.targetStateOnly!==true||
