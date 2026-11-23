@@ -51,7 +51,7 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[key]);
  async function inspect(){
-  if(!canAudit(identity)||!campaignId||busy)return;
+  if(!identity||!canAudit(identity)||!campaignId||busy)return;
   const current=++serial.current;
   setBusy(true);setError("");setDossier(null);
   try{
