@@ -64,3 +64,47 @@ export function modelOfflineRevenueScenarios(input:RevenueScenarioInput):{
   measuredRevenue:false,causalAttributionValidated:false,
   externalEffectsAuthorized:false,scenarios};
 }
+
+/**
+ * Anonymous local form/landing-page funnel rehearsal, not a shadow CRM or
+ * persistent lead registry. No contact details, submission payloads or
+ * actual conversion events enter this function.
+ */
+export type OfflineConversionFailure='NONE'|'MOCK_CONSENT_DENIED'|
+ 'DUPLICATE_ATTEMPT'|'BOT_REJECTED'|'RATE_LIMITED';
+export type OfflineConversionInput={
+ virtualVisits:string;virtualCtaClicks:string;virtualFormSubmissions:string;
+ virtualQualifiedLeads:string;failureCase:OfflineConversionFailure;
+};
+const pct=(numerator:bigint,denominator:bigint):string|null=>{
+ if(denominator===0n)return null;
+ const hundredths=(numerator*10000n+denominator/2n)/denominator;
+ return (hundredths/100n).toString()+'.'+(hundredths%100n).toString().padStart(2,'0');
+};
+export function modelOfflineConversionFunnel(input:OfflineConversionInput){
+ const visits=boundedDecimal(input.virtualVisits,'Synthetic visits',9);
+ const clicks=boundedDecimal(input.virtualCtaClicks,'Synthetic CTA clicks',9);
+ const submitted=boundedDecimal(input.virtualFormSubmissions,'Synthetic forms',9);
+ const qualified=boundedDecimal(input.virtualQualifiedLeads,'Synthetic qualified leads',9);
+ if(visits<clicks||clicks<submitted||submitted<qualified)
+  throw Error('Inconsistent synthetic funnel: visits >= CTA clicks >= forms >= qualified required');
+ if(!['NONE','MOCK_CONSENT_DENIED','DUPLICATE_ATTEMPT',
+  'BOT_REJECTED','RATE_LIMITED'].includes(input.failureCase))
+  throw Error('Unsupported synthetic form failure scenario');
+ return{
+  source:'ANONYMOUS_OFFLINE_FIXTURE' as const,
+  scenario:input.failureCase,
+  status:input.failureCase==='NONE'?'SIMULATED_COUNTS_ONLY' as const:
+   'MOCK_SUBMISSION_BLOCKED' as const,
+  counts:{visits:visits.toString(),clicks:clicks.toString(),
+   submissions:submitted.toString(),qualified:qualified.toString()},
+  rates:{clickThroughPercent:pct(clicks,visits),
+   formCompletionPercent:pct(submitted,clicks),
+   qualifiedPercent:pct(qualified,submitted),
+   visitToQualifiedPercent:pct(qualified,visits)},
+  actualVisitorsObserved:0 as const,actualLeadsCreated:0 as const,
+  crmHandoffsExecuted:0 as const,legalConsentVerified:false as const,
+  measuredConversions:false as const,causalAttributionValidated:false as const,
+  externalEffectsAuthorized:false as const,productionStatus:'NOT_CERTIFIED' as const
+ };
+}
