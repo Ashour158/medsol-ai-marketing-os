@@ -139,9 +139,9 @@ export default function Home() {
     <CampaignReadinessBoard identity={identity}/>
     <CustomerDeliveryDossierStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/>
     <div id="journey" style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio identity={identity} /></div>
-    <div id="creative" style={{scrollMarginTop:120}}><CreativeGovernanceStudio identity={identity} /></div>
-    <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio identity={identity}/></div>
-    <div id="email" style={{scrollMarginTop:120}}><SyntheticEmailStudio identity={identity}/></div>
+    <div id="creative" style={{scrollMarginTop:120}}><CreativeGovernanceStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} /></div>
+    <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
+    <div id="email" style={{scrollMarginTop:120}}><SyntheticEmailStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
     <div id="tool-registry" style={{scrollMarginTop:120}}><GovernedToolRegistryStudio identity={identity}/></div>
     <div id="agent-studio" style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/></div>
     <div id="provider-trials" style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
