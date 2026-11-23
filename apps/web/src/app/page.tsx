@@ -17,6 +17,7 @@ import AgentReleaseStudio from "./agent-release-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 import CampaignReadinessBoard from "./campaign-readiness-board";
+import CustomerDeliveryDossierStudio from "./customer-delivery-dossier-studio";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -135,6 +136,7 @@ export default function Home() {
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
     <CampaignReadinessBoard identity={identity}/>
+    <CustomerDeliveryDossierStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/>
     <div id="journey" style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio identity={identity} /></div>
     <div id="creative" style={{scrollMarginTop:120}}><CreativeGovernanceStudio identity={identity} /></div>
     <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio identity={identity}/></div>
