@@ -1,20 +1,10 @@
+import {OFFLINE_CAMPAIGN_STAGE_ORDER} from '@medsol/contracts';
 /**
  * T4C — read-only operator projection of canonical tenant campaign journeys.
  * No independent campaign/approval/creative/analytics state or business writes.
  * A missing/invalid stage fails CLOSED; it never means "ready".
  */
-export const CAMPAIGN_STAGE_ORDER=[
- ["briefRecorded","Brief and workflow recorded","journey"],
- ["agentResearchReviewed","Agent research evaluated","agent-brain"],
- ["campaignIndependentlyApproved","Independent campaign approval","approvals"],
- ["creativeDraftAvailable","Creative draft exists","creative"],
- ["creativeRightsReviewed","Creative usage rights checked","creative"],
- ["creativeIndependentlyApproved","Independent creative approval","approvals"],
- ["simulatedSocialPublished","Sandbox social simulation","social"],
- ["syntheticEmailSimulated","Synthetic consent-gated email","email"],
- ["performanceReviewed","Reviewed performance evidence","performance"],
- ["learningFeedbackQuarantined","Learning evidence quarantined","knowledge"]
-] as const;
+export const CAMPAIGN_STAGE_ORDER=OFFLINE_CAMPAIGN_STAGE_ORDER;
 export type CampaignStage=typeof CAMPAIGN_STAGE_ORDER[number][0];
 export type ReadinessKind="INCOMPLETE"|"SIMULATION_COMPLETE"|"BLOCKED"|"UNKNOWN";
 export type CampaignReadiness={
