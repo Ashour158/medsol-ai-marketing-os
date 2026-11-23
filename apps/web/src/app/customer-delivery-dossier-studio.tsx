@@ -1,7 +1,8 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
-import {dossierCsv,validateDossierForExport,type DeliveryDossier}
- from "../lib/customer-delivery-dossier-export";
+import {dossierCsv,dossierPillarCsv,DOSSIER_PILLARS,validateDossierForExport,
+ type DeliveryDossier,type DossierPillar} from "../lib/customer-delivery-dossier-export";
+import {OFFLINE_CAMPAIGN_STAGE_ORDER} from "@medsol/contracts";
 
 type Identity={organizationId:string;userId:string;role:string};
 type Campaign={id:string;code:string;name:string;brandId:string|null};
@@ -77,13 +78,14 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
    if(current===serial.current)setError(e instanceof Error?e.message:"Dossier unavailable");
   }finally{if(current===serial.current)setBusy(false);}
  }
- function exportFile(format:"json"|"csv"){
+ function exportFile(format:"json"|"csv",pillar?:DossierPillar){
   if(!dossier)return;
   try{
    const d=validateDossierForExport(dossier);
    const name="medsol-offline-campaign-dossier-"+d.campaign.id;
    if(format==="json")save(JSON.stringify(d,null,2)+"\n",name+".json","application/json");
-   else save(dossierCsv(d),name+".csv","text/csv;charset=utf-8");
+   else save(pillar?dossierPillarCsv(d,pillar):dossierCsv(d),
+    name+(pillar?"-"+pillar:"")+".csv","text/csv;charset=utf-8");
   }catch(e){setError(e instanceof Error?e.message:"Export blocked");}
  }
  const p=dossier?.pillars;
@@ -137,6 +139,13 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
     <button type="button" style={{...btn,background:"#475569"}} disabled={!dossier}
      onClick={()=>exportFile("csv")}>Export unsigned CSV</button>
    </div>
+   {dossier&&<div role="group" aria-label="Export each customer engine evidence" style={{
+    display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+    {DOSSIER_PILLARS.map(pillar=><button key={pillar} type="button" style={{
+      ...btn,background:"#475569",fontSize:12}} onClick={()=>exportFile("csv",pillar)}>
+      Export {pillar} evidence CSV
+    </button>)}
+   </div>}
    {dossier&&p&&<div style={{marginTop:16}}>
     <p role="status" style={{fontWeight:650}}>
      {dossier.campaign.name} · {dossier.offlineGatesMet}/{dossier.offlineGatesTotal}
@@ -152,7 +161,13 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
     </div>
     <h3 style={{fontSize:16,marginTop:18}}>Offline gates requiring work</h3>
     {dossier.missingOfflineGates.length?
-     <ul>{dossier.missingOfflineGates.map(x=><li key={x}>{x.replaceAll(/([A-Z])/g," $1")}</li>)}</ul>:
+     <ol>{dossier.missingOfflineGates.map(x=>{
+      const stage=OFFLINE_CAMPAIGN_STAGE_ORDER.find(([key])=>key===x);
+      return <li key={x} style={{padding:"5px 0"}}>
+       <strong>{stage?.[1]??x}</strong>{" · "}
+       {stage?<a href={"#"+stage[2]}>Open {stage[2]} workspace</a>:null}
+      </li>;
+     })}</ol>:
      <p>All offline simulation gates met; independent release gates still remain.</p>}
     <details style={{marginTop:12}}><summary>Evidence warnings and market context</summary>
      <p style={{fontSize:12}}>Market signals are tenant-wide, not linked to this campaign.</p>
