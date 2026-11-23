@@ -109,6 +109,6 @@ describe('T8D directly exported social and email rehearsal evidence',()=>{
      steps:[{key:'bad',scheduledAt:'not-date',scenario:'ACCEPTED',virtualOutcomeUnknown:0}]
    }}}
   ])expect(()=>emailSimulationCsv({...email(),...change} as EmailTrialExport))
-   .toThrow('invariants');
+   .toThrow('OFFLINE_CSV_BLOCKED:');
  });
 });
