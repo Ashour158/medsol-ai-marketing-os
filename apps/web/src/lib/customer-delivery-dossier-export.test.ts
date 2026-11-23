@@ -1,14 +1,15 @@
+import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
 import {describe,it,expect} from 'vitest';
-import {dossierCsv,validateDossierForExport,type DeliveryDossier} from './customer-delivery-dossier-export';
+import {dossierCsv,dossierPillarCsv,DOSSIER_PILLARS,validateDossierForExport,type DeliveryDossier} from './customer-delivery-dossier-export';
 const fixture=():DeliveryDossier=>({
  schema:'medsol.customer_delivery_dossier.v1',organizationId:'tenant-a',
  campaign:{id:'campaign-1',code:'OFFLINE',name:'=HYPERLINK("http://evil.invalid")',
   status:'APPROVED',brandId:'brand-a'},
  observedAt:'2026-11-23T10:00:00.000Z',status:'OFFLINE_EVIDENCE_ONLY',
  offlineGatesMet:8,offlineGatesTotal:10,
- stages:Array.from({length:10},(_,i)=>({key:'stage'+i,
+ stages:OFFLINE_CAMPAIGN_STAGE_KEYS.map((key,i)=>({key,
   status:i<8?'OFFLINE_GATE_MET' as const:'NOT_DEMONSTRATED' as const})),
- missingOfflineGates:['stage8','stage9'],
+ missingOfflineGates:[OFFLINE_CAMPAIGN_STAGE_KEYS[8]!,OFFLINE_CAMPAIGN_STAGE_KEYS[9]!],
  pillars:{
   creative:{brandScopedDraftRevisions:1,campaignLinkedRevisions:1,
    currentLinkedRightsAndApprovalReviewed:1,status:'APPROVED_OFFLINE_SCOPE'},
@@ -40,6 +41,31 @@ describe('T8A operator dossier export safety',()=>{
   expect(csv).toContain("'=HYPERLINK");
   expect(csv).toContain('NOT_CERTIFIED');
   expect(csv).not.toContain('actual-recipient');
+ });
+ it('emits one sanitized export per each of six existing customer engines',()=>{
+  const d=fixture();
+  for(const pillar of DOSSIER_PILLARS){
+   const data=dossierPillarCsv(d,pillar);
+   expect(data).toContain('"NOT_CERTIFIED"');
+   expect(data).toContain('"'+pillar+'"');
+   expect(data).not.toContain('private@example.com');
+   expect(data).not.toContain('social_access_token');
+   expect(data).not.toContain('"email","synthetic_simulations"') // email only in email export
+    .toBe(pillar==='email'?true:false);
+  }
+ });
+ it('rejects renamed or reordered stages, faked missing-gate counts and CRM claims',()=>{
+  const wrong=fixture();
+  wrong.stages[0]!.key='other-stage';
+  expect(()=>dossierCsv(wrong)).toThrow('Unsafe');
+  const unlisted=fixture();
+  unlisted.missingOfflineGates=[];
+  expect(()=>dossierCsv(unlisted)).toThrow('Unsafe');
+  const consent=fixture();consent.pillars.email.legalConsentVerified=true as false;
+  expect(()=>dossierCsv(consent)).toThrow('Unsafe');
+  const crm=fixture();crm.pillars.conversion.crmQualifiedOutcomesVerified=true as false;
+  expect(()=>dossierCsv(crm)).toThrow('Unsafe');
+  expect(()=>dossierPillarCsv(fixture(),'fake' as any)).toThrow('Unsupported');
  });
  it('refuses forged release, real delivery, attribution and missing stage evidence',()=>{
   for(const change of [
