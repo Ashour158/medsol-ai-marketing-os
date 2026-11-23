@@ -203,9 +203,37 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    expect(emailResult).toMatchObject({status:'SIMULATED',
     externalEffectsAuthorized:false,results:{actualMessagesSent:0,
      syntheticEligible:1,verifiedProviderReceipts:0}});
+   // First assert missing evidence stays unproven. Then submit purely
+   // SYNTHETIC CI numbers through the original quarantine/reviewer owner.
+   // This is a disposable test tenant, never a measured marketing outcome.
    expect(await performance.summary(org,campaignId)).toMatchObject({
     status:'INSUFFICIENT_REVIEWED_DATA',attributionValidated:false,
     independentlyVerified:false});
+   const syntheticMetrics=[
+    ['impressions',1000],['clicks',200],['leads',20],['qualified_leads',5]
+   ] as const;
+   for(const [metricKey,value] of syntheticMetrics){
+    const observation=await performance.ingest(org,creator,{
+     campaignId,sourceSystem:'MANUAL_EXPORT',
+     sourceRecordId:'r3o-ci-virtual-'+randomUUID(),metricKey,value,
+     observedAt:new Date().toISOString(),
+     sourceReference:'internal:r3o-disposable-synthetic-funnel-not-real'
+    });
+    expect(observation.status).toBe('QUARANTINED');
+    await expect(performance.review(org,creator,observation.observationId,
+     'A submitter must not self-review synthetic conversion data'))
+     .rejects.toThrow('Independent');
+    expect(await performance.review(org,reviewer,observation.observationId,
+     'Independent fixture review, never verified actual campaign activity'))
+     .toMatchObject({status:'REVIEWED',independentlyVerified:false,
+      externalEffectsAuthorized:false});
+   }
+   const reviewed=await performance.summary(org,campaignId);
+   expect(reviewed).toMatchObject({
+    status:'REVIEWED_SOURCE_EVIDENCE',attributionValidated:false,
+    independentlyVerified:false,roiValidated:false,revenueVerified:false,
+    totals:{impressions:'1000',clicks:'200',leads:'20',qualified_leads:'5'}
+   });
    const signal=await learning.ingest(org,{
     topic:'offline journey control observations',sector:'biotechnology',
     sourceUrl:'https://example.invalid/offline-campaign/'+campaignId,
@@ -220,23 +248,25 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     campaignIndependentlyApproved:true,creativeDraftAvailable:true,
     creativeRightsReviewed:true,creativeIndependentlyApproved:true,
     simulatedSocialPublished:true,syntheticEmailSimulated:true,
-    performanceReviewed:false,learningFeedbackQuarantined:true
+    performanceReviewed:true,learningFeedbackQuarantined:true
    });
    expect(timeline.offlineSimulationOnly).toBe(true);
    expect(timeline.externalEffectsAuthorized).toBe(false);
-   expect(timeline.observations).toEqual([]);
+   expect(timeline.observations).toHaveLength(4);
+   expect(timeline.observations.every(x=>x.status==='REVIEWED')).toBe(true);
+   expect(JSON.stringify(timeline.observations)).not.toContain('private@example.com');
    const dossier=buildCustomerDeliveryDossier(org,timeline,
     await performance.summary(org,campaignId),
     await learning.trendBrief(org),new Date());
    expect(dossier.stages.map(s=>s.key)).toEqual(OFFLINE_CAMPAIGN_STAGE_KEYS);
-   expect(dossier.missingOfflineGates).toEqual(['performanceReviewed']);
+   expect(dossier.missingOfflineGates).toEqual([]);
    expect(dossier).toMatchObject({
     schema:'medsol.customer_delivery_dossier.v1',
-    offlineGatesMet:9,productionStatus:'NOT_CERTIFIED',
+    offlineGatesMet:10,productionStatus:'NOT_CERTIFIED',
     pillars:{creative:{currentLinkedRightsAndApprovalReviewed:1},
      social:{sandboxSimulated:1,realPostsPublished:0},
      email:{syntheticSimulations:1,actualMessagesSent:0},
-     conversion:{reviewedQualifiedLeadCount:null,causalAttributionVerified:false},
+     conversion:{reviewedQualifiedLeadCount:'5',causalAttributionVerified:false},
      commercial:{roiVerified:false}},
     signed:false,externalEffectsAuthorized:false
    });
