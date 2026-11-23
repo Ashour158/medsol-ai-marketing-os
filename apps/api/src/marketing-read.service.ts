@@ -1,3 +1,4 @@
+import type {OfflineCampaignStage} from '@medsol/contracts';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService,withMarketingTenant } from './prisma.service.js';
 
@@ -99,7 +100,7 @@ export class MarketingReadService {
      syntheticEmailSimulated:emails.some(m=>m.status==='SIMULATED'),
      performanceReviewed:metrics.some(m=>m.status==='REVIEWED'),
      learningFeedbackQuarantined:learnings.some(l=>l.status==='QUARANTINED')
-    };
+    } satisfies Record<OfflineCampaignStage,boolean>;
     return {
      campaign,workflow,campaignApprovals,brainRuns,
      creativeAssets:flattenedAssets.map(v=>({...v,
