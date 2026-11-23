@@ -50,8 +50,8 @@ describe('T8A operator dossier export safety',()=>{
    expect(data).toContain('"'+pillar+'"');
    expect(data).not.toContain('private@example.com');
    expect(data).not.toContain('social_access_token');
-   expect(data).not.toContain('"email","synthetic_simulations"') // email only in email export
-    .toBe(pillar==='email'?true:false);
+   if(pillar!=='email')expect(data).not.toContain('"email","synthetic_simulations"');
+   else expect(data).toContain('"email","synthetic_simulations"');
   }
  });
  it('rejects renamed or reordered stages, faked missing-gate counts and CRM claims',()=>{
