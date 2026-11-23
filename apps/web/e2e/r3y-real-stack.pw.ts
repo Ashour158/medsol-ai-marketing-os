@@ -126,6 +126,7 @@ test('T04-012 real Chromium creates an objective and a durable workflow in Nest 
    conversion:{causalAttributionVerified:false},
    commercial:{roiVerified:false}}
  });
+ await page.getByRole('button',{name:'Refresh campaign list'}).click();
  await page.getByRole('combobox',{name:'Dossier campaign'}).selectOption(id);
  await page.getByRole('button',{name:'Inspect all six engines'}).click();
  await expect(page.getByRole('status').filter({hasText:'offline gates met'}))
