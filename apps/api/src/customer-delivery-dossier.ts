@@ -14,7 +14,7 @@ type CampaignJourney={
  productionCertified:boolean;realProvidersConnectedByJourney:boolean;
 };
 type CampaignMetrics={
- campaign:{id:string};status:string;totals:Record<string,string>;
+ organizationId:string;campaign:{id:string};status:string;totals:Record<string,string>;
  derived:{ctrPercent:number|null;clickToLeadPercent:number|null;
   leadQualificationPercent:number|null;spendMicrosPerLead:string|null;
   spendMicrosPerQualifiedLead:string|null};
@@ -23,7 +23,7 @@ type CampaignMetrics={
  independentlyVerified:boolean;
 };
 type MarketTopics={
- topics:Array<{topic:string;sector:string;evidenceCount:number;
+ organizationId:string;topics:Array<{topic:string;sector:string;evidenceCount:number;
   distinctSourceHosts:number;priority:string;freshness:string}>;
  processed:number;independentVerification:boolean;marketSizeVerified:boolean;
 };
@@ -40,6 +40,8 @@ export function buildCustomerDeliveryDossier(
  if(!/^[A-Za-z0-9_-]{1,128}$/.test(organizationId)||
     !/^[A-Za-z0-9_-]{1,128}$/.test(journey?.campaign?.id??'')||
     performance?.campaign?.id!==journey.campaign.id||
+    performance.organizationId!==organizationId||
+    market.organizationId!==organizationId||
     !Number.isFinite(observedAt.getTime()))
   reject('Invalid tenant, campaign, source binding or clock');
  if(journey.offlineSimulationOnly!==true||
