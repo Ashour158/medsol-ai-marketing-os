@@ -176,6 +176,12 @@ test('T11-005 real Chromium Canvas PNG persists through Nest DAM and hash-verifi
  expect(assets.some((a:any)=>a.brandId===brandId)).toBe(true);
  const preview=page.getByRole('img',{name:'Generated offline campaign preview; not publishable media'});
  await expect(preview).toHaveAttribute('src',/^data:image\/png;base64,/);
+ const png=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Download verified flattened PNG'}).click();
+ expect((await png).suggestedFilename()).toMatch(/^medsol-offline-creative-.+\.png$/);
+ const copy=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Export editable draft copy (.txt)'}).click();
+ expect((await copy).suggestedFilename()).toMatch(/^medsol-offline-creative-.+\.txt$/);
 });
 test('T11-006 real VIEWER cannot create creative by bypassing disabled browser affordance',async({page,request})=>{
  await authenticate(page,request,'viewer');await studio(page);
@@ -287,6 +293,14 @@ test('T13-015 actual API quarantine-review KPI never upgrades to causal ROI clai
  const summary=await assertSuccess(page,'performance/campaigns/'+id);
  expect(summary.attributionValidated).toBe(false);
  expect(summary.independentlyVerified).toBe(false);
+ const local=page.locator('#conversion-lab');
+ await expect(local.getByRole('heading',{name:/Conversion & Form Preview/})).toBeVisible();
+ await local.getByRole('button',{name:'Rehearse synthetic conversion'}).click();
+ await expect(local.getByRole('status')).toContainText('20.00%');
+ await expect(local.getByRole('status')).toContainText('Actual leads: 0');
+ const csv=page.waitForEvent('download');
+ await local.getByRole('button',{name:'Export unsigned conversion CSV'}).click();
+ expect((await csv).suggestedFilename()).toBe('medsol-synthetic-conversion-funnel.csv');
 });
 test('T14-006 real model-owner API rejects paid inference without provisioned budget',async({page,request})=>{
  await authenticate(page,request);
