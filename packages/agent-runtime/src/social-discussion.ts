@@ -20,7 +20,7 @@ function record(value:unknown):Record<string,unknown>|null {
 function validText(value:unknown,min:number,max:number):value is string {
  return typeof value==='string'&&value.trim().length>=min&&value.length<=max;
 }
-const CLINICAL=/\b(patient|diagnos(?:is|e|ed|tic)|treat(?:ment|ed)?|dos(?:e|age)|symptom|adverse|side effect|clinical outcome|medication|therapy|harm|injury)\b/i;
+const CLINICAL=/\b(patient|diagnos(?:is|e|ed|tic)|treat(?:ment|ed)?|dos(?:e|age)|symptom|adverse|side effect|clinical outcomes?|clinical cures?|clinical claims?|cures?|curative|medication|therap(?:y|ies)|harm|injury)\b/i;
 const REGULATORY=/\b(fda|ce marked|approved|certified|cure|guaranteed|clinical claim|clearance)\b/i;
 const PERSONAL=/\b(patient record|personal data|phone number|email address|private information|data breach|medical report)\b/i;
 const THANKS=/^(thanks|thank you|much appreciated|great work|well done)[!. ]*$/i;
