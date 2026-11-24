@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import SocialDiscussionTriageLab from "./social-discussion-triage-lab";
 import {socialSimulationCsv,saveOfflineCsv,type SocialTrialExport}
  from "../lib/offline-evidence-csv";
 
@@ -371,5 +372,6 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
      whiteSpace:"pre-wrap",fontSize:12}}>{JSON.stringify(report,null,2)}</pre>}
    </section>
   </>}
+  <SocialDiscussionTriageLab identity={identity}/>
  </details>;
 }

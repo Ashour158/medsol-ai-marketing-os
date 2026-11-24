@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {modelOfflineRevenueScenarios,type RevenueScenarioInput} from './offline-revenue-scenarios';
-import {revenueScenarioCsv,reviewedMarketCsv,socialSimulationCsv,emailSimulationCsv,
+import {revenueScenarioCsv,reviewedMarketCsv,socialSimulationCsv,emailSimulationCsv,discussionTriageCsv,
  type SocialTrialExport,type EmailTrialExport,type MarketExportBrief} from './offline-evidence-csv';
 const input:RevenueScenarioInput={reviewedQualifiedLeads:'120',
  sourceStatus:'REVIEWED_SOURCE_EVIDENCE',currency:'EGP',
@@ -110,5 +110,38 @@ describe('T8D directly exported social and email rehearsal evidence',()=>{
    }}}
   ])expect(()=>emailSimulationCsv({...email(),...change} as EmailTrialExport))
    .toThrow('OFFLINE_CSV_BLOCKED:');
+ });
+});
+
+describe('T8G original social-agent human-review suggestion export',()=>{
+ const basic=()=>({
+  discussionId:'offline-social-discussion-001',
+  disposition:'HUMAN_REVIEW_REQUIRED' as const,
+  reasons:['sensitive_discussion_requires_specialist_review'],
+  escalations:['SCIENTIFIC_REVIEW' as const],
+  answerRecordedNotScientificallyVerified:false,
+  humanApprovalRequired:true as const,externalEffectsAuthorized:false as const,
+  text:'private-user-message-do-not-export',
+  accountEmail:'private@example.invalid'
+ });
+ it('exports only bounded disposition metadata, always requires human action',()=>{
+  const csv=discussionTriageCsv(basic());
+  expect(csv).toContain('SCIENTIFIC_REVIEW');
+  expect(csv).toContain('NO_AUTONOMOUS_REPLY');
+  expect(csv).toContain('NOT_CERTIFIED');
+  expect(csv).not.toContain('private-user-message-do-not-export');
+  expect(csv).not.toContain('private@example.invalid');
+ });
+ it('refuses false auto-reply and fabricated independent disposition',()=>{
+  for(const edit of [
+   {humanApprovalRequired:false},
+   {externalEffectsAuthorized:true},
+   {disposition:'PUBLISHED'},
+   {escalations:['UNKNOWN_ESCALATION']},
+   {escalations:['SCIENTIFIC_REVIEW','SCIENTIFIC_REVIEW']},
+   {disposition:'ANSWERED'},
+   {reasons:['=HYPERLINK("evil")']}
+  ])expect(()=>discussionTriageCsv({...basic(),...edit} as any))
+   .toThrow('human decision suggestion');
  });
 });

@@ -49,10 +49,22 @@ export class CampaignPublicationService{
  constructor(private readonly db:PrismaService){}
  private scoped<T>(organizationId:string,work:(tx:Tx)=>Promise<T>):Promise<T>{
   id(organizationId,'tenant');
-  return this.db.$transaction(async tx=>{
-   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
-   return work(tx);
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  // The callback is database-only and rollback-atomic: never include provider
+  // calls or any external effect in this bounded serialization retry.
+  return (async()=>{
+   for(let attempt=0;attempt<4;attempt++){
+    try{
+     return await this.db.$transaction(async tx=>{
+      await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+      return work(tx);
+     },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    }catch(error){
+     if((error as {code?:string})?.code!=='P2034'||attempt===3)throw error;
+     await new Promise(resolve=>setTimeout(resolve,10*(attempt+1)));
+    }
+   }
+   throw new Error('Publication transaction retry budget exhausted');
+  })();
  }
  private async check(tx:Tx,organizationId:string,pub:{
   id:string;campaignId:string;creativeAssetRevisionId:string;approvalId:string;scopeDigest:string

@@ -343,8 +343,28 @@ test('T04-016 revoked server session rejects an otherwise valid stolen encrypted
  const response=await bff(page,'me');
  expect(response.status).toBe(401);
 });
-test('T09-013 real Next BFF does not expose an unauthorized direct publish route',async({page,request})=>{
+test('T09-013 social review preview cannot bypass read-only human gate or send route',async({page,request})=>{
  await authenticate(page,request);
  const result=await bff(page,'publications/send-now',{externalEffectsAuthorized:true});
  expect(result.status).toBe(404);
+ const foreign=await bff(page,'social/discussions/triage-preview',{
+  organizationId:'r3y-foreign-tenant',discussionId:'r3y-foreign',
+  text:'Mock user question about clinical outcome',status:'OPEN'});
+ // Authorization rejects a forged organization scope before payload validation.
+ expect(foreign.status).toBe(403);
+ const reviewed=await bff(page,'social/discussions/triage-preview',{
+  discussionId:'r3y-mock-scientific-001',
+  text:'Could you explain whether this clinical outcome is a guaranteed cure?',
+  status:'OPEN',moderation:'NORMAL'});
+ expect(reviewed.status).toBe(201);
+ expect(reviewed.result).toMatchObject({
+  discussionId:'r3y-mock-scientific-001',
+  disposition:'HUMAN_REVIEW_REQUIRED',
+  humanApprovalRequired:true,externalEffectsAuthorized:false
+ });
+ expect(reviewed.result.escalations).toContain('SCIENTIFIC_REVIEW');
+ expect(reviewed.result.escalations).toContain('BRAND_REVIEW');
+ const noReply=await bff(page,'social/discussions/reply',{
+  discussionId:'r3y-mock-scientific-001',text:'Publish automatically'});
+ expect(noReply.status).toBe(404);
 });

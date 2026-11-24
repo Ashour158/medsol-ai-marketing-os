@@ -213,3 +213,42 @@ export function conversionFunnelCsv(input:OfflineConversionInput,
  ];
  return csv(rows);
 }
+
+/** Original MKT-SOC-001 classifier returns REVIEW ADVICE only. Never serialize
+ * user message contents, reply text, profiles, contact addresses, or publish intents.
+ */
+export type DiscussionTriageExport={
+ discussionId:string;
+ disposition:'INFORMATIONAL'|'ANSWERED'|'NO_RESPONSE'|'HUMAN_REVIEW_REQUIRED';
+ reasons:string[];
+ escalations:Array<'SCIENTIFIC_REVIEW'|'BRAND_REVIEW'|'PRIVACY_REVIEW'>;
+ answerRecordedNotScientificallyVerified:boolean;
+ humanApprovalRequired:true;externalEffectsAuthorized:false;
+};
+export function discussionTriageCsv(r:DiscussionTriageExport){
+ const dispositions=['INFORMATIONAL','ANSWERED','NO_RESPONSE','HUMAN_REVIEW_REQUIRED'];
+ const escalationTypes=['SCIENTIFIC_REVIEW','BRAND_REVIEW','PRIVACY_REVIEW'];
+ if(!r||typeof r.discussionId!=='string'||
+  !/^[A-Za-z0-9_-]{1,128}$/.test(r.discussionId)||
+  !dispositions.includes(r.disposition)||
+  r.humanApprovalRequired!==true||r.externalEffectsAuthorized!==false||
+  typeof r.answerRecordedNotScientificallyVerified!=='boolean'||
+  !Array.isArray(r.reasons)||r.reasons.length<1||r.reasons.length>10||
+  r.reasons.some(x=>typeof x!=='string'||!/^[a-z_]{2,80}$/.test(x))||
+  !Array.isArray(r.escalations)||r.escalations.length>3||
+  new Set(r.escalations).size!==r.escalations.length||
+  r.escalations.some(x=>!escalationTypes.includes(x))||
+  (r.escalations.length>0&&r.disposition!=='HUMAN_REVIEW_REQUIRED')||
+  (r.disposition==='ANSWERED')!==r.answerRecordedNotScientificallyVerified)
+  fail('Triage export must remain a bounded original-agent human decision suggestion');
+ return csv([
+  ['section','metric','value','qualification'],
+  ['social_review','discussion_id',r.discussionId,'OPERATOR_SUPPLIED_ID_NOT_PROVIDER_VERIFIED'],
+  ['social_review','disposition',r.disposition,'DRAFT_CLASSIFIER_ONLY'],
+  ...r.reasons.map(x=>['reason',x,'PRESENT','NO_AUTONOMOUS_REPLY']),
+  ...r.escalations.map(x=>['human_escalation',x,'REVIEW_REQUIRED','NO_EXTERNAL_EFFECT']),
+  ['social_review','human_approval_required','YES','NEVER_AUTONOMOUS'],
+  ['social_review','social_reply_executed','NO','NOT_CONNECTED'],
+  ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
+ ]);
+}

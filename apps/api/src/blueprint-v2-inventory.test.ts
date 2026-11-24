@@ -19,6 +19,16 @@ describe('Integrated target inventory and canonical marketing engine authority',
   expect(()=>permissionForMarketingRoute('POST','/marketing/architecture/blueprint')).toThrow();
   expect(()=>permissionForMarketingRoute('POST','/marketing/architecture/blueprint/deploy')).toThrow();
  });
+ it('allows signed operators to preview existing social triage without any send route',()=>{
+  expect(permissionForMarketingRoute('POST','/marketing/social/discussions/triage-preview'))
+   .toBe('ASSESS');
+  expect(hasMarketingPermission({role:'MARKETING_MANAGER'} as any,'ASSESS'))
+   .toBe(true);
+  expect(hasMarketingPermission({role:'VIEWER'} as any,'ASSESS'))
+   .toBe(false);
+  expect(()=>permissionForMarketingRoute('POST','/marketing/social/discussions/reply'))
+   .toThrow();
+ });
  it('cannot authorize a future social publish even when a graph passes structural lint',()=>{
   const draft={id:'content-review',version:1,nodes:[
    {id:'a',type:'TRIGGER'},{id:'b',type:'AGENT_TASK',agentId:'MKT-SOC-001'},

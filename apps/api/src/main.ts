@@ -1,4 +1,6 @@
 import {buildCustomerDeliveryDossier} from './customer-delivery-dossier.js';
+import {triageSocialDiscussion} from '@medsol/agent-runtime';
+import {BadRequestException} from '@nestjs/common';
 import {assertStartupAuthConfiguration} from './runtime-auth-configuration.js';
 import {AgentManifestReleaseService} from './agent-manifest-release.service.js';
 import {ensureRuntimeReady,type RuntimeRole} from './deployment-readiness.js';
@@ -9,6 +11,14 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
   const rows=await this.prisma.$queryRaw<RuntimeRole[]>`SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb FROM pg_roles r WHERE r.rolname=current_user`;
   return ensureRuntimeReady(rows,process.env.NODE_ENV==='production');
  }catch{throw new ServiceUnavailableException('Application not ready')}} @Post('marketing/sessions') createSession(@Body() b:any,@Req() req:any){if(!req.identity)throw new ForbiddenException('OIDC required');return this.sessions.register(req.identity.organizationId,req.identity.userId,b?.expiresAt)} @Post('marketing/sessions/revoke') revokeSession(@Req() req:any){if(!req.identity)throw new ForbiddenException('OIDC required');return this.sessions.revoke(req.identity.organizationId,req.identity.userId,req.headers['x-marketing-session-id'])} @Get('marketing/me') me(@Req() req:any){if(!req.identity)throw new ForbiddenException('Verified OIDC identity required');return {userId:req.identity.userId,organizationId:req.identity.organizationId,email:req.identity.email,role:req.identity.role}}
+ /** Read-only governed social triage suggestion. No remote social API,
+  * inbox write, customer profile, autonomous reply or model invocation. */
+ @Post('marketing/social/discussions/triage-preview')
+ triageDiscussion(@Req() req:any,@Body() body:unknown){
+  try{return triageSocialDiscussion(req.identity.organizationId,body);}
+  catch(error){throw new BadRequestException(error instanceof Error?
+   error.message:'Invalid simulated discussion input');}
+ }
  @Get('marketing/journeys/:id') offlineJourney(@Req() req:any,@Param('id') id:string){
   return this.reads.offlineJourney(req.identity.organizationId,id);
  }

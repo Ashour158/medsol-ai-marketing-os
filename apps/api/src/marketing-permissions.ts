@@ -38,6 +38,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'READ_AUDIT';
   if(method==='GET'&&/^\/marketing\/journeys\/[A-Za-z0-9_-]+\/dossier$/.test(path))
    return 'READ_AUDIT';
+  if(method==='POST'&&path==='/marketing/social/discussions/triage-preview')
+   return 'ASSESS';
   if(method==='POST'&&(path==='/marketing/assets/offline-raster'||
     /^\/marketing\/assets\/[A-Za-z0-9_-]+\/offline-revisions$/.test(path)))
    return 'MANAGE_CAMPAIGN';
