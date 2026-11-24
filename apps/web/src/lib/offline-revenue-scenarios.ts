@@ -108,3 +108,49 @@ export function modelOfflineConversionFunnel(input:OfflineConversionInput){
   externalEffectsAuthorized:false as const,productionStatus:'NOT_CERTIFIED' as const
  };
 }
+
+
+/**
+ * T1 anonymous first-party -> mock CRM handoff preflight. No contact payload,
+ * tenant identifier, CRM target or persistence enters this pure local model.
+ * This is a proposed handoff state machine, not a dispatched lead or consent proof.
+ */
+export type OfflineHandoffInput={
+ funnel:OfflineConversionInput;
+ mockConsent:'GRANTED'|'DENIED'|'WITHDRAWN';
+ mockDedupe:'UNIQUE'|'DUPLICATE';
+ mockTransport:'ACCEPTED'|'REJECTED'|'OUTCOME_UNKNOWN';
+ requestKey:string;
+};
+export function modelOfflineCrmHandoff(input:OfflineHandoffInput){
+ if(!input||typeof input!=='object')throw Error('Bounded mock handoff required');
+ const funnel=modelOfflineConversionFunnel(input.funnel);
+ if(!['GRANTED','DENIED','WITHDRAWN'].includes(input.mockConsent)||
+  !['UNIQUE','DUPLICATE'].includes(input.mockDedupe)||
+  !['ACCEPTED','REJECTED','OUTCOME_UNKNOWN'].includes(input.mockTransport)||
+  typeof input.requestKey!=='string'||
+  !/^[A-Za-z0-9_-]{12,80}$/.test(input.requestKey))
+  throw Error('Invalid mock consent, dedupe, transport or idempotency key');
+ const blockers:string[]=[];
+ if(funnel.status!=='SIMULATED_COUNTS_ONLY')blockers.push('FUNNEL_SCENARIO_BLOCKED');
+ if(funnel.counts.qualified==='0')blockers.push('NO_MOCK_QUALIFIED_LEADS');
+ if(input.mockConsent!=='GRANTED')blockers.push('MOCK_CONSENT_NOT_GRANTED');
+ if(input.mockDedupe!=='UNIQUE')blockers.push('DUPLICATE_MOCK_REQUEST');
+ const status=blockers.length?'BLOCKED':
+  input.mockTransport==='ACCEPTED'?'MOCK_ACCEPTED':
+  input.mockTransport==='REJECTED'?'MOCK_REJECTED':'OUTCOME_UNKNOWN';
+ return{
+  source:'ANONYMOUS_OFFLINE_FIXTURE' as const,
+  status,blockers,
+  mockQualifiedCandidates:funnel.counts.qualified,
+  idempotencyKeyProvided:true as const,
+  automaticRetryAuthorized:false as const,
+  simulatedProviderResponse:status==='BLOCKED'?'NOT_ATTEMPTED':input.mockTransport,
+  legalConsentVerified:false as const,
+  realContactDataCollected:false as const,
+  actualLeadsCreated:0 as const,
+  crmHandoffsExecuted:0 as const,
+  externalEffectsAuthorized:false as const,
+  productionStatus:'NOT_CERTIFIED' as const
+ };
+}

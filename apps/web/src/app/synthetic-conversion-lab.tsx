@@ -1,8 +1,8 @@
 "use client";
 import {useState} from "react";
-import {modelOfflineConversionFunnel,type OfflineConversionFailure,
+import {modelOfflineConversionFunnel,modelOfflineCrmHandoff,type OfflineHandoffInput,type OfflineConversionFailure,
  type OfflineConversionInput} from "../lib/offline-revenue-scenarios";
-import {conversionFunnelCsv,saveOfflineCsv} from "../lib/offline-evidence-csv";
+import {conversionFunnelCsv,crmHandoffRehearsalCsv,saveOfflineCsv} from "../lib/offline-evidence-csv";
 
 const field={padding:"9px 11px",border:"1px solid #cbd5e1",borderRadius:8,
  background:"#fff",width:"100%",boxSizing:"border-box" as const};
@@ -27,8 +27,14 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
   input:OfflineConversionInput;
   result:ReturnType<typeof modelOfflineConversionFunnel>;
  }|null>(null);
+ const [mockConsent,setMockConsent]=useState<OfflineHandoffInput["mockConsent"]>("DENIED");
+ const [mockDedupe,setMockDedupe]=useState<OfflineHandoffInput["mockDedupe"]>("UNIQUE");
+ const [mockTransport,setMockTransport]=useState<OfflineHandoffInput["mockTransport"]>("ACCEPTED");
+ const [mockKey,setMockKey]=useState("synthetic-request-001");
+ const [handoff,setHandoff]=useState<{input:OfflineHandoffInput;
+  result:ReturnType<typeof modelOfflineCrmHandoff>}|null>(null);
  const [error,setError]=useState("");
- const invalidated=()=>{setSnapshot(null);setError("");};
+ const invalidated=()=>{setSnapshot(null);setHandoff(null);setError("");};
  const inputs=[["Virtual landing views",visits,setVisits],
   ["Virtual CTA clicks",clicks,setClicks],
   ["Virtual mock form submissions",forms,setForms],
@@ -90,6 +96,60 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
      catch(e){setError(e instanceof Error?e.message:"Conversion export blocked");}
     }}>Export unsigned conversion CSV</button>
   </div>
+  <fieldset style={{border:"1px solid #cbd5e1",borderRadius:10,
+   marginTop:16,padding:12}} disabled={!enabled||!snapshot}>
+   <legend style={{fontWeight:700}}>Anonymous mock CRM handoff · no real contacts</legend>
+   <p style={{fontSize:12,color:"#475569"}}>Rehearse consent gates, duplicate attempts and
+    uncertain transport before any future CRM integration. Mock consent is never legal proof.</p>
+   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+    <label>Virtual consent
+     <select style={field} value={mockConsent} onChange={e=>{
+      setMockConsent(e.target.value as OfflineHandoffInput["mockConsent"]);setHandoff(null);}}>
+      {["DENIED","GRANTED","WITHDRAWN"].map(x=><option key={x}>{x}</option>)}
+     </select>
+    </label>
+    <label>Mock idempotency
+     <select style={field} value={mockDedupe} onChange={e=>{
+      setMockDedupe(e.target.value as OfflineHandoffInput["mockDedupe"]);setHandoff(null);}}>
+      {["UNIQUE","DUPLICATE"].map(x=><option key={x}>{x}</option>)}
+     </select>
+    </label>
+    <label>Virtual transport
+     <select style={field} value={mockTransport} onChange={e=>{
+      setMockTransport(e.target.value as OfflineHandoffInput["mockTransport"]);setHandoff(null);}}>
+      {["ACCEPTED","REJECTED","OUTCOME_UNKNOWN"].map(x=><option key={x}>{x}</option>)}
+     </select>
+    </label>
+    <label>Offline idempotency key
+     <input style={field} value={mockKey} maxLength={80} onChange={e=>{
+      setMockKey(e.target.value);setHandoff(null);}}/>
+    </label>
+   </div>
+   <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:12}}>
+    <button type="button" style={btn} onClick={()=>{
+     if(!snapshot)return;
+     try{
+      const input:OfflineHandoffInput={funnel:snapshot.input,mockConsent,
+       mockDedupe,mockTransport,requestKey:mockKey};
+      const result=modelOfflineCrmHandoff(input);
+      setHandoff({input,result});setError("");
+     }catch(e){setHandoff(null);setError(e instanceof Error?e.message:"Mock handoff blocked");}
+    }}>Rehearse mock CRM handoff</button>
+    <button type="button" style={{...btn,background:"#475569"}}
+     disabled={!handoff} onClick={()=>{
+      if(!handoff)return;
+      try{saveOfflineCsv(crmHandoffRehearsalCsv(handoff.input,handoff.result),
+       "medsol-anonymous-crm-handoff.csv");setError("");}
+      catch(e){setError(e instanceof Error?e.message:"Mock handoff export blocked");}
+     }}>Export mock handoff CSV</button>
+   </div>
+   {handoff&&<p role="status" style={{fontSize:12}}>
+    Handoff rehearsal: <strong>{handoff.result.status}</strong>.
+    {handoff.result.blockers.length>0&&" Blockers: "+handoff.result.blockers.join(", ")+ "."}
+    {" "}Mock qualified candidates: {handoff.result.mockQualifiedCandidates}.
+    Actual CRM records: 0 · Real consent: unverified · External retries: disabled.
+   </p>}
+  </fieldset>
   {error&&<p role="alert" style={{color:"#991b1b"}}>{error}</p>}
   {snapshot&&<div role="status" style={{marginTop:12,fontSize:13}}>
    <strong>{snapshot.result.status.replaceAll("_"," ")}</strong>

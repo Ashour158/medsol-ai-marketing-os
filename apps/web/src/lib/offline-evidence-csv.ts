@@ -1,8 +1,8 @@
 /** Shared CSV encoding for unsigned, offline customer intelligence and revenue
  * scenario exports. No side effects, new business owners or provider calls.
  */
-import {modelOfflineRevenueScenarios,modelOfflineConversionFunnel,
- type RevenueScenarioInput,type OfflineConversionInput} from './offline-revenue-scenarios';
+import {modelOfflineRevenueScenarios,modelOfflineConversionFunnel,modelOfflineCrmHandoff,
+ type RevenueScenarioInput,type OfflineConversionInput,type OfflineHandoffInput} from './offline-revenue-scenarios';
 const fail=(message:string):never=>{throw Error('OFFLINE_CSV_BLOCKED: '+message);};
 const quote=(raw:unknown)=>{
  let value=raw===null||raw===undefined?'':String(raw);
@@ -249,6 +249,34 @@ export function discussionTriageCsv(r:DiscussionTriageExport){
   ...r.escalations.map(x=>['human_escalation',x,'REVIEW_REQUIRED','NO_EXTERNAL_EFFECT']),
   ['social_review','human_approval_required','YES','NEVER_AUTONOMOUS'],
   ['social_review','social_reply_executed','NO','NOT_CONNECTED'],
+  ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
+ ]);
+}
+
+/** Recomputes the anonymous handoff rehearsal and prevents reporting a mock
+ * result as CRM or consent evidence. Never serializes the request key.
+ */
+export function crmHandoffRehearsalCsv(input:OfflineHandoffInput,
+ result:ReturnType<typeof modelOfflineCrmHandoff>){
+ const expected=modelOfflineCrmHandoff(input);
+ if(result?.actualLeadsCreated!==0||result.crmHandoffsExecuted!==0||
+  result.externalEffectsAuthorized!==false||result.legalConsentVerified!==false||
+  result.realContactDataCollected!==false||result.automaticRetryAuthorized!==false||
+  result.productionStatus!=='NOT_CERTIFIED'||
+  JSON.stringify(result)!==JSON.stringify(expected))
+  fail('CRM handoff rehearsal provenance or safety invariants changed');
+ return csv([
+  ['section','metric','value','qualification'],
+  ['source','kind','ANONYMOUS_OFFLINE_FIXTURE','NO_CONTACT_RECORD'],
+  ['handoff','status',result.status,'NO_PROVIDER_DELIVERY'],
+  ['handoff','mock_candidates',result.mockQualifiedCandidates,'NOT_REAL_LEADS'],
+  ['handoff','mock_consent',input.mockConsent,'NOT_LEGAL_CONSENT'],
+  ['handoff','mock_dedupe',input.mockDedupe,'LOCAL_FIXTURE_ONLY'],
+  ['handoff','mock_transport',result.simulatedProviderResponse,'NO_REMOTE_ATTEMPT'],
+  ...result.blockers.map(b=>['blocker',b,'BLOCKED','HUMAN_OPERATOR_REVIEW']),
+  ['handoff','automatic_retry','DISABLED','OUTCOME_UNKNOWN_MUST_BE_RECONCILED'],
+  ['real','crm_handoffs_executed',0,'NOT_CONNECTED'],
+  ['real','actual_leads_created',0,'NOT_CONNECTED'],
   ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
  ]);
 }
