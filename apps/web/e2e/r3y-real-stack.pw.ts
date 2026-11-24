@@ -354,7 +354,7 @@ test('T09-013 social review preview cannot bypass read-only human gate or send r
  expect(foreign.status).toBe(403);
  const reviewed=await bff(page,'social/discussions/triage-preview',{
   discussionId:'r3y-mock-scientific-001',
-  text:'Could you explain whether this is a guaranteed clinical cure?',
+  text:'Could you explain whether this clinical outcome is a guaranteed cure?',
   status:'OPEN',moderation:'NORMAL'});
  expect(reviewed.status).toBe(201);
  expect(reviewed.result).toMatchObject({
