@@ -1,7 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
-import {validateOfflineCreativeDownload} from "../lib/offline-creative-export";
+import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
 type Brand={id:string;name:string};
@@ -202,6 +202,23 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   }catch(e){
    setError(e instanceof Error?e.message:"Creative export denied");
   }
+ }
+ async function downloadDerivedDesign(){
+  if(!creative||!preview||!creativeIsCurrent||!manager){
+   setError("Load the current verified offline creative version before deriving a draft");return;
+  }
+  await run(async()=>{
+   // Fetch the canonical revision again. A changed or revoked current source
+   // must not be exported under its old current-version assertion.
+   const latest=await api("assets/revisions/"+encodeURIComponent(creative.revisionId)+"/offline-preview") as Preview;
+   const derived=deriveOfflineEditableSvgDraft(creative,latest,color);
+   const url=URL.createObjectURL(new Blob([derived.svg],{type:"image/svg+xml;charset=utf-8"}));
+   const link=document.createElement("a");link.href=url;link.download=derived.filename;
+   document.body.appendChild(link);link.click();link.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),1000);
+   setNotice("Exported new editable SVG draft from revision "+derived.sourceVersion+
+    ". Not the verified PNG; no inherited approval or rights, independent review required.");
+  });
  }
  const blocked=!identity||busy;
  const approve=async(approvalId:string)=>{
@@ -473,6 +490,10 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
         disabled={blocked||!manager||!creative||!creativeIsCurrent}
         onClick={()=>downloadCreative("copy")}>
         Export editable draft copy (.txt)</button>
+       <button type="button" style={secondary}
+        disabled={blocked||!manager||!creative||!creativeIsCurrent}
+        onClick={()=>void downloadDerivedDesign()}>
+        Export new editable SVG draft (unapproved)</button>
       </div>
     </div>}
    </div>
