@@ -97,6 +97,16 @@ describe('T8D directly exported social and email rehearsal evidence',()=>{
   expect(value).not.toContain('private@example.com');
   expect(value).not.toContain('contactId');
  });
+ it('reports hard bounce suppression and rejects incomplete or double-counted audience totals',()=>{
+  const b=email();
+  const r:EmailTrialExport={...b,status:'BLOCKED',results:{...b.results,
+   syntheticEligible:0,withdrawn:0,hardBounceSuppressed:2}};
+  expect(emailSimulationCsv(r)).toContain('hard_bounce_suppressed');
+  for(const count of [1,3,-1]){
+   expect(()=>emailSimulationCsv({...r,results:{...r.results,hardBounceSuppressed:count}}))
+    .toThrow('OFFLINE_CSV_BLOCKED');
+  }
+ });
  it('rejects fake email delivery, inconsistent audience and unsafe schedule',()=>{
   for(const change of [
    {externalEffectsAuthorized:true},
