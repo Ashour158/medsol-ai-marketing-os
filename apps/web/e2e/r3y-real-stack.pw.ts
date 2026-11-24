@@ -350,7 +350,8 @@ test('T09-013 social review preview cannot bypass read-only human gate or send r
  const foreign=await bff(page,'social/discussions/triage-preview',{
   organizationId:'r3y-foreign-tenant',discussionId:'r3y-foreign',
   text:'Mock user question about clinical outcome',status:'OPEN'});
- expect(foreign.status).toBe(400);
+ // Authorization rejects a forged organization scope before payload validation.
+ expect(foreign.status).toBe(403);
  const reviewed=await bff(page,'social/discussions/triage-preview',{
   discussionId:'r3y-mock-scientific-001',
   text:'Could you explain whether this is a guaranteed clinical cure?',
