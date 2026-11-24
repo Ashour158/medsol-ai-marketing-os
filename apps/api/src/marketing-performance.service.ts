@@ -110,6 +110,6 @@ export class MarketingPerformanceService{
   const metrics=summarizeReviewedCommercialMetrics(rows,pending);
   return{organizationId,campaign,...metrics,sourceRecordReconciliation:reconcileReviewedFunnelCohorts(cohortRows),
    independentlyVerified:false,spendUnit:'micro currency units'};
-  });
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
 }
