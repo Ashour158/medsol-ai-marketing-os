@@ -9,7 +9,13 @@ type PerformanceSummary={status:string;campaign:{id:string;name:string};totals:R
  leadQualificationPercent:number|null;spendMicrosPerQualifiedLead:string|null};
  warnings:string[];cohortAligned:false;roiValidated:false;revenueVerified:false;
  spendCurrencyVerified:false;pendingReviewCount:number;independentlyVerified:boolean;
- attributionValidated:boolean};
+ attributionValidated:boolean;
+ sourceRecordReconciliation?:{status:string;matchedGroups:number;incompleteGroups:number;
+ inconsistentGroups:number;excludedNonFunnelRows:number;
+ matchedTotals:{impressions:string;clicks:string;leads:string;qualifiedLeads:string}|null;
+ rates:{ctrPercent:number|null;clickToLeadPercent:number|null;leadQualificationPercent:number|null};
+ attributionValidated:false;roiValidated:false;revenueVerified:false;spendCurrencyVerified:false;
+ independentVerification:false}};
 export default function PerformanceConsole({enabled}:{enabled:boolean}){
  const [campaigns,setCampaigns]=useState<Campaign[]>([]);
  const [campaignId,setCampaignId]=useState("");
@@ -19,6 +25,7 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
  const [value,setValue]=useState("");
  const [sourceRecordId,setSourceRecordId]=useState("");
  const [sourceReference,setSourceReference]=useState("");
+ const [observedAt,setObservedAt]=useState("");
  const [reviewId,setReviewId]=useState("");
  const [rationale,setRationale]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
@@ -72,6 +79,25 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
       <strong>Evidence quality restrictions</strong>
       <ul>{summary.warnings.map(w=><li key={w}>{w.replaceAll("_"," ")}</li>)}</ul>
      </div>}
+     {summary.sourceRecordReconciliation&&<section aria-label="Matched source record reconciliation"
+      style={{margin:"12px 0",padding:10,border:"1px solid #cbd5e1",borderRadius:7,background:"#fff"}}>
+      <strong>Exact source-record reconciliation</strong>
+      <p>{summary.sourceRecordReconciliation.status.replaceAll("_"," ")}</p>
+      <p>Matched groups: {summary.sourceRecordReconciliation.matchedGroups} ·
+       Incomplete: {summary.sourceRecordReconciliation.incompleteGroups} ·
+       Contradictory: {summary.sourceRecordReconciliation.inconsistentGroups}</p>
+      {summary.sourceRecordReconciliation.matchedTotals&&<>
+       <p>Matched impressions: {summary.sourceRecordReconciliation.matchedTotals.impressions} ·
+        clicks: {summary.sourceRecordReconciliation.matchedTotals.clicks} ·
+        leads: {summary.sourceRecordReconciliation.matchedTotals.leads} ·
+        qualified: {summary.sourceRecordReconciliation.matchedTotals.qualifiedLeads}</p>
+       <p>Matched CTR: {summary.sourceRecordReconciliation.rates.ctrPercent??"N/A"} ·
+        click-to-lead: {summary.sourceRecordReconciliation.rates.clickToLeadPercent??"N/A"} ·
+        qualification: {summary.sourceRecordReconciliation.rates.leadQualificationPercent??"N/A"} (%)</p>
+      </>}
+      <small>Exact record matching is not independent cohort verification. No currency,
+       causal attribution, revenue or ROI is certified.</small>
+     </section>}
      <small>Rates describe separately reviewed observations; a matched cohort,
       reliable currency, revenue/ROI and multi-touch attribution have not been verified.
       Never treat a modeled return as measured commercial revenue.</small>
@@ -86,10 +112,16 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
     <label style={{display:"block",marginTop:8}}>Value (nonnegative integer)<input style={field} inputMode="numeric" value={value} onChange={e=>setValue(e.target.value)}/></label>
     <label style={{display:"block",marginTop:8}}>Source record ID<input style={field} value={sourceRecordId} onChange={e=>setSourceRecordId(e.target.value)} placeholder="export-20261118-row-5"/></label>
     <label style={{display:"block",marginTop:8}}>Evidence reference<input style={field} value={sourceReference} onChange={e=>setSourceReference(e.target.value)} placeholder="internal:approved-analytics-export"/></label>
+    <label style={{display:"block",marginTop:8}}>Source observation timestamp (UTC ISO)
+     <input style={field} value={observedAt} onChange={e=>setObservedAt(e.target.value)}
+      placeholder="2026-11-24T10:00:00.000Z" maxLength={40}/>
+    </label>
+    <small>Use the original identical source timestamp for each metric of the same record.
+     Leave blank for a separate current-time observation.</small>
     <button style={{...button,marginTop:10}} disabled={busy||!campaignId||!/^\d+$/.test(value)||!sourceRecordId.trim()||!sourceReference.trim()}
      onClick={()=>act(async()=>{
       await call("performance/ingest",{campaignId,metricKey,value:Number(value),sourceSystem:"MANUAL_EXPORT",sourceRecordId:sourceRecordId.trim(),
-       sourceReference:sourceReference.trim(),observedAt:new Date().toISOString()});
+       sourceReference:sourceReference.trim(),observedAt:observedAt.trim()||new Date().toISOString()});
       setNotice("Observation quarantined for independent review.");await refresh();
      })}>Submit evidence for review</button>
    </div>

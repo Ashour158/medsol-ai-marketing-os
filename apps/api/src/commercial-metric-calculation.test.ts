@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {summarizeReviewedCommercialMetrics as summarize} from "./commercial-metric-calculation.js";
+import {summarizeReviewedCommercialMetrics as summarize,reconcileReviewedFunnelCohorts as reconcile,COHORT_ROW_LIMIT,type ReviewedCohortRow} from "./commercial-metric-calculation.js";
 const row=(metricKey:string,value:bigint)=>({
  metricKey,_sum:{value},_count:{_all:1}
 });
@@ -48,5 +48,52 @@ describe("T6A commercial conversion descriptive quality",()=>{
    [row("unrecognized",2n)]
   ])expect(()=>summarize(bad,0)).toThrow();
   expect(()=>summarize([],NaN)).toThrow();
+ });
+});
+
+
+const cohort=(record="row-1",counts=[100n,20n,8n,4n],source="MANUAL_EXPORT"):ReviewedCohortRow[]=>
+ ["impressions","clicks","leads","qualified_leads"].map((metricKey,i)=>({
+  metricKey,value:counts[i]!,sourceSystem:source,sourceRecordId:record,
+  sourceReference:"internal:original-export",observedAt:new Date("2026-11-01T10:00:00.000Z")
+ }));
+describe("T1 exact source-record cohort reconciliation",()=>{
+ it("matches reviewed complete groups using exact bigint arithmetic",()=>{
+  const result=reconcile([...cohort(),...cohort("row-2",[100n,40n,12n,6n])]);
+  expect(result).toMatchObject({status:"EXACT_SOURCE_RECORD_MATCH",matchedGroups:2,
+   matchedTotals:{impressions:"200",clicks:"60",leads:"20",qualifiedLeads:"10"},
+   rates:{ctrPercent:30,clickToLeadPercent:33.33,leadQualificationPercent:50},
+   attributionValidated:false,roiValidated:false,revenueVerified:false,spendCurrencyVerified:false});
+  expect(JSON.stringify(result)).not.toContain("internal:original-export");
+ });
+ it("never joins different source records, times, references or systems",()=>{
+  const rows=cohort();
+  for(const variant of [
+   {...rows[3]!,sourceRecordId:"different"},
+   {...rows[3]!,observedAt:new Date("2026-11-01T10:00:01Z")},
+   {...rows[3]!,sourceReference:"internal:other"},
+   {...rows[3]!,sourceSystem:"APPROVED_CONNECTOR_EXPORT"}
+  ]){
+   const r=reconcile([...rows.slice(0,3),variant]);
+   expect(r).toMatchObject({matchedGroups:0,incompleteGroups:2,matchedTotals:null,
+    rates:{ctrPercent:null,clickToLeadPercent:null,leadQualificationPercent:null}});
+  }
+ });
+ it("excludes incomplete and contradictory groups rather than laundering rates",()=>{
+  const r=reconcile([...cohort(),...cohort("impossible",[5n,8n,3n,2n]),
+   ...cohort("missing").slice(0,2),
+   {...cohort("monetary")[0]!,metricKey:"spend_micros"}]);
+  expect(r).toMatchObject({status:"PARTIAL_SOURCE_MATCH",matchedGroups:1,
+   incompleteGroups:1,inconsistentGroups:1,excludedNonFunnelRows:1,
+   matchedTotals:{impressions:"100",clicks:"20",leads:"8",qualifiedLeads:"4"}});
+ });
+ it("fails closed on oversized scans, duplicate metric records and malformed rows",()=>{
+  const row=cohort()[0]!;
+  expect(reconcile(Array.from({length:COHORT_ROW_LIMIT+1},()=>row))).toMatchObject({
+   status:"ROW_LIMIT_EXCEEDED",matchedGroups:0,matchedTotals:null});
+  expect(()=>reconcile([row,row])).toThrow("Duplicate metric");
+  expect(()=>reconcile([{...row,value:-1n}])).toThrow();
+  expect(()=>reconcile([{...row,observedAt:new Date("invalid")}])).toThrow();
+  expect(reconcile(cohort("zero",[0n,0n,0n,0n])).rates.ctrPercent).toBeNull();
  });
 });

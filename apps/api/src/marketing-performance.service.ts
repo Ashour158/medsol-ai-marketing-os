@@ -2,7 +2,7 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
-import {summarizeReviewedCommercialMetrics} from './commercial-metric-calculation.js';
+import {summarizeReviewedCommercialMetrics,reconcileReviewedFunnelCohorts,COHORT_ROW_LIMIT} from './commercial-metric-calculation.js';
 
 const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads','spend_micros']);
 const SOURCE_SYSTEMS=new Set(['MANUAL_EXPORT','APPROVED_CONNECTOR_EXPORT']);
@@ -99,14 +99,17 @@ export class MarketingPerformanceService{
   const campaign=await tx.campaign.findFirst({
    where:{id:campaignId,organizationId},select:{id:true,code:true,name:true}});
   if(!campaign)throw new NotFoundException('Campaign not found in tenant');
-  const [rows,pending]=await Promise.all([
+  const [rows,pending,cohortRows]=await Promise.all([
    tx.marketingMetricObservation.groupBy({by:['metricKey'],where:{organizationId,campaignId,status:'REVIEWED'},
     _sum:{value:true},_count:{_all:true}}),
-   tx.marketingMetricObservation.count({where:{organizationId,campaignId,status:'QUARANTINED'}})
+   tx.marketingMetricObservation.count({where:{organizationId,campaignId,status:'QUARANTINED'}}),
+   tx.marketingMetricObservation.findMany({where:{organizationId,campaignId,status:'REVIEWED'},
+    take:COHORT_ROW_LIMIT+1,orderBy:{id:'asc'},select:{sourceSystem:true,sourceRecordId:true,
+     sourceReference:true,observedAt:true,metricKey:true,value:true}})
   ]);
   const metrics=summarizeReviewedCommercialMetrics(rows,pending);
-  return{organizationId,campaign,...metrics,
+  return{organizationId,campaign,...metrics,sourceRecordReconciliation:reconcileReviewedFunnelCohorts(cohortRows),
    independentlyVerified:false,spendUnit:'micro currency units'};
-  });
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
 }

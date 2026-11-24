@@ -268,6 +268,28 @@ test('T12-004 evidence-learning stays quarantined after real cross-engine HTTP a
  expect(state.learningSignals.some((x:any)=>x.status==='QUARANTINED')).toBe(true);
  const proposals=await assertSuccess(page,'learning/proposals');
  expect(proposals.some((x:any)=>x.status==='ACTIVE')).toBe(false);
+ const topic='R3Y offline watch '+unique();
+ const makeSignal=async(suffix:string)=>assertSuccess(page,'learning/signals',{
+  topic,sector:'Synthetic research',sourceUrl:'https://example.invalid/'+unique()+'/'+suffix,
+  sourceTitle:'Disposable test reference',observedAt:new Date(Date.now()-1000).toISOString(),
+  evidence:{summary:'Offline fixture only, not a real market observation'}
+ });
+ const a=await makeSignal('first'),b=await makeSignal('second');
+ await authenticate(page,request,'reviewer');
+ await assertSuccess(page,'learning/verify',{signalId:a.signal.id});
+ const market=page.locator('#market-intelligence');
+ await market.getByRole('button',{name:'Refresh reviewed market intelligence'}).click();
+ await market.getByLabel('Filter research topic').fill(topic);
+ await expect(market.getByRole('button',{name:'Capture filtered watch baseline (1)'})).toBeEnabled();
+ await market.getByRole('button',{name:'Capture filtered watch baseline (1)'}).click();
+ await assertSuccess(page,'learning/verify',{signalId:b.signal.id});
+ await market.getByRole('button',{name:'Refresh reviewed market intelligence'}).click();
+ await expect(market.getByRole('button',{name:'Compare refreshed reviewed evidence'})).toBeEnabled();
+ await market.getByRole('button',{name:'Compare refreshed reviewed evidence'}).click();
+ await expect(market.getByRole('status').filter({hasText:'REVIEWED WINDOW CHANGED'})).toBeVisible();
+ const csv=page.waitForEvent('download');
+ await market.getByRole('button',{name:'Export reviewed watch CSV'}).click();
+ expect((await csv).suggestedFilename()).toBe('medsol-reviewed-watch.csv');
 });
 test('T13-015 actual API quarantine-review KPI never upgrades to causal ROI claims',async({page,request})=>{
  await authenticate(page,request);await studio(page);
@@ -293,6 +315,9 @@ test('T13-015 actual API quarantine-review KPI never upgrades to causal ROI clai
  const summary=await assertSuccess(page,'performance/campaigns/'+id);
  expect(summary.attributionValidated).toBe(false);
  expect(summary.independentlyVerified).toBe(false);
+ expect(summary.sourceRecordReconciliation).toMatchObject({
+  status:'NO_COMPLETE_MATCHED_GROUPS',matchedGroups:0,incompleteGroups:1,matchedTotals:null
+ });
  const local=page.locator('#conversion-lab');
  await expect(local.getByRole('heading',{name:/Conversion & Form Preview/})).toBeVisible();
  await local.getByRole('button',{name:'Rehearse synthetic conversion'}).click();
@@ -301,6 +326,15 @@ test('T13-015 actual API quarantine-review KPI never upgrades to causal ROI clai
  const csv=page.waitForEvent('download');
  await local.getByRole('button',{name:'Export unsigned conversion CSV'}).click();
  expect((await csv).suggestedFilename()).toBe('medsol-synthetic-conversion-funnel.csv');
+ await local.getByRole('button',{name:'Rehearse mock CRM handoff'}).click();
+ await expect(local.getByRole('status').filter({hasText:'Handoff rehearsal:'})).toContainText('BLOCKED');
+ await local.getByLabel('Virtual consent').selectOption('GRANTED');
+ await local.getByLabel('Virtual transport').selectOption('OUTCOME_UNKNOWN');
+ await local.getByRole('button',{name:'Rehearse mock CRM handoff'}).click();
+ await expect(local.getByRole('status').filter({hasText:'Handoff rehearsal:'})).toContainText('OUTCOME_UNKNOWN');
+ const handoffCsv=page.waitForEvent('download');
+ await local.getByRole('button',{name:'Export mock handoff CSV'}).click();
+ expect((await handoffCsv).suggestedFilename()).toBe('medsol-anonymous-crm-handoff.csv');
 });
 test('T14-006 real model-owner API rejects paid inference without provisioned budget',async({page,request})=>{
  await authenticate(page,request);
@@ -354,7 +388,7 @@ test('T09-013 social review preview cannot bypass read-only human gate or send r
  expect(foreign.status).toBe(403);
  const reviewed=await bff(page,'social/discussions/triage-preview',{
   discussionId:'r3y-mock-scientific-001',
-  text:'Could you explain whether this clinical outcome is a guaranteed cure?',
+  text:'Could you explain whether this is a guaranteed clinical cure?',
   status:'OPEN',moderation:'NORMAL'});
  expect(reviewed.status).toBe(201);
  expect(reviewed.result).toMatchObject({
