@@ -268,6 +268,28 @@ test('T12-004 evidence-learning stays quarantined after real cross-engine HTTP a
  expect(state.learningSignals.some((x:any)=>x.status==='QUARANTINED')).toBe(true);
  const proposals=await assertSuccess(page,'learning/proposals');
  expect(proposals.some((x:any)=>x.status==='ACTIVE')).toBe(false);
+ const topic='R3Y offline watch '+unique();
+ const makeSignal=async(suffix:string)=>assertSuccess(page,'learning/signals',{
+  topic,sector:'Synthetic research',sourceUrl:'https://example.invalid/'+unique()+'/'+suffix,
+  sourceTitle:'Disposable test reference',observedAt:new Date(Date.now()-1000).toISOString(),
+  evidence:{summary:'Offline fixture only, not a real market observation'}
+ });
+ const a=await makeSignal('first'),b=await makeSignal('second');
+ await authenticate(page,request,'reviewer');
+ await assertSuccess(page,'learning/verify',{signalId:a.signal.id});
+ const market=page.locator('#market-intelligence');
+ await market.getByRole('button',{name:'Refresh reviewed market intelligence'}).click();
+ await market.getByLabel('Filter research topic').fill(topic);
+ await expect(market.getByRole('button',{name:'Capture filtered watch baseline (1)'})).toBeEnabled();
+ await market.getByRole('button',{name:'Capture filtered watch baseline (1)'}).click();
+ await assertSuccess(page,'learning/verify',{signalId:b.signal.id});
+ await market.getByRole('button',{name:'Refresh reviewed market intelligence'}).click();
+ await expect(market.getByRole('button',{name:'Compare refreshed reviewed evidence'})).toBeEnabled();
+ await market.getByRole('button',{name:'Compare refreshed reviewed evidence'}).click();
+ await expect(market.getByRole('status').filter({hasText:'REVIEWED WINDOW CHANGED'})).toBeVisible();
+ const csv=page.waitForEvent('download');
+ await market.getByRole('button',{name:'Export reviewed watch CSV'}).click();
+ expect((await csv).suggestedFilename()).toBe('medsol-reviewed-watch.csv');
 });
 test('T13-015 actual API quarantine-review KPI never upgrades to causal ROI claims',async({page,request})=>{
  await authenticate(page,request);await studio(page);
