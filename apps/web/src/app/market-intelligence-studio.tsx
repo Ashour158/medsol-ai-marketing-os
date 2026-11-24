@@ -1,6 +1,7 @@
 "use client";
 import {useState} from "react";
-import {reviewedMarketCsv,saveOfflineCsv} from "../lib/offline-evidence-csv";
+import {compareReviewedWatch,type WatchSelection} from "../lib/reviewed-market-watch";
+import {reviewedMarketCsv,reviewedMarketWatchCsv,saveOfflineCsv} from "../lib/offline-evidence-csv";
 
 type Identity={userId:string;organizationId:string;role:string}|null;
 type MarketTopic={topic:string;sector:string;evidenceCount:number;
@@ -27,9 +28,11 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [loadedFor,setLoadedFor]=useState("");
+ const [watch,setWatch]=useState<{scope:string;baseline:Brief;selection:WatchSelection[]}|null>(null);
+ const [comparison,setComparison]=useState<{scope:string;result:ReturnType<typeof compareReviewedWatch>}|null>(null);
  const scope=identity?identity.organizationId+":"+identity.userId:"";
  async function refresh(){
-  setBusy(true);setError("");setBrief(null);
+  setBusy(true);setError("");setBrief(null);setComparison(null);
   try{
    const response=await fetch("/api/marketing/learning/trends",{
     credentials:"same-origin",cache:"no-store"
@@ -43,6 +46,8 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
  }
  if(!identity)return null;
  const visible=loadedFor===scope?brief:null;
+ const activeWatch=watch?.scope===scope?watch:null;
+ const activeComparison=comparison?.scope===scope&&comparison.result.currentAsOf===visible?.asOf?comparison.result:null;
  const topics=(visible?.topics??[]).filter(x=>
   (!sector||x.sector.toLowerCase().includes(sector.trim().toLowerCase()))&&
   (!query||x.topic.toLowerCase().includes(query.trim().toLowerCase()))&&
@@ -103,6 +108,48 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
       "medsol-reviewed-market-signals.csv");setError("");}
      catch(e){setError(e instanceof Error?e.message:"Market export blocked");}
     }}>Export filtered reviewed intelligence (unsigned CSV)</button>
+   <section aria-label="Reviewed evidence change watch" style={{marginTop:14,padding:12,
+    border:"1px solid #dbe4ed",borderRadius:9}}>
+    <strong>Reviewed evidence change watch · session only</strong>
+    <p style={{fontSize:12,color:"#475569"}}>
+     Filter to 1–20 topics, capture a baseline, refresh the canonical reviewed registry,
+     and compare. No background polling, crawling or market-change verification.
+    </p>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+     <button type="button" style={control} disabled={topics.length<1||topics.length>20}
+      onClick={()=>{setWatch({scope,baseline:visible,selection:topics.map(t=>({sector:t.sector,topic:t.topic}))});
+       setComparison(null);setError("");}}>Capture filtered watch baseline ({topics.length})</button>
+     <button type="button" style={control} disabled={!activeWatch||Date.parse(visible.asOf)<=Date.parse(activeWatch.baseline.asOf)}
+      onClick={()=>{
+       if(!activeWatch)return;
+       try{setComparison({scope,result:compareReviewedWatch(activeWatch.baseline,visible,
+        activeWatch.selection,identity.organizationId)});setError("");}
+       catch(e){setComparison(null);setError(e instanceof Error?e.message:"Watch comparison blocked");}
+      }}>Compare refreshed reviewed evidence</button>
+     <button type="button" style={control} disabled={!activeComparison||!activeWatch}
+      onClick={()=>{
+       if(!activeComparison||!activeWatch)return;
+       try{saveOfflineCsv(reviewedMarketWatchCsv(activeWatch.baseline,visible,
+        activeWatch.selection,identity.organizationId,activeComparison),"medsol-reviewed-watch.csv");setError("");}
+       catch(e){setError(e instanceof Error?e.message:"Watch export blocked");}
+      }}>Export reviewed watch CSV</button>
+     <button type="button" style={control} disabled={!activeWatch} onClick={()=>{
+      setWatch(null);setComparison(null);setError("");
+     }}>Clear watch</button>
+    </div>
+    {activeWatch&&<p style={{fontSize:12}}>Baseline: {activeWatch.baseline.asOf} ·
+      {activeWatch.selection.length} selected topics. Refresh to obtain a new snapshot.</p>}
+    {activeComparison&&<div role="status" style={{fontSize:12}}>
+     {activeComparison.windowMayBeIncomplete&&<p>At least one source window reached its 200-record cap.</p>}
+     {activeComparison.changes.map(c=><p key={JSON.stringify([c.sector,c.topic])}>
+      {c.sector} · {c.topic}: <strong>{c.status.replaceAll("_"," ")}</strong>
+      {" "}({c.baselineSignals} → {c.currentSignals??"not in current window"} reviewed records).
+      {c.changedFields.length>0&&" Changed: "+c.changedFields.join(", ")}
+     </p>)}
+     <p>Missing topics may be outside the bounded window or no longer review-eligible.
+      Neither a change nor disappearance proves market movement.</p>
+    </div>}
+   </section>
    <div style={{display:"grid",gap:12,marginTop:14}}>
     {topics.map(x=><article key={x.sector+"::"+x.topic} style={{
       border:"1px solid #dbe4ed",borderRadius:9,padding:12}}>
