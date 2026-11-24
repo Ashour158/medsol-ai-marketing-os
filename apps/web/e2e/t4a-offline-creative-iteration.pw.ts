@@ -77,6 +77,11 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
  const evidence=await ok(page,"media/evidence/"+newId);
  expect(evidence).toMatchObject({evidenceOrigin:"OFFLINE_DB_RASTER",
   remotePlatformMediaEligible:false,externalEffectsAuthorized:false});
+ const download=page.waitForEvent("download");
+ await page.getByRole("button",{name:"Export new editable SVG draft (unapproved)"}).click();
+ expect((await download).suggestedFilename()).toBe("medsol-derived-unapproved-"+newId+".svg");
+ await expect(page.getByRole("status").filter({hasText:"no inherited approval or rights"})).toBeVisible();
+ expect((await ok(page,"assets/"+assetId)).version).toBe(2);
  await page.getByRole("combobox",{name:"Version history (read-only comparisons)"})
   .selectOption(oldId);
  await page.getByRole("button",{name:"Compare saved version"}).click();
