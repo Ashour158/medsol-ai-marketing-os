@@ -52,7 +52,7 @@ describe("T1 native editable derived draft export",()=>{
  });
  it("escapes XML and retains long copy rather than embedding unsafe markup",()=>{
   const r=deriveOfflineEditableSvgDraft(record(),{...preview(),title:'<script>alert(1)</script>',
-   editableCopy:'A & B <image href="https://bad.invalid"/> '+('LONG '.repeat(120))+'END MARKER'},"#abcdef");
+   editableCopy:'A & B <image href="https://bad.invalid"/> '+('LONG '.repeat(120))+'\nEND MARKER'},"#abcdef");
   expect(r.svg).not.toContain("<script>");
   expect(r.svg).not.toContain("<image ");
   expect(r.svg).toContain("&lt;script&gt;");
