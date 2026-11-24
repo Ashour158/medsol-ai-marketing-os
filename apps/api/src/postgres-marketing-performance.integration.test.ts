@@ -31,6 +31,23 @@ describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
    expect(result.derived.ctrPercent).toBe(5);
    expect(result.derived.clickToLeadPercent).toBe(10);
    expect(result.attributionValidated).toBe(false);
+   expect(result.sourceRecordReconciliation).toMatchObject({
+    status:'NO_COMPLETE_MATCHED_GROUPS',matchedGroups:0,incompleteGroups:3,matchedTotals:null});
+   for(const [metricKey,value] of [['impressions',100],['clicks',20],['leads',8],['qualified_leads',4]] as const){
+    const added=await metrics.ingest(organizationId,'submitter',{
+     campaignId:campaignA.id,sourceSystem:'MANUAL_EXPORT',sourceRecordId:'same-export-record',
+     metricKey,value,observedAt,sourceReference:'internal:cohort-evidence'});
+    await metrics.review(organizationId,'independent-reviewer',added.observationId,'Reviewed exact same source record');
+   }
+   const matched=await metrics.summary(organizationId,campaignA.id);
+   expect(matched.sourceRecordReconciliation).toMatchObject({
+    status:'PARTIAL_SOURCE_MATCH',matchedGroups:1,incompleteGroups:3,
+    matchedTotals:{impressions:'100',clicks:'20',leads:'8',qualifiedLeads:'4'},
+    rates:{ctrPercent:20,clickToLeadPercent:40,leadQualificationPercent:50},
+    attributionValidated:false,spendCurrencyVerified:false,independentVerification:false});
+   expect((await metrics.summary(otherOrganization,campaignB.id)).sourceRecordReconciliation)
+    .toMatchObject({matchedGroups:0,matchedTotals:null});
+
    expect((await metrics.summary(otherOrganization,campaignB.id)).totals).toEqual({});
    await expect(metrics.summary(otherOrganization,campaignA.id)).rejects.toThrow('not found in tenant');
    // A direct write cannot bypass the tenant composite FK on Campaign.
