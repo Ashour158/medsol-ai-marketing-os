@@ -1,3 +1,4 @@
+import {compareReviewedWatch,type WatchSnapshot,type WatchSelection} from './reviewed-market-watch';
 /** Shared CSV encoding for unsigned, offline customer intelligence and revenue
  * scenario exports. No side effects, new business owners or provider calls.
  */
@@ -278,5 +279,28 @@ export function crmHandoffRehearsalCsv(input:OfflineHandoffInput,
   ['real','crm_handoffs_executed',0,'NOT_CONNECTED'],
   ['real','actual_leads_created',0,'NOT_CONNECTED'],
   ['release','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
+ ]);
+}
+
+/** Reviewed-window change report; comparison is recomputed against the two
+ * tenant-matched source snapshots. No source payloads or URLs are exported. */
+export function reviewedMarketWatchCsv(baseline:WatchSnapshot,current:WatchSnapshot,
+ selection:readonly WatchSelection[],tenant:string,
+ result:ReturnType<typeof compareReviewedWatch>){
+ const expected=compareReviewedWatch(baseline,current,selection,tenant);
+ if(JSON.stringify(result)!==JSON.stringify(expected))
+  fail('Reviewed watch result differs from source snapshots');
+ return csv([
+  ['section','sector','topic','metric','value','qualification'],
+  ['snapshot','','','baseline_as_of',result.baselineAsOf,'REVIEWED_WINDOW_ONLY'],
+  ['snapshot','','','current_as_of',result.currentAsOf,'REVIEWED_WINDOW_ONLY'],
+  ...result.changes.flatMap(c=>[
+   ['topic',c.sector,c.topic,'status',c.status,'NOT_VERIFIED_MARKET_CHANGE'],
+   ['topic',c.sector,c.topic,'changed_fields',c.changedFields.join(';'),'REVIEWED_WINDOW_ONLY'],
+   ['topic',c.sector,c.topic,'baseline_signals',c.baselineSignals,'REVIEWED_WINDOW_ONLY'],
+   ['topic',c.sector,c.topic,'current_signals',c.currentSignals??'NOT_IN_WINDOW','NOT_EVIDENCE_OF_ABSENCE']
+  ]),
+  ['scope','','','window_may_be_incomplete',result.windowMayBeIncomplete?'YES':'NO','BOUNDED_SOURCE_READ'],
+  ['release','','','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
  ]);
 }
