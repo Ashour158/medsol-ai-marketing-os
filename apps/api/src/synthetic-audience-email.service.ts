@@ -13,10 +13,16 @@ import {parseSyntheticJourney,syntheticJourneyDigest,simulateSyntheticJourney} f
  * Never expose a live send endpoint through this service.
  */
 type Tx=Prisma.TransactionClient;
-type ConsentAction='SIMULATED_OPT_IN'|'SIMULATED_WITHDRAWAL'|'SIMULATED_COMPLAINT';
+type ConsentAction='SIMULATED_OPT_IN'|'SIMULATED_WITHDRAWAL'|'SIMULATED_COMPLAINT'|'SIMULATED_HARD_BOUNCE';
 const actions=new Set<string>([
- 'SIMULATED_OPT_IN','SIMULATED_WITHDRAWAL','SIMULATED_COMPLAINT'
+ 'SIMULATED_OPT_IN','SIMULATED_WITHDRAWAL','SIMULATED_COMPLAINT','SIMULATED_HARD_BOUNCE'
 ]);
+const permanentActions=['SIMULATED_COMPLAINT','SIMULATED_HARD_BOUNCE'];
+const eligibility=(latest:string|undefined,permanent:readonly string[])=>
+ permanent.includes('SIMULATED_COMPLAINT')?'COMPLAINT_SUPPRESSED':
+ permanent.includes('SIMULATED_HARD_BOUNCE')?'HARD_BOUNCE_SUPPRESSED':
+ latest==='SIMULATED_OPT_IN'?'SYNTHETIC_ELIGIBLE':
+ latest==='SIMULATED_WITHDRAWAL'?'WITHDRAWN':'MISSING_CONSENT';
 const key=(v:unknown,label:string,max=160)=>{
  if(typeof v!=='string'||v.length<12||v.length>max||
   !/^[a-zA-Z0-9_-]+$/.test(v))
@@ -42,6 +48,13 @@ export class SyntheticAudienceEmailService{
    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
    return fn(tx);
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+ }
+ private async permanentSuppressions(tx:Tx,organizationId:string,contactIds:string[]){
+  const rows=await tx.marketingSyntheticConsent.groupBy({by:['contactId','action'],
+   where:{organizationId,contactId:{in:contactIds},action:{in:permanentActions}}});
+  const result=new Map<string,string[]>();
+  for(const r of rows)result.set(r.contactId,[...(result.get(r.contactId)??[]),r.action]);
+  return result;
  }
  private async administrator(tx:Tx,organizationId:string,identity:VerifiedIdentity){
   if(!identity||identity.organizationId!==organizationId||
@@ -88,9 +101,11 @@ export class SyntheticAudienceEmailService{
    const rows=await tx.marketingSyntheticContact.findMany({where:{
     organizationId,brandId},orderBy:{createdAt:'desc'},take:100,
     include:{consentEvents:{orderBy:{sequence:'desc'},take:1}}});
+   const permanent=await this.permanentSuppressions(tx,organizationId,rows.map(r=>r.id));
    return rows.map(r=>({contactId:r.id,brandId:r.brandId,
     syntheticRecipientRef:r.syntheticRecipientRef,
     latestSimulatedConsent:r.consentEvents[0]?.action??'NONE',
+    effectiveSyntheticEligibility:eligibility(r.consentEvents[0]?.action,permanent.get(r.id)??[]),
     syntheticOnly:true,verifiedLegalConsent:false}));
   });
  }
@@ -125,9 +140,9 @@ export class SyntheticAudienceEmailService{
    const latest=await tx.marketingSyntheticConsent.findFirst({where:{
     organizationId,contactId},orderBy:{sequence:'desc'}});
    if(action==='SIMULATED_OPT_IN'){
-    const complaint=await tx.marketingSyntheticConsent.findFirst({where:{
-     organizationId,contactId,action:'SIMULATED_COMPLAINT'}});
-    if(complaint)throw new ConflictException('Complaint suppression is irreversible for synthetic contact');
+    const suppression=await tx.marketingSyntheticConsent.findFirst({where:{
+     organizationId,contactId,action:{in:permanentActions}}});
+    if(suppression)throw new ConflictException('Permanent suppression is irreversible for synthetic contact');
    }
    const event=await tx.marketingSyntheticConsent.create({data:{
     id:randomUUID(),organizationId,contactId,sequence:(latest?.sequence??0)+1,
@@ -173,28 +188,24 @@ export class SyntheticAudienceEmailService{
     organizationId,id:campaignId,status:'APPROVED',brandId
    },select:{id:true}});
    if(!campaign)throw new ConflictException('Same-brand independently approved campaign required');
+   const approval=await tx.approval.findFirst({where:{organizationId,objectType:'Campaign',
+    objectId:campaignId,decision:'APPROVED',decidedBy:{not:null}},
+    select:{requestedBy:true,decidedBy:true}});
+   if(!approval?.decidedBy||approval.decidedBy===approval.requestedBy)
+    throw new ConflictException('Recorded independent campaign approval required');
    const contacts=await tx.marketingSyntheticContact.findMany({where:{
     organizationId,brandId,id:{in:sorted}
-   }});
+   },include:{consentEvents:{orderBy:{sequence:'desc'},take:1}}});
    if(contacts.length!==sorted.length)
     throw new ConflictException('Audience contains absent, foreign-tenant or cross-brand contact');
-   const events=await tx.marketingSyntheticConsent.findMany({where:{
-    organizationId,contactId:{in:sorted}
-   },orderBy:[{contactId:'asc'},{sequence:'desc'}]});
-   const latest=new Map<string,typeof events[number]>();
-   const complaints=new Set<string>();
-   for(const event of events){
-    if(!latest.has(event.contactId))latest.set(event.contactId,event);
-    if(event.action==='SIMULATED_COMPLAINT')complaints.add(event.contactId);
-   }
-   let syntheticEligible=0,withdrawn=0,complaintSuppressed=0,missingConsent=0;
+   const permanent=await this.permanentSuppressions(tx,organizationId,sorted);
+   const latest=new Map(contacts.map(contact=>[contact.id,contact.consentEvents[0]]));
+   let syntheticEligible=0,withdrawn=0,complaintSuppressed=0,hardBounceSuppressed=0,missingConsent=0;
    const snapshot=sorted.map(contactId=>{
     const event=latest.get(contactId);
-    const complaint=complaints.has(contactId);
-    const reason=complaint?'COMPLAINT_SUPPRESSED':
-     event?.action==='SIMULATED_OPT_IN'?'SYNTHETIC_ELIGIBLE':
-     event?.action==='SIMULATED_WITHDRAWAL'?'WITHDRAWN':'MISSING_CONSENT';
+    const reason=eligibility(event?.action,permanent.get(contactId)??[]);
     if(reason==='COMPLAINT_SUPPRESSED')complaintSuppressed++;
+    else if(reason==='HARD_BOUNCE_SUPPRESSED')hardBounceSuppressed++;
     else if(reason==='SYNTHETIC_ELIGIBLE')syntheticEligible++;
     else if(reason==='WITHDRAWN')withdrawn++;
     else missingConsent++;
@@ -228,7 +239,7 @@ export class SyntheticAudienceEmailService{
     syntheticTransportScenario:scenario,syntheticTransport,
     syntheticJourneyDigest:journeyDigest,syntheticJourneyPlan,
     syntheticRecipients:sorted.length,syntheticEligible,withdrawn,
-    complaintSuppressed,missingConsent,
+    complaintSuppressed,hardBounceSuppressed,missingConsent,
     actualMessagesSent:0,verifiedProviderReceipts:0,
     syntheticOnly:true,realConsentVerified:false,
     externalEffectsAuthorized:false,automaticRetryAllowed:false
