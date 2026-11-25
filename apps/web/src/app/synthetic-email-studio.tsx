@@ -5,7 +5,7 @@ import {emailSimulationCsv,saveOfflineCsv,type EmailTrialExport}
 
 type Identity={organizationId:string;userId:string;role:string};
 type Contact={contactId:string;syntheticRecipientRef:string;
- latestSimulatedConsent:string;syntheticOnly:true};
+ latestSimulatedConsent:string;effectiveSyntheticEligibility?:string;syntheticOnly:true};
 type EmailResult=EmailTrialExport&{simulationId:string;audienceDigest:string};
 const btn={background:"#124d83",color:"white",border:0,borderRadius:8,
  padding:"10px 14px",fontWeight:650,cursor:"pointer"} as const;
@@ -104,7 +104,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     }}>
      <option value="">Select synthetic contact</option>
      {contacts.map(c=><option key={c.contactId} value={c.contactId}>
-      {c.contactId.slice(0,12)} — {c.latestSimulatedConsent}</option>)}
+      {c.contactId.slice(0,12)} — {c.effectiveSyntheticEligibility??c.latestSimulatedConsent}</option>)}
     </select>
    </label>
    <label style={{fontSize:13}}>Mock consent event
@@ -114,6 +114,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
      <option value="SIMULATED_OPT_IN">Simulated opt-in</option>
      <option value="SIMULATED_WITHDRAWAL">Simulated withdrawal</option>
      <option value="SIMULATED_COMPLAINT">Simulated complaint (irreversible)</option>
+     <option value="SIMULATED_HARD_BOUNCE">Simulated hard bounce (irreversible)</option>
     </select>
    </label>
    <button style={{...btn,marginTop:10}}
@@ -135,7 +136,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
         selected.filter(id=>id!==c.contactId);
        setSelected(next);setMailKey("");setResult(null);
       }}/>
-     {" "}{c.contactId.slice(0,14)} · {c.latestSimulatedConsent}
+     {" "}{c.contactId.slice(0,14)} · {c.effectiveSyntheticEligibility??c.latestSimulatedConsent}
     </label>)}
    </fieldset>
   </>}
@@ -191,6 +192,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     Synthetic eligible: {result.results.syntheticEligible}</p>
    <p>Withdrawn: {result.results.withdrawn} ·
     Complaint-suppressed: {result.results.complaintSuppressed} ·
+    Hard-bounce suppressed: {result.results.hardBounceSuppressed??0} ·
     Missing opt-in: {result.results.missingConsent}</p>
    <p>Actual emails sent: <strong>0</strong> · Verified external receipts: <strong>0</strong></p>
    <button type="button" style={{...btn,background:"#475569",marginTop:8}}

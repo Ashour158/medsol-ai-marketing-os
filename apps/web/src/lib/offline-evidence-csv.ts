@@ -140,7 +140,7 @@ export type EmailTrialExport={
  status:'SIMULATED'|'BLOCKED';externalEffectsAuthorized:false;
  replayed:boolean;
  results:{syntheticRecipients:number;syntheticEligible:number;withdrawn:number;
-  complaintSuppressed:number;missingConsent:number;
+  complaintSuppressed:number;hardBounceSuppressed?:number;missingConsent:number;
   actualMessagesSent:0;verifiedProviderReceipts:0;
   syntheticJourneyPlan?:{requiresFreshConsentAtExecution:true;
    steps:Array<{key:string;scheduledAt:string;scenario:string;
@@ -151,9 +151,9 @@ export function emailSimulationCsv(report:EmailTrialExport){
  if(!r||!['SIMULATED','BLOCKED'].includes(report.status)||
   report.externalEffectsAuthorized!==false||typeof report.replayed!=='boolean'||
   r.actualMessagesSent!==0||r.verifiedProviderReceipts!==0||
-  ![r.syntheticRecipients,r.syntheticEligible,r.withdrawn,r.complaintSuppressed,
+  ![r.syntheticRecipients,r.syntheticEligible,r.withdrawn,r.complaintSuppressed,r.hardBounceSuppressed??0,
    r.missingConsent].every(boundedCount)||
-  r.syntheticEligible+r.withdrawn+r.complaintSuppressed+r.missingConsent>
+  r.syntheticEligible+r.withdrawn+r.complaintSuppressed+(r.hardBounceSuppressed??0)+r.missingConsent!==
    r.syntheticRecipients||
   (report.status==='SIMULATED')!==(r.syntheticEligible>0))
   fail('Synthetic email eligibility or no-delivery invariants not verified');
@@ -173,6 +173,7 @@ export function emailSimulationCsv(report:EmailTrialExport){
   ['email','eligible_simulations',r.syntheticEligible,'MOCK_OPT_IN_NOT_LEGAL_CONSENT'],
   ['email','withdrawn',r.withdrawn,'SYNTHETIC_SUPPRESSION'],
   ['email','complaint_suppressed',r.complaintSuppressed,'SYNTHETIC_SUPPRESSION'],
+  ['email','hard_bounce_suppressed',r.hardBounceSuppressed??0,'SYNTHETIC_SUPPRESSION'],
   ['email','no_mock_opt_in',r.missingConsent,'SYNTHETIC_SUPPRESSION'],
   ...steps.map(s=>['virtual_step',s.key,s.scheduledAt,
     'SIMULATED_'+s.scenario+'_OUTCOME_UNKNOWN_'+s.virtualOutcomeUnknown]),

@@ -278,6 +278,30 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     await db.$executeRawUnsafe('DROP ROLE "'+probeRole+'"');
    }
    expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(4);
+   // Hard-bounce feedback is synthetic and permanent even after withdrawal.
+   await action(unknown!,'SIMULATED_HARD_BOUNCE','consent-'+randomUUID());
+   await action(unknown!,'SIMULATED_WITHDRAWAL','consent-'+randomUUID());
+   await expect(action(unknown!,'SIMULATED_OPT_IN','consent-'+randomUUID()))
+    .rejects.toThrow('irreversible');
+   expect((await synthetic.listSyntheticContacts(org,identity,brandId))
+    .find(x=>x.contactId===unknown)).toMatchObject({
+     latestSimulatedConsent:'SIMULATED_WITHDRAWAL',
+     effectiveSyntheticEligibility:'HARD_BOUNCE_SUPPRESSED'});
+   const hardBounce=await synthetic.simulateEmailJourney(org,identity,{
+    ...audience,contactIds:[unknown!],requestKey:'hard-bounce-'+randomUUID()
+   });
+   expect(hardBounce).toMatchObject({status:'BLOCKED',results:{
+    syntheticRecipients:1,syntheticEligible:0,hardBounceSuppressed:1,withdrawn:0,
+    actualMessagesSent:0,verifiedProviderReceipts:0}});
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.marketingSyntheticConsent.create({data:{
+     id:randomUUID(),organizationId:org,contactId:unknown!,
+     action:'SIMULATED_OPT_IN',sequence:3,evidenceRef:'internal:synthetic-consent/'+'f'.repeat(64),
+     recordedBy:reviewer
+    }});
+   })).rejects.toThrow();
+
   }finally{await db.$disconnect();}
  },90000);
  it('keeps real email delivery and recipient export routes unregistered',()=>{
