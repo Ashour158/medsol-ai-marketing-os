@@ -36,8 +36,11 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length===4&&id==="synthetic-contacts"&&!!action&&
           operation==="consent"&&request.method==="POST")
       )) ||
-      (resource === "social" && !(path.length===3&&id==="discussions"&&
-        action==="triage-preview"&&request.method==="POST")) ||
+      (resource === "social" && !(
+        (path.length===3&&id==="discussions"&&action==="triage-preview"&&request.method==="POST")||
+        (path.length===2&&id==="cases"&&["GET","POST"].includes(request.method))||
+        (path.length===4&&id==="cases"&&!!action&&operation==="transition"&&request.method==="POST")
+      )) ||
       (resource === "email" && !(
         path.length===2&&id==="simulations"&&
         (request.method==="GET"||request.method==="POST")
