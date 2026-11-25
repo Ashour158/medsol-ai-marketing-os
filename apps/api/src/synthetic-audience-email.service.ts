@@ -6,6 +6,7 @@ import {hasMarketingPermission} from './marketing-permissions.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
 import {assertSyntheticEmailScenario,simulateSyntheticEmailTransport} from './synthetic-email-transport.js';
 import {parseSyntheticJourney,syntheticJourneyDigest,simulateSyntheticJourney} from './synthetic-email-journey.js';
+import {normalizeSyntheticProviderFeedback,type SyntheticProviderFeedback} from './synthetic-provider-feedback.js';
 
 /** R2H: first bounded synthetic-only Audience/Consent & Email simulation
  * authority. It stores NO actual email addresses, legal consent, send tokens,
@@ -113,16 +114,32 @@ export class SyntheticAudienceEmailService{
   contactIdInput:unknown,raw:unknown){
   const contactId=refId(contactIdInput,'contact');
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||
-    Object.keys(raw).some(k=>!['action','requestKey'].includes(k)))
-   throw new BadRequestException('Synthetic consent action and key only');
+    Object.keys(raw).some(k=>!['action','requestKey','providerFeedback'].includes(k)))
+   throw new BadRequestException('Synthetic consent action and key, or anonymous provider feedback only');
   const r=raw as Record<string,unknown>;
-  if(typeof r.action!=='string'||!actions.has(r.action))
-   throw new BadRequestException('Synthetic consent action not recognized');
-  const action=r.action as ConsentAction;
-  const requestKey=key(r.requestKey,'synthetic consent idempotency key');
-  const evidenceRef='internal:synthetic-consent/'+source([
-   'medsol-r2h-consent-event-v1',organizationId,contactId,requestKey
-  ]);
+  let action:ConsentAction;
+  let feedback:SyntheticProviderFeedback|undefined;
+  let eventKey:unknown[];
+  if(Object.prototype.hasOwnProperty.call(r,'providerFeedback')){
+   if(Object.keys(r).length!==1)
+    throw new BadRequestException('Do not mix manual consent and provider feedback fixtures');
+   try{feedback=normalizeSyntheticProviderFeedback(r.providerFeedback)}
+   catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid synthetic provider fixture')}
+   action=feedback.action;
+   // Bind retry identity to the fixture, not an operator-generated retry key.
+   // The immutable ledger still owns all consent and suppression state.
+   eventKey=['medsol-synthetic-provider-feedback-v1',organizationId,contactId,
+    feedback.provider,feedback.fixtureEventId];
+  }else{
+   if(typeof r.action!=='string'||!actions.has(r.action))
+    throw new BadRequestException('Synthetic consent action not recognized');
+   action=r.action as ConsentAction;
+   const requestKey=key(r.requestKey,'synthetic consent idempotency key');
+   eventKey=['medsol-r2h-consent-event-v1',organizationId,contactId,requestKey];
+  }
+  const evidenceRef='internal:synthetic-consent/'+source(eventKey);
+  const provenance=feedback?{providerFixture:feedback.provider,verifiedProviderReceipt:false as const,
+   syntheticOnly:true as const}:{};
   return this.scoped(organizationId,async tx=>{
    await this.administrator(tx,organizationId,identity);
    const contact=await tx.marketingSyntheticContact.findFirst({where:{
@@ -134,7 +151,7 @@ export class SyntheticAudienceEmailService{
    if(prior){
     if(prior.action!==action)
      throw new ConflictException('Consent event key reused for a different action');
-    return{contactId,action,sequence:prior.sequence,replayed:true,
+    return{contactId,action,sequence:prior.sequence,replayed:true,...provenance,
      verifiedLegalConsent:false,externalEffectsAuthorized:false};
    }
    const latest=await tx.marketingSyntheticConsent.findFirst({where:{
@@ -151,9 +168,9 @@ export class SyntheticAudienceEmailService{
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
     actorId:identity.userId,action:'SYNTHETIC_CONSENT_EVENT_RECORDED',
     objectType:'MarketingSyntheticConsent',objectId:event.id,
-    correlationId:contactId,after:{contactId,action,sequence:event.sequence,
+    correlationId:contactId,after:{contactId,action,sequence:event.sequence,...provenance,
      simulatedOnly:true,verifiedLegalConsent:false,externalEffectsAuthorized:false}}});
-   return{contactId,action,sequence:event.sequence,replayed:false,
+   return{contactId,action,sequence:event.sequence,replayed:false,...provenance,
     verifiedLegalConsent:false,externalEffectsAuthorized:false};
   });
  }

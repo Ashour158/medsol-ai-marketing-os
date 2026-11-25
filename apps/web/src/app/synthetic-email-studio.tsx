@@ -21,6 +21,9 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
  const [selectedContact,setSelectedContact]=useState("");
  const [action,setAction]=useState("SIMULATED_OPT_IN");
  const [consentKey,setConsentKey]=useState("");
+ const [feedbackChoice,setFeedbackChoice]=useState("SENDGRID:bounce");
+ const [fixtureEventId,setFixtureEventId]=useState("");
+ const [feedbackNotice,setFeedbackNotice]=useState("");
  const [mailKey,setMailKey]=useState("");
  const [content,setContent]=useState("Controlled mock email campaign. No real recipients.");
  const [scenario,setScenario]=useState("ACCEPTED");
@@ -78,7 +81,8 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
    gap:12}}>
    <label style={{fontSize:13}}>Tenant Brand ID
     <input value={brandId} onChange={e=>{
-     setBrandId(e.target.value);setContacts([]);setSelected([]);
+     setBrandId(e.target.value);setContacts([]);setSelected([]);setSelectedContact("");
+     setConsentKey("");setFixtureEventId("");setFeedbackNotice("");
      setResult(null);setMailKey("");
     }} style={field} placeholder="Existing active brand ID"/></label>
    <label style={{fontSize:13}}>Human-approved Campaign ID
@@ -100,7 +104,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
   {contacts.length>0&&<>
    <label style={{fontSize:13}}>Recipient for mock consent
     <select style={field} value={selectedContact} onChange={e=>{
-     setSelectedContact(e.target.value);setConsentKey("");
+     setSelectedContact(e.target.value);setConsentKey("");setFixtureEventId("");setFeedbackNotice("");
     }}>
      <option value="">Select synthetic contact</option>
      {contacts.map(c=><option key={c.contactId} value={c.contactId}>
@@ -126,6 +130,40 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
       encodeURIComponent(selectedContact)+"/consent",{action,requestKey});
      await refresh();
     })}>Record mock consent event · No real opt-in</button>
+   <fieldset style={{marginTop:14,border:"1px solid #e2e8f0",borderRadius:8}}>
+    <legend style={{fontSize:13,fontWeight:650}}>Synthetic provider feedback · no webhook connection</legend>
+    <p style={{fontSize:12}}>Select a fixture event for the chosen synthetic contact. No real provider data or delivery receipt is accepted.</p>
+    <label style={{fontSize:13}}>Provider suppression fixture
+     <select style={field} value={feedbackChoice} onChange={e=>{
+      setFeedbackChoice(e.target.value);setFixtureEventId("");setFeedbackNotice("");
+     }}>
+      <option value="SENDGRID:bounce">SendGrid · explicit hard bounce</option>
+      <option value="SENDGRID:spamreport">SendGrid · complaint</option>
+      <option value="SENDGRID:unsubscribe">SendGrid · withdrawal</option>
+      <option value="MAILCHIMP_TRANSACTIONAL:hard_bounce">Mailchimp · hard bounce</option>
+      <option value="MAILCHIMP_TRANSACTIONAL:spam">Mailchimp · complaint</option>
+     </select>
+    </label>
+    <button type="button" style={{...btn,marginTop:8}} disabled={busy||!selectedContact}
+     onClick={()=>void run(async()=>{
+      const [provider,event]=feedbackChoice.split(":");
+      const fixtureId=fixtureEventId||"fixture-"+crypto.randomUUID();
+      if(!fixtureEventId)setFixtureEventId(fixtureId);
+      const response=await call("audience/synthetic-contacts/"+
+       encodeURIComponent(selectedContact)+"/consent",{providerFeedback:{
+        provider,event,fixtureEventId:fixtureId,
+        ...(provider==="SENDGRID"&&event==="bounce"?{bounceType:"HARD"}:{})
+       }}) as {action:string;replayed:boolean;verifiedProviderReceipt:false};
+      if(response.verifiedProviderReceipt!==false)throw Error("Unexpected provider receipt assertion");
+      setResult(null);setMailKey("");
+      setFeedbackNotice(response.action+(response.replayed?" · replayed":" · recorded")+
+       " · no real provider receipt");
+      await refresh();
+     })}>{fixtureEventId?"Replay same synthetic feedback":"Record synthetic provider feedback"}</button>
+    <button type="button" style={{...btn,background:"#475569",marginLeft:8}} disabled={busy||!fixtureEventId}
+     onClick={()=>{setFixtureEventId("");setFeedbackNotice("");}}>Prepare new fixture</button>
+    {feedbackNotice&&<p role="status" style={{fontSize:12}}>{feedbackNotice}</p>}
+   </fieldset>
    <fieldset style={{marginTop:14,border:"1px solid #e2e8f0",borderRadius:8}}>
     <legend style={{fontSize:13,fontWeight:650}}>Synthetic campaign audience</legend>
     {contacts.map(c=><label key={c.contactId} style={{display:"block",

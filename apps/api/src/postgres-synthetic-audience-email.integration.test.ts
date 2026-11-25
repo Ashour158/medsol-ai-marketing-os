@@ -302,6 +302,32 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     }});
    })).rejects.toThrow();
 
+
+   // Provider-shaped fixtures reuse the same durable consent ledger and never
+   // accept a verified webhook, recipient data, or caller-generated retry identity.
+   const fixture={provider:'MAILCHIMP_TRANSACTIONAL',fixtureEventId:'fixture-'+randomUUID(),event:'spam'};
+   const recorded=await synthetic.recordSyntheticConsent(org,identity,withdrawn!,{providerFeedback:fixture});
+   expect(recorded).toMatchObject({action:'SIMULATED_COMPLAINT',replayed:false,
+    providerFixture:'MAILCHIMP_TRANSACTIONAL',verifiedProviderReceipt:false,externalEffectsAuthorized:false});
+   expect(await synthetic.recordSyntheticConsent(org,identity,withdrawn!,{providerFeedback:fixture}))
+    .toMatchObject({sequence:recorded.sequence,replayed:true});
+   await expect(synthetic.recordSyntheticConsent(org,identity,withdrawn!,{
+    providerFeedback:{...fixture,event:'hard_bounce'}
+   })).rejects.toThrow('different action');
+   await expect(synthetic.recordSyntheticConsent(org,identity,withdrawn!,{
+    providerFeedback:fixture,requestKey:'forged-retry-key-001'
+   })).rejects.toThrow('Do not mix');
+   await expect(synthetic.recordSyntheticConsent(foreign,identity,withdrawn!,{providerFeedback:fixture}))
+    .rejects.toThrow('audience administrator');
+   expect((await synthetic.listSyntheticContacts(org,identity,brandId))
+    .find(x=>x.contactId===withdrawn)?.effectiveSyntheticEligibility).toBe('COMPLAINT_SUPPRESSED');
+   await expect(action(withdrawn!,'SIMULATED_OPT_IN','consent-'+randomUUID()))
+    .rejects.toThrow('irreversible');
+   const audit=await db.auditEvent.findMany({where:{organizationId:org,
+    action:'SYNTHETIC_CONSENT_EVENT_RECORDED',correlationId:withdrawn!}});
+   const serialized=JSON.stringify(audit);
+   expect(serialized).toContain('MAILCHIMP_TRANSACTIONAL');
+   expect(serialized).not.toContain(fixture.fixtureEventId);
   }finally{await db.$disconnect();}
  },90000);
  it('keeps real email delivery and recipient export routes unregistered',()=>{
