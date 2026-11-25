@@ -4,6 +4,7 @@
  * generation, irreversible command, or new authoritative data storage.
  * Callers must authenticate the actor and provide tenant-scoped source records.
  */
+import {draftReviewedStructuredData} from './structured-data-draft.js';
 export type ReviewState='REVIEW_REQUIRED'|'INSUFFICIENT_EVIDENCE'|'BLOCKED';
 type Core={status:ReviewState;humanApprovalRequired:true;externalEffectsAuthorized:false;
  independentlyVerified:false;reasons:string[]};
@@ -44,11 +45,14 @@ export type SearchDiscoveryReview=Core&{
  engineId:'E34';brandId:string;observationCount:number;reviewedCount:number;
  organicPositionObservedCount:number;aiAnswerMentionCount:number;aiAnswerSampleCount:number;
  aiAnswerMentionRatePercent:number|null;
+ structuredDataDraft?:ReturnType<typeof draftReviewedStructuredData>;
 };
 export function reviewSearchDiscovery(organizationId:string,raw:unknown,asOf=new Date()):SearchDiscoveryReview {
  const doc=obj(raw);scoped(organizationId,doc);
  const brandId=nonempty(doc.brandId,'brand ID',128);
  const rows=list(doc.observations,'search visibility observations',100);
+ const structuredDataDraft=doc.structuredDataDraft===undefined?undefined:
+  draftReviewedStructuredData(organizationId,brandId,doc.structuredDataDraft);
  const ids=new Set<string>();
  let accepted=0,organic=0,aiSamples=0,aiMentions=0;
  for(const r of rows){
@@ -82,7 +86,8 @@ export function reviewSearchDiscovery(organizationId:string,raw:unknown,asOf=new
   engineId:'E34',brandId,observationCount:rows.length,reviewedCount:accepted,
   organicPositionObservedCount:organic,aiAnswerMentionCount:aiMentions,
   aiAnswerSampleCount:aiSamples,
-  aiAnswerMentionRatePercent:aiSamples?Number((100*aiMentions/aiSamples).toFixed(2)):null};
+  aiAnswerMentionRatePercent:aiSamples?Number((100*aiMentions/aiSamples).toFixed(2)):null,
+  ...(structuredDataDraft?{structuredDataDraft}:{})};
 }
 
 const FEEDBACK_THEMES=['PRODUCT_QUALITY','ONBOARDING','PRICE_VALUE','SUPPORT','USABILITY',

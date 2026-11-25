@@ -3,6 +3,7 @@ import { assessDomain } from './domain-intelligence.js';
 import { createMarketingWorkPackage } from './domain-work-packages.js';
 import { AGENT_ROSTER, type AgentManifest } from './roster.js';
 import { triageSocialDiscussion } from './social-discussion.js';
+import {reviewLeadQualification} from './lead-qualification-review.js';
 import {reviewSearchDiscovery,reviewVoiceOfCustomer,reviewCorporateCommunication,reviewRevenueScenario,
   reviewAssetAuthenticity,reviewPartnerEnablement,reviewCustomerActivation} from './marketing-expansion.js';
 
@@ -62,6 +63,8 @@ export function engineDecision(manifest: AgentManifest, context: AgentContext): 
   const expansionReview=
     manifest.id==='MKT-STR-001'&&input.searchDiscoveryInput!==undefined?
       reviewSearchDiscovery(context.organizationId,input.searchDiscoveryInput):
+    manifest.id==='MKT-GROWTH-001'&&input.leadQualificationInput!==undefined?
+      reviewLeadQualification(context.organizationId,input.leadQualificationInput):
     manifest.id==='MKT-SOC-001'&&input.voiceOfCustomerInput!==undefined?
       reviewVoiceOfCustomer(context.organizationId,input.voiceOfCustomerInput):
     manifest.id==='MKT-CONT-001'&&input.corporateCommunicationInput!==undefined?
