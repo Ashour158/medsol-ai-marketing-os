@@ -30,7 +30,7 @@
  */
 type ClientMemory={brandName?:string;tagline?:string;sameAs?:string[]};
 type EditProposal={rationale?:string;productHandle?:string};
-type PageEdit={kind:"jsonld";scope:"shop"|"product";productHandle?:string;
+type PageEdit={kind:"jsonld";scope:"shop"|"product";productHandle?:string|undefined;
  schema:Record<string,unknown>;rationale:string};
 
 /**
