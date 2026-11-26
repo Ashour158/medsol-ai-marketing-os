@@ -136,6 +136,15 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
    expect((await synthetic.readLoyaltyAccount(org,identity,eligible!)).balance).toBe(0);
    await expect(decideReward(earn.approvalId,reviewer)).rejects.toThrow('Independent OIDC loyalty');
    await decideReward(earn.approvalId);
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.approval.updateMany({where:{organizationId:org,id:earn.approvalId},data:{decision:'REJECTED'}});
+   })).rejects.toThrow('Immutable synthetic loyalty decision');
+   await expect(db.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+    return tx.approval.deleteMany({where:{organizationId:org,id:earn.approvalId}});
+   })).rejects.toThrow('Immutable synthetic loyalty entry');
+
    expect(await synthetic.proposeLoyalty(org,identity,reward)).toMatchObject({approvalId:earn.approvalId,replayed:true,decision:'APPROVED'});
    await expect(synthetic.proposeLoyalty(org,identity,{...reward,points:200})).rejects.toThrow('Duplicate reward fixture');
    const redeem=await synthetic.proposeLoyalty(org,identity,{...reward,sourceEventKey:'fixture-'+randomUUID(),kind:'REDEEM',points:60});
