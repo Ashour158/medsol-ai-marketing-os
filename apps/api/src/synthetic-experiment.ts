@@ -60,6 +60,9 @@ async function target(tx:Tx,org:string,input:Input){
   action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}},select:{contactId:true},distinct:['contactId']});
  if(contacts.length!==input.contactIds.length||suppressed.length||contacts.some(c=>c.consentEvents[0]?.action!=='SIMULATED_OPT_IN'))
   throw new ConflictException('Every selected contact must be a currently eligible same-brand synthetic contact');
+ const prior=await tx.marketingConversionSubmission.count({where:{organizationId:org,
+  formId:{in:[input.formAId,input.formBId]},contactId:{in:input.contactIds}}});
+ if(prior)throw new ConflictException('Assigned contacts must not have prior submissions on either form');
  const consentIds=new Map(contacts.map(c=>[c.id,c.consentEvents[0]!.id]));
  return{brandId:brand.id,campaignVersion:campaign.version,formADigest:a.contentDigest,formBDigest:b.contentDigest,
   assignments:assignSyntheticExperiment(org,input,consentIds)};
@@ -68,7 +71,7 @@ export async function buildSyntheticExperiment(tx:Tx,org:string,requester:string
  const current=await target(tx,org,input);
  const scope={policy:'SYNTHETIC_EXPERIMENT_V1' as const,organizationId:org,requestedBy:requester,input,
   ...current,syntheticOnly:true as const,actualExposureVerified:false as const,externalEffectsAuthorized:false as const};
- return{scope,scopeDigest:hash(scope),requestDigest:hash([org,requester,input])};
+ return{scope,scopeDigest:hash(scope)};
 }
 type Scope=Awaited<ReturnType<typeof buildSyntheticExperiment>>['scope'];
 /** Historical projection: verify scope shape and deterministic assignment independently of later consent changes. */
