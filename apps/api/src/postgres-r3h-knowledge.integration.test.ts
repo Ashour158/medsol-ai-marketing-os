@@ -143,6 +143,18 @@ describe('R3-H authoritative knowledge fabric integration',()=>{
      await db.$executeRawUnsafe('REVOKE SELECT ON "'+name+'" FROM "'+role+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+role+'"');
    }
+   const governedInput={...input,sourceKey:'governed-'+randomUUID(),expiresAt:new Date(Date.now()+30*86400000).toISOString(),
+    governedImport:{collectionPermitted:true,noPersonalData:true,permissionReference:'internal:source-rights/license-record',
+     rightsBasis:'LICENSED_CONTENT',scope:'METADATA_ONLY'}};
+   const governed=await service.ingestKnowledge(org,author,governedInput);
+   expect(governed).toMatchObject({status:'QUARANTINED',sourceType:'GOVERNED_IMPORT',governedSourceEvidence:{
+    legalRightsVerified:false,actualNetworkRequests:0,externalEffectsAuthorized:false}});
+   expect(await service.ingestKnowledge(org,author,governedInput)).toMatchObject({id:governed.id,replayed:true});
+   await expect(service.ingestKnowledge(org,author,{...governedInput,governedImport:{...governedInput.governedImport,rightsBasis:'OWNER_PERMISSION'}})).rejects.toThrow('Immutable source key');
+   await expect(service.ingestKnowledge(org,author,{...governedInput,sourceKey:'denied-'+randomUUID(),governedImport:{...governedInput.governedImport,collectionPermitted:false}})).rejects.toThrow('permitted collection');
+   await expect(service.reviewKnowledge(org,author,governed.id,'REVIEW','Self review is not allowed')).rejects.toThrow('Independent');
+   expect(await service.reviewKnowledge(org,reviewer,governed.id,'REVIEW','Independently reviewed declared source rights and provenance')).toMatchObject({status:'REVIEWED',independentlyVerified:false});
+   await expect(db.knowledgeDocument.update({where:{id:governed.id},data:{governedSourceEvidence:{legalRightsVerified:true}}})).rejects.toThrow();
    expect(await db.modelUsage.count({where:{organizationId:org}})).toBe(0);
    expect(await db.outboxEvent.count({where:{
     organizationId:org,eventType:'KnowledgeSourceRevokedInternal'}})).toBe(1);
