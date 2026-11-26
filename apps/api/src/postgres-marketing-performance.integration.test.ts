@@ -69,6 +69,20 @@ describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
     currencies:[{currency:'EGP',reportedSpendMicros:'1000000',reportedRevenueMicros:'5000000'},
      {currency:'USD',reportedSpendMicros:'2000000',reportedRevenueMicros:'8000000'}],
     revenueVerified:false,roiValidated:false,fxConversionPerformed:false});
+   // Separate money and funnel records cannot fabricate a combined cohort.
+   expect(monetary.combinedCommercialReconciliation).toMatchObject({status:'NO_COMPLETE_COMBINED_GROUPS',matchedGroups:0,currencies:[]});
+   // Attach the actual funnel rows to the exact same monetary source record, not by campaign alone.
+   for(const [metricKey,value] of [['impressions',100],['clicks',20],['leads',8],['qualified_leads',4]] as const){
+    const row=await metrics.ingest(organizationId,'submitter',{campaignId:campaignA.id,
+     sourceSystem:'MANUAL_EXPORT',sourceRecordId:'mon-egp',metricKey,value,observedAt,sourceReference:'internal:monetary-report'});
+    await metrics.review(organizationId,'independent-reviewer',row.observationId,'Reviewed complete same-record funnel evidence');
+   }
+   const combined=await metrics.summary(organizationId,campaignA.id);
+   expect(combined.combinedCommercialReconciliation).toMatchObject({status:'PARTIAL_COMBINED_MATCH',matchedGroups:1,
+    sourceDigest:combined.evidenceManifest.sourceDigest,attributionValidated:false,revenueVerified:false,roiValidated:false,
+    currencies:[{currency:'EGP',impressions:'100',leads:'8',qualifiedLeads:'4',reportedSpendMicros:'1000000',
+     reportedRevenueMicros:'5000000',spendMicrosPerLead:'125000',spendMicrosPerQualifiedLead:'250000',reportedRevenueToSpendRatio:'5.0000'}]});
+   expect((await metrics.summary(otherOrganization,campaignB.id)).combinedCommercialReconciliation.currencies).toEqual([]);
    await expect(metrics.ingest(organizationId,'submitter',{campaignId:campaignA.id,sourceSystem:'MANUAL_EXPORT',
     sourceRecordId:'mon-egp',metricKey:'spend_micros',value:1000000,currency:'USD',observedAt,
     sourceReference:'internal:monetary-report'})).rejects.toThrow('conflicting observation');
