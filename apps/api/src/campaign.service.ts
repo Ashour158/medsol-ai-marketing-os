@@ -2,7 +2,7 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {Prisma} from '@prisma/client';
 import type {VerifiedIdentity} from './oidc-identity.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
-import {SYNTHETIC_CAMPAIGN_PLAN,normalizeChannelPlan,channelPlanId,buildChannelPlan,readChannelPlan} from './synthetic-campaign-channel-plan.js';
+import {SYNTHETIC_CAMPAIGN_PLAN,normalizeChannelPlan,channelPlanId,buildChannelPlan,readChannelPlan,validateChannelPlanApproval,CHANNEL_REHEARSAL_COMMAND,channelRehearsalCommandId,normalizeChannelRehearsal,buildChannelRehearsal} from './synthetic-campaign-channel-plan.js';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {OutboxService} from './outbox.service.js';
 import {assertCampaignTransition} from '@medsol/domain';
@@ -34,13 +34,46 @@ import {randomUUID} from 'node:crypto';
    if(code==='P2034'||code==='P2002')throw new ConflictException('Concurrent channel plan; refresh and retry same key');throw e;}
   throw new ConflictException('Channel proposal retry limit');
  }
+ async rehearseChannelPlan(org:string,identity:VerifiedIdentity,campaignId:string,approvalId:string,raw:unknown){
+  if(!identity||identity.organizationId!==org||!identity.subject)throw new ForbiddenException('Verified tenant channel operator required');
+  const scenario=normalizeChannelRehearsal(raw),commandId=channelRehearsalCommandId(org,approvalId);
+  for(let attempt=0;attempt<3;attempt++)try{
+   return await withMarketingTenant(this.db,org,async tx=>{
+    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_CAMPAIGN');
+    const a=await tx.approval.findFirst({where:{organizationId:org,id:approvalId,objectType:SYNTHETIC_CAMPAIGN_PLAN,objectId:campaignId}});
+    if(!a)throw new NotFoundException('Tenant channel plan not found');
+    const result=buildChannelRehearsal(a,scenario);
+    const prior=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:org,commandId}}});
+    if(prior){
+     const saved=prior.response as Record<string,unknown>|null;
+     if(prior.commandType!==CHANNEL_REHEARSAL_COMMAND||saved?.fixtureReference!==result.fixtureReference||saved?.scopeDigest!==result.scopeDigest||saved?.externalEffectsAuthorized!==false)
+      throw new ConflictException('One rehearsal per approved scope; changed scenario cannot be retried');
+     return {...result,replayed:true,historicalOnly:true};
+    }
+    await validateChannelPlanApproval(tx,a,new Date());
+    await tx.commandReceipt.create({data:{organizationId:org,commandId,commandType:CHANNEL_REHEARSAL_COMMAND,correlationId:approvalId,status:'COMPLETED',response:result}});
+    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'SYNTHETIC_CHANNEL_REHEARSAL_RECORDED',
+     objectType:SYNTHETIC_CAMPAIGN_PLAN,objectId:campaignId,correlationId:approvalId,after:result}});
+    return{...result,replayed:false,historicalOnly:true};
+   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }catch(e){const code=(e as {code?:string})?.code;if(code==='P2034'&&attempt<2)continue;
+   if(code==='P2034'||code==='P2002')throw new ConflictException('Concurrent synthetic rehearsal; refresh same scope');throw e;}
+  throw new ConflictException('Synthetic rehearsal retry limit');
+ }
  async channelPlans(org:string,identity:VerifiedIdentity,campaignId:string){
   if(!identity||identity.organizationId!==org||!identity.subject)throw new ForbiddenException('Verified tenant channel reviewer required');
   return withMarketingTenant(this.db,org,async tx=>{
    await assertActorPermissionInTenantTransaction(tx,identity,'READ_AUDIT');
    if(!await tx.campaign.findFirst({where:{organizationId:org,id:campaignId},select:{id:true}}))throw new NotFoundException('Tenant campaign not found');
    const rows=await tx.approval.findMany({where:{organizationId:org,objectType:SYNTHETIC_CAMPAIGN_PLAN,objectId:campaignId},orderBy:[{createdAt:'desc'},{id:'asc'}],take:101});
-   return{plans:rows.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readChannelPlan(a),historicalOnly:true,expired:!!a.scopeExpiresAt&&a.scopeExpiresAt<=new Date()})),windowCapped:rows.length>100,externalEffectsAuthorized:false};
+   const visible=rows.slice(0,100),keys=visible.map(a=>channelRehearsalCommandId(org,a.id));
+   const receipts=keys.length?await tx.commandReceipt.findMany({where:{organizationId:org,commandType:CHANNEL_REHEARSAL_COMMAND,commandId:{in:keys}}}):[];
+   return{plans:visible.map(a=>{
+    const receipt=receipts.find(x=>x.commandId===channelRehearsalCommandId(org,a.id)),saved=receipt?.response as Record<string,unknown>|null|undefined;
+    const rehearsal=saved?buildChannelRehearsal(a,normalizeChannelRehearsal({fixtureOnly:true,scenario:saved.scenario})):null;
+    if(rehearsal&&(saved?.fixtureReference!==rehearsal.fixtureReference||saved?.scopeDigest!==rehearsal.scopeDigest||saved?.externalEffectsAuthorized!==false))throw new ConflictException('Invalid historical channel rehearsal evidence');
+    return{approvalId:a.id,decision:a.decision,...readChannelPlan(a),rehearsal,historicalOnly:true,expired:!!a.scopeExpiresAt&&a.scopeExpiresAt<=new Date()};
+   }),windowCapped:rows.length>100,externalEffectsAuthorized:false};
   });
  }
  async create(cmd:CreateCampaignCommand,actorId?:string){
