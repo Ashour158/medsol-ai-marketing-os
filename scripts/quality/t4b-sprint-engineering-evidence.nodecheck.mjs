@@ -19,7 +19,7 @@ const entries=()=>{
   [key,{digest:"sha256:"+"b".repeat(64),
    data:{schema,runId:run.id,releaseVerdict:"NOT_CERTIFIED"}}]));
  Object.assign(e.rls.data,{status:"DISPOSABLE_CI_INVENTORY_PASSED",
-  tenantTableCount:47,forceRlsTenantTableCount:47,uncoveredTenantTableCount:0});
+  tenantTableCount:48,forceRlsTenantTableCount:48,uncoveredTenantTableCount:0});
  Object.assign(e.staging.data,{verdict:"OFFLINE_DISPOSABLE_TEST_ALLOWED",
   actualExternalPublishAndEmailAllowed:false,productionReady:false});
  const set=(name,field,ids)=>Object.assign(e[name].data,{
