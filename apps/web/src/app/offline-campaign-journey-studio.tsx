@@ -6,9 +6,11 @@ import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
 import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
-type Brand={id:string;name:string};
+type Brand={id:string;name:string;status?:string};
+type ProductChoice={id:string;name:string;code:string;lifecycle?:string};
+type CampaignChoice={id:string;name:string;code:string;status:string};
 type Journey={
- campaign:{id:string;name:string;brandId:string;status:string;code:string};
+ campaign:{id:string;name:string;brandId:string;status:string;code:string;objectiveId?:string|null;productId?:string|null};
  workflow:{id:string;status:string;currentStep:string}|null;
  campaignApprovals:Array<{id:string;decision:string;decidedBy:string|null}>;
  brainRuns:Array<{id:string;status:string;steps:Array<{stage:string;agentId:string;status:string}>}>;
@@ -91,10 +93,13 @@ async function shaText(value:string){
 }
 const dateAt=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 
-export default function OfflineCampaignJourneyStudio({identity}:{identity:Identity|null}){
+export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[]}){
  const [brands,setBrands]=useState<Brand[]>([]);
  const [brandId,setBrandId]=useState("");
+ const [newBrandName,setNewBrandName]=useState("");
+ const [newBrandSlug,setNewBrandSlug]=useState("");
  const [objectiveId,setObjectiveId]=useState("");
+ const [productId,setProductId]=useState("");
  const [objectiveName,setObjectiveName]=useState("Offline scientific campaign objective");
  const [brief,setBrief]=useState("Present an evidence-led, compliance-conscious biotechnology innovation campaign to qualified research laboratories, with no unsupported claims.");
  const [sector,setSector]=useState("biotechnology");
@@ -131,6 +136,8 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  async function refresh(forId=campaignId){
   if(!forId.trim())throw new Error("Select an existing campaign first");
   const r=await api("journeys/"+encodeURIComponent(forId)) as Journey;
+  if(r.campaign.id!==forId||r.offlineSimulationOnly!==true||r.externalEffectsAuthorized!==false)
+   throw new Error("Unexpected campaign timeline scope");
   // A typed lookup is not authoritative until the API has confirmed it.
   // Never mix the previous campaign's approval/creative with a new campaign.
   const switching=r.campaign.id!==campaignId;
@@ -141,8 +148,9 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   }
   setJourney(r);setCampaignId(r.campaign.id);setLookupCampaignId(r.campaign.id);
   setBrandId(r.campaign.brandId);
-  if(r.workflow)setWorkflowId(r.workflow.id);
-  if(r.brainRuns[0])setBrainRunId(r.brainRuns[0].id);
+  setWorkflowId(r.workflow?.id??"");
+  setBrainRunId(r.brainRuns[0]?.id??"");
+  if(switching){setObjectiveId(r.campaign.objectiveId??"");setProductId(r.campaign.productId??"");}
   if(r.creativeAssets[0]&&(switching||!creative)) {
    const chosen=r.creativeAssets.find(x=>x.publicationLinked)??r.creativeAssets[0];
    // Campaign timeline is authoritative for linked metadata, but does not
@@ -169,7 +177,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   setVersionHistory([]);setHistoryId("");setHistoricalPreview(null);
   setDestinationRef("");
   setCreativeApprovalId("");setSyntheticContacts([]);setPublicationId("");
-  setBrandPolicyVersion("");
+  setBrandPolicyVersion("");setObjectiveId("");setBrandId("");setProductId("");setNewBrandName("");setNewBrandSlug("");
   if(!identity)return;
   void load().catch(e=>setError(e instanceof Error?e.message:"Unable to load brand context"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -248,6 +256,14 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
    {notice&&<p role="status" style={{color:"#166534",fontSize:13}}>{notice}</p>}
    <div style={section}>
     <h3 style={{marginTop:0}}>0 · Resume an existing campaign</h3>
+    {campaigns.length>0&&<label style={label}>Choose campaign from workspace portfolio
+     <select style={input} value={campaigns.some(c=>c.id===lookupCampaignId)?lookupCampaignId:""} disabled={blocked}
+      onChange={e=>setLookupCampaignId(e.target.value)}>
+      <option value="">Choose a campaign</option>
+      {campaigns.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code} · {c.status}</option>)}
+     </select>
+    </label>}
+    <p style={{fontSize:12,color:"#475569"}}>Refresh the command center to update the portfolio, then load the selected timeline. The server checks tenant and access again.</p>
     <label style={label}>Tenant campaign ID
      <input style={input} value={lookupCampaignId} onChange={e=>setLookupCampaignId(e.target.value)}
       placeholder="Paste an approved or in-progress campaign ID"/>
@@ -275,10 +291,25 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
 
    <div style={section}>
     <h3 style={{marginTop:0}}>1 · Brief, objective and governed campaign</h3>
+    {admin&&<fieldset style={{border:"1px solid #cbd5e1",borderRadius:8,padding:12,marginBottom:12}}>
+     <legend>Register a tenant brand</legend>
+     <p style={{fontSize:12}}>Use the existing tenant brand registry. Registration does not approve a Brand Master policy or authorize external publication.</p>
+     <label style={label}>New brand name<input style={input} maxLength={150} disabled={blocked} value={newBrandName} onChange={e=>setNewBrandName(e.target.value)}/></label>
+     <label style={label}>New brand slug<input style={input} maxLength={80} disabled={blocked} value={newBrandSlug} onChange={e=>setNewBrandSlug(e.target.value)} placeholder="research-brand"/></label>
+     <button style={secondary} disabled={blocked||!newBrandName.trim()||! /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(newBrandSlug.trim())} onClick={()=>void run(async()=>{
+      const created=await api("tenancy/brands",{name:newBrandName.trim(),slug:newBrandSlug.trim()});
+      if(created.organizationId!==identity.organizationId||created.status!=="ACTIVE"||created.externalEffectsAuthorized!==false||typeof created.id!=="string")throw Error("Unexpected brand registration scope");
+      const list=await api("tenancy/brands") as Brand[];
+      if(!list.some(x=>x.id===created.id&&x.status==="ACTIVE"))throw Error("Registered brand not found in tenant readback; refresh before retrying");
+      setBrands(list);setNewBrandName("");setNewBrandSlug("");
+      setNotice("Tenant brand registered and read back; select it for a new campaign");
+     })}>Register tenant brand</button>
+     <button style={{...secondary,marginLeft:8}} disabled={blocked} onClick={()=>void run(async()=>{setBrands(await api("tenancy/brands") as Brand[]);setNotice("Tenant brand registry refreshed");})}>Refresh tenant brands</button>
+    </fieldset>}
     <label style={label}>Brand
      {brands.length?<select style={input} value={brandId} onChange={e=>setBrandId(e.target.value)}>
       <option value="">Choose active brand</option>
-      {brands.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+      {brands.filter(x=>!x.status||x.status==="ACTIVE").map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
      </select>:<input style={input} value={brandId} onChange={e=>setBrandId(e.target.value)}
       placeholder="Existing tenant Brand ID"/>}
     </label>
@@ -296,6 +327,14 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
        description:"Offline simulated journey objective: "+brief.slice(0,1000)});
       setObjectiveId(created.id);setNotice("Objective created in canonical catalogue");
      })}>Create objective</button>
+    <label style={label}>Product for next campaign (optional)
+     <select style={input} value={productId} disabled={blocked} onChange={e=>setProductId(e.target.value)}>
+      <option value="">No catalogue product</option>
+      {products.filter(p=>p.lifecycle==="ACTIVE").map(p=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+     </select>
+    </label>
+    {journey?.campaign.productId&&<p style={{fontSize:12}}>Loaded campaign product: {products.find(p=>p.id===journey.campaign.productId)?.name??journey.campaign.productId}. Agent research uses the stored campaign product, not unsaved selection changes.</p>}
+    <p style={{fontSize:12}}>Catalogue identity does not establish scientific claims or regulatory approval. Review supporting knowledge separately.</p>
     <label style={label}>Campaign brief (reviewed as unverified instructions)
      <textarea style={{...input,minHeight:90}} maxLength={2000} value={brief}
       onChange={e=>setBrief(e.target.value)}/>
@@ -304,7 +343,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
      onClick={()=>void run(async()=>{
       const result=await api("workflows",{
        organizationId:identity.organizationId,requestedOutcome:brief.trim(),
-       brandId,objectiveId
+       brandId,objectiveId,...(productId?{productId}:{})
       });
       setWorkflowId(result.workflowExecutionId);
       const id=result.output?.campaign?.campaignId as string|undefined;
@@ -323,7 +362,9 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
     <button style={button} disabled={blocked||!campaignId}
      onClick={()=>void run(async()=>{
       const result=await api("brain/runs",{
-       commandKey:"offline-brain-"+uuid(),campaignId,objectiveId,
+       commandKey:"offline-brain-"+uuid(),campaignId,
+       ...(journey?.campaign.objectiveId?{objectiveId:journey.campaign.objectiveId}:{}),
+       ...(journey?.campaign.productId?{productId:journey.campaign.productId}:{}),
        requestedOutcome:brief,market:sector
       });
       setBrainRunId(result.id);

@@ -36,6 +36,7 @@ try{
   id,organizationId:'r3y-tenant-a',slug:'offline-r3y-lifesciences',
   name:'R3Y Real PostgreSQL Scientific Brand',createdBy:'r3y-stage-admin'
  }});
+ await db.marketingProduct.upsert({where:{id:'r3y-alpha-product'},update:{},create:{id:'r3y-alpha-product',organizationId:'r3y-tenant-a',code:'ALPHA-FIXTURE',name:'Synthetic research catalogue product',vendor:'Fixture only',lifecycle:'ACTIVE'}});
  const policy=await db.brandMasterRevision.findFirst({
   where:{organizationId:'r3y-tenant-a',version:1}
  });

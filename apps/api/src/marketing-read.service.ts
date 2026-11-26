@@ -105,7 +105,7 @@ export class MarketingReadService {
 export async function readOfflineJourneyInTransaction(tx:Prisma.TransactionClient,organizationId:string,campaignId:string){
     const campaign=await tx.campaign.findFirst({where:{
      id:campaignId,organizationId
-    },select:{id:true,code:true,name:true,brandId:true,objectiveId:true,
+    },select:{id:true,code:true,name:true,brandId:true,objectiveId:true,productId:true,
      status:true,version:true,createdAt:true}});
     if(!campaign||!campaign.brandId)
      throw new NotFoundException('Brand-bound campaign not found in tenant');
