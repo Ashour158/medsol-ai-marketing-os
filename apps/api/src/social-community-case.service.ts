@@ -6,6 +6,7 @@ import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {type MarketingPermission} from './marketing-permissions.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
+import {COMMUNITY_PRIORITY_ORDER,COMMUNITY_TARGET_MINUTES,communityCaseTiming} from './community-case-timing.js';
 import {communityReviewScope,communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
 
 const identifier=(raw:unknown,label:string)=>{
@@ -97,11 +98,32 @@ export class SocialCommunityCaseService{
   return withMarketingTenant(this.db,org,async tx=>{
    await this.actor(tx,org,identity,'ASSESS');
    await this.brand(tx,org,brandId);
-   const rows=await tx.socialCommunityCase.findMany({where:{organizationId:org,brandId},
-    orderBy:[{updatedAt:'desc'},{id:'asc'}],take:101});
-   return{cases:await this.views(tx,rows.slice(0,100)),windowCapped:rows.length>100,syntheticOnly:true,
-    externalEffectsAuthorized:false};
-  });
+   const asOf=new Date(),scope={organizationId:org,brandId},active={...scope,status:{in:['OPEN','PENDING_REVIEW']}};
+   // Oldest active cases first within priority; resolved cases cannot hide urgent work.
+   // One bounded query per priority and exact tenant-scoped aggregate counts.
+   const groups=await Promise.all(COMMUNITY_PRIORITY_ORDER.map(async priority=>{
+    const where={...active,priority};
+    const [rows,count,overdue]=await Promise.all([
+     tx.socialCommunityCase.findMany({where,orderBy:[{createdAt:'asc'},{id:'asc'}],take:100}),
+     tx.socialCommunityCase.count({where}),
+     tx.socialCommunityCase.count({where:{...where,createdAt:{lte:new Date(asOf.getTime()-COMMUNITY_TARGET_MINUTES[priority]*60000)}}})
+    ]);
+    return{priority,rows,count,overdue};
+   }));
+   const activeCount=groups.reduce((n,g)=>n+g.count,0);
+   const activeRows=groups.flatMap(g=>g.rows).slice(0,100);
+   const remaining=100-activeRows.length;
+   const closed=await tx.socialCommunityCase.findMany({where:{...scope,status:'RESOLVED_INTERNAL'},
+    orderBy:[{updatedAt:'desc'},{id:'asc'}],take:remaining+1});
+   const rows=[...activeRows,...closed.slice(0,remaining)];
+   const cases=await this.views(tx,rows);
+   return{cases:cases.map((c,i)=>({...c,timing:communityCaseTiming(rows[i]!,asOf)})),
+    windowCapped:activeCount>activeRows.length||closed.length>remaining,syntheticOnly:true,
+    externalEffectsAuthorized:false,queueTiming:{policy:'INTERNAL_ADVISORY_V1',asOf:asOf.toISOString(),
+     activeCount,overdueCount:groups.reduce((n,g)=>n+g.overdue,0),
+     byPriority:groups.map(({priority,count,overdue})=>({priority,count,overdue,targetMinutes:COMMUNITY_TARGET_MINUTES[priority]})),
+     externalNotificationAuthorized:false}};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
  async transition(org:string,identity:VerifiedIdentity|undefined,idInput:unknown,raw:unknown){
   const id=identifier(idInput,'case');
