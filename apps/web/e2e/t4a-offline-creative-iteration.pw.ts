@@ -135,7 +135,12 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
  // The browser author cannot attest to their own rendition, even with exact hashes.
  const comparison={parentRevisionId:layeredId,sourceDigest:stored.sourceDigest,renditionDigest:candidate.renditionDigest,visuallyCompared:true};
  const verify=await ok(page,"media/evidence/"+rendered.id+"/verify-offline",{});
- expect(verify).toMatchObject({evidenceOrigin:"OFFLINE_DB_RASTER",remotePlatformMediaEligible:false,externalEffectsAuthorized:false});
+ expect(verify).toMatchObject({status:"VERIFIED_READBACK",evidenceOrigin:"OFFLINE_DB_RASTER",sha256Digest:candidate.renditionDigest,externalEffectsAuthorized:false});
+ // Eligibility is a read-model field; verify it from the authoritative GET.
+ const verified=await ok(page,"media/evidence/"+rendered.id);
+ expect(verified).toMatchObject({evidenceOrigin:"OFFLINE_DB_RASTER",remotePlatformMediaEligible:false,externalEffectsAuthorized:false});
+ const replay=await ok(page,"media/evidence/"+rendered.id+"/verify-offline",{});
+ expect(replay).toMatchObject({evidenceId:verify.evidenceId,status:"VERIFIED_READBACK",replayed:true,externalEffectsAuthorized:false});
  const deniedReview=await api(page,"assets/revisions/"+rendered.id+"/rights-review",{reason:"Attempted self comparison review of authored rendition",comparison});
  expect(deniedReview.status).toBe(403);
  expect((await ok(page,"assets/"+assetId)).revisions[0].rightsReviewedAt).toBeNull();
