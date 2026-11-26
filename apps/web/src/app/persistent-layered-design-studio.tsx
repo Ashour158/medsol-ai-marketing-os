@@ -35,7 +35,7 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
   if(q&&(q.sourceDigest!==v.sourceDigest||q.renditionDigest!==v.renditionDigest||q.policyScope!=='TENANT_MASTER_ONLY'||q.advisoryOnly!==true||
    q.factualAccuracyVerified!==false||q.accessibilityCertified!==false||q.translationVerified!==false||q.rightsVerified!==false||q.releaseAuthorized!==false||q.externalEffectsAuthorized!==false))
    throw Error('Unexpected draft quality scope or authority');
-  if(v.motionFrames&&(!v.spec.motion||v.motionFrames.length!==v.spec.motion.scenes.length+1||v.motionFrames.some(f=>!/^data:image\\/svg\\+xml;base64,[A-Za-z0-9+/]+=*$/.test(f.svgDataUrl)||!/^sha256:[a-f0-9]{64}$/.test(f.digest)||!Number.isInteger(f.seconds)||f.seconds<2||f.seconds>8)))throw Error("Invalid motion frame manifest");
+  if(v.motionFrames&&(!v.spec.motion||v.motionFrames.length!==v.spec.motion.scenes.length+1||v.motionFrames.some(f=>!/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/.test(f.svgDataUrl)||!/^sha256:[a-f0-9]{64}$/.test(f.digest)||!Number.isInteger(f.seconds)||f.seconds<2||f.seconds>8)))throw Error("Invalid motion frame manifest");
   setPreview(v);setPlayMotion(false);setFrameIndex(0);return v;
  }
  async function load(){
