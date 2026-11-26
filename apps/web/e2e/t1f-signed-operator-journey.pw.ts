@@ -60,13 +60,14 @@ async function success(page:Page,path:string,body?:unknown){
  expect(r.status,JSON.stringify(r.result)).toBeLessThan(300);
  return r.result;
 }
-async function create(page:Page){
+async function create(page:Page,productId?:string){
  await page.getByRole('combobox',{name:'Brand',exact:true}).selectOption(brand);
  await page.getByRole('textbox',{name:'Marketing objective (name)'})
   .fill('T1F evidence-led biotechnologies '+uid());
  await page.getByRole('button',{name:'Create objective',exact:true}).first().click();
  await expect(page.getByRole('status').filter({hasText:'Objective created in canonical catalogue'}))
   .toBeVisible();
+ if(productId)await page.getByRole('combobox',{name:'Product for next campaign (optional)'}).selectOption(productId);
  await page.getByRole('button',{name:/Run offline agent assessment/}).click();
  await expect(page.getByRole('status').filter({hasText:'Agent workflow created campaign'}))
   .toBeVisible();
@@ -91,7 +92,9 @@ async function independentCampaignApproval(page:Page,id:string){
 }
 test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social, email and learning journey',async({page})=>{
  const creator=await signIn(page,'admin');expect(creator.organizationId).toBe('r3y-tenant-a');
- await studio(page);const campaignId=await create(page);
+ await studio(page);const campaignId=await create(page,'r3y-alpha-product');
+ expect((await success(page,'journeys/'+campaignId)).campaign.productId).toBe('r3y-alpha-product');
+ await page.getByRole('combobox',{name:'Product for next campaign (optional)'}).selectOption('');
  await page.getByRole('button',{name:'Run governed 13-agent offline brain'}).click();
  await expect(page.getByRole('status').filter({hasText:/REVIEW_REQUIRED|COMPLETED/}))
   .toBeVisible();
@@ -137,6 +140,7 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  expect(journey.stages.simulatedSocialPublished).toBe(true);
  expect(journey.stages.syntheticEmailSimulated).toBe(true);
  expect(journey.brainRuns[0].steps.length).toBeGreaterThanOrEqual(13);
+ expect((await success(page,'brain/runs/'+journey.brainRuns[0].id)).input.productId).toBe('r3y-alpha-product');
  expect(journey.publications[0].attempts[0].mode).toBe('SANDBOX');
  expect(journey.emailSimulations[0].result.actualMessagesSent).toBe(0);
  expect(journey.learningSignals.some((x:{status:string})=>x.status==='QUARANTINED')).toBe(true);
@@ -196,6 +200,7 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
  await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText(campaignId);
  await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('APPROVED');
+ await expect(page.getByText(/Loaded campaign product: Synthetic research catalogue product/)).toBeVisible();
 });
 test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creative permissions',async({page})=>{
  await signIn(page,'admin');await studio(page);
