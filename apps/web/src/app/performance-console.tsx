@@ -4,7 +4,8 @@ import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
 import SyntheticConversionLab from "./synthetic-conversion-lab";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
-type PerformanceSummary={status:string;campaign:{id:string;name:string};totals:Record<string,string>;
+type MonetarySummary={status:string;matchedGroups:number;incompleteGroups:number;currencyConflictGroups:number;unknownCurrencyRows:number;currencies:{currency:string;matchedGroups:number;reportedSpendMicros:string;reportedRevenueMicros:string;grossProfitMatchedGroups:number;reportedGrossProfitMicros:string|null}[]};
+type PerformanceSummary={monetaryReconciliation?:MonetarySummary;status:string;campaign:{id:string;name:string};totals:Record<string,string>;
  derived:{ctrPercent:number|null;clickToLeadPercent:number|null;spendMicrosPerLead:string|null;
  leadQualificationPercent:number|null;spendMicrosPerQualifiedLead:string|null};
  warnings:string[];cohortAligned:false;roiValidated:false;revenueVerified:false;
@@ -23,6 +24,7 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
  const [observations,setObservations]=useState<Observation[]>([]);
  const [metricKey,setMetricKey]=useState("impressions");
  const [value,setValue]=useState("");
+ const [currency,setCurrency]=useState("");
  const [sourceRecordId,setSourceRecordId]=useState("");
  const [sourceReference,setSourceReference]=useState("");
  const [observedAt,setObservedAt]=useState("");
@@ -98,6 +100,17 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
       <small>Exact record matching is not independent cohort verification. No currency,
        causal attribution, revenue or ROI is certified.</small>
      </section>}
+     {summary.monetaryReconciliation&&<section aria-label="Reviewed monetary source reconciliation" style={{margin:"12px 0",padding:10,border:"1px solid #cbd5e1",borderRadius:7,background:"#fff"}}>
+      <strong>Currency-separated reported monetary evidence</strong>
+      <p>{summary.monetaryReconciliation.status.replaceAll("_"," ")} · matched {summary.monetaryReconciliation.matchedGroups} · incomplete {summary.monetaryReconciliation.incompleteGroups} · currency conflicts {summary.monetaryReconciliation.currencyConflictGroups}</p>
+      <p>Unknown-currency rows: {summary.monetaryReconciliation.unknownCurrencyRows}</p>
+      {summary.monetaryReconciliation.currencies.map(row=><div key={row.currency} style={{borderTop:"1px solid #e2e8f0",padding:"8px 0"}}>
+       <strong>{row.currency} · {row.matchedGroups} matched source groups</strong>
+       <p>Reported spend: {row.reportedSpendMicros} · reported revenue: {row.reportedRevenueMicros} micro units</p>
+       <p>Reported gross profit: {row.reportedGrossProfitMicros??"Not supplied"} micro units ({row.grossProfitMatchedGroups} groups)</p>
+      </div>)}
+      <small>Human-reviewed source reports only. No cross-currency total, FX, finance verification, attributed revenue or verified ROI.</small>
+     </section>}
      <small>Rates describe separately reviewed observations; a matched cohort,
       reliable currency, revenue/ROI and multi-touch attribution have not been verified.
       Never treat a modeled return as measured commercial revenue.</small>
@@ -107,8 +120,12 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
    <div>
     <h4 style={{margin:"0 0 10px"}}>Import source observation</h4>
     <label>Metric<select style={field} value={metricKey} onChange={e=>setMetricKey(e.target.value)}>
-     {["impressions","clicks","engagements","leads","qualified_leads","spend_micros"].map(k=><option key={k}>{k}</option>)}
+     {["impressions","clicks","engagements","leads","qualified_leads","spend_micros","reported_revenue_micros","reported_gross_profit_micros"].map(k=><option key={k}>{k}</option>)}
     </select></label>
+    {(metricKey==="spend_micros"||metricKey.startsWith("reported_"))&&<label style={{display:"block",marginTop:8}}>Source currency code
+     <input style={field} value={currency} maxLength={3} placeholder="USD, EGP, EUR" onChange={e=>setCurrency(e.target.value.toUpperCase())}/>
+     <small>Amounts in millionths of the stated currency. Unknown legacy spend is excluded from currency matching.</small>
+    </label>}
     <label style={{display:"block",marginTop:8}}>Value (nonnegative integer)<input style={field} inputMode="numeric" value={value} onChange={e=>setValue(e.target.value)}/></label>
     <label style={{display:"block",marginTop:8}}>Source record ID<input style={field} value={sourceRecordId} onChange={e=>setSourceRecordId(e.target.value)} placeholder="export-20261118-row-5"/></label>
     <label style={{display:"block",marginTop:8}}>Evidence reference<input style={field} value={sourceReference} onChange={e=>setSourceReference(e.target.value)} placeholder="internal:approved-analytics-export"/></label>
@@ -121,7 +138,8 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
     <button style={{...button,marginTop:10}} disabled={busy||!campaignId||!/^\d+$/.test(value)||!sourceRecordId.trim()||!sourceReference.trim()}
      onClick={()=>act(async()=>{
       await call("performance/ingest",{campaignId,metricKey,value:Number(value),sourceSystem:"MANUAL_EXPORT",sourceRecordId:sourceRecordId.trim(),
-       sourceReference:sourceReference.trim(),observedAt:observedAt.trim()||new Date().toISOString()});
+       sourceReference:sourceReference.trim(),observedAt:observedAt.trim()||new Date().toISOString(),
+       ...((metricKey==="spend_micros"||metricKey.startsWith("reported_"))&&currency?{currency}: {})});
       setNotice("Observation quarantined for independent review.");await refresh();
      })}>Submit evidence for review</button>
    </div>

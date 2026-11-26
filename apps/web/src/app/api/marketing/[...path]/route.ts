@@ -108,7 +108,9 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         path[5]==="campaigns"&&
         (path.length===6||/^[A-Za-z0-9_-]+$/.test(path[6]??"")))
       )) ||
-      (resource === "performance" && !((path.length===2&&request.method==="GET"&&id==="observations")||
+      (resource === "performance" && !(
+        (path.length===2&&id==="forms"&&["GET","POST"].includes(request.method))||
+        (path.length===4&&id==="forms"&&!!action&&operation==="submit"&&request.method==="POST")||(path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
         (path.length===2&&request.method==="POST"&&(id==="ingest"||id==="review")))) ||
       (resource === "command-center" && !(

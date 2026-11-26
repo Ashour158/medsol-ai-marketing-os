@@ -40,9 +40,9 @@ export function verifySprintEvidence(entries,run){
   e[id]=source.data;
  }
  if(e.rls.status!=="DISPOSABLE_CI_INVENTORY_PASSED"||
-    e.rls.tenantTableCount!==48||e.rls.forceRlsTenantTableCount!==48||
+    e.rls.tenantTableCount!==50||e.rls.forceRlsTenantTableCount!==50||
     e.rls.uncoveredTenantTableCount!==0)
-  fail("actual 48-table FORCE RLS census absent");
+  fail("actual 50-table FORCE RLS census absent");
  if(e.staging.verdict!=="OFFLINE_DISPOSABLE_TEST_ALLOWED"||
     e.staging.actualExternalPublishAndEmailAllowed!==false||
     e.staging.productionReady!==false)
@@ -112,7 +112,7 @@ export function verifySprintEvidence(entries,run){
   runId:run.id,commit:run.commit,releaseVerdict:"NOT_CERTIFIED",
   evidenceClassification:"ACTUAL_DISPOSABLE_GITHUB_CI_NOT_INDEPENDENT_STAGING_UAT",
   verifiedSameRunEngineeringProofs:specs.length,
-  postgresqlTenantTablesWithForceRls:48,uncoveredTenantTables:0,
+  postgresqlTenantTablesWithForceRls:50,uncoveredTenantTables:0,
   actualPassedIsolatedPostgresqlCases:37,
   actualPassedChromiumCasesAcrossIndependentSuites:browserCases,
   signedOperatorIntegratedJourney:{

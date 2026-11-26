@@ -85,6 +85,16 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     const history=await tx.auditEvent.findMany({where:{organizationId:cmd.organizationId,objectType:'Campaign',objectId:a.objectId,action:{in:['CAMPAIGN_CREATED','CAMPAIGN_STATUS_CHANGED']}},select:{actorType:true,actorId:true,action:true}});
     assertIndependentCampaignReviewer(cmd.approverUserId,history);
    }
+   if(a.objectType==='MarketingConversionForm'&&cmd.decision==='APPROVED'){
+    const form=await tx.marketingConversionForm.findFirst({where:{organizationId:cmd.organizationId,id:a.objectId,approvalId:a.id}});
+    const campaign=form&&await tx.campaign.findFirst({where:{organizationId:cmd.organizationId,id:form.campaignId,
+     brandId:form.brandId,status:'APPROVED',version:form.campaignVersion}});
+    const brand=form&&await tx.brand.findFirst({where:{organizationId:cmd.organizationId,id:form.brandId,status:'ACTIVE'}});
+    if(!form||!campaign||!brand||a.scopeDigest!==form.contentDigest||a.requestedBy!==form.createdBy)
+     throw new ConflictException('Exact internal conversion form approval scope is stale or invalid');
+    if(cmd.approverUserId===form.createdBy)
+     throw new ForbiddenException('Independent conversion form approval required');
+   }
    if(a.objectType==='CreativeAssetRevision'&&cmd.decision==='APPROVED'){
     const scope=a.scope;
     if(!isExactCreativeScope(scope)||!a.scopeDigest||!a.scopeExpiresAt||
