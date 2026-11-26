@@ -15,12 +15,14 @@ This revision uses the canonical 36-engine / 41-workflow registry, existing 77-r
 | #128 | Canonical calendar and advisory conflict search | External platform timing, exact new approval for schedule changes |
 | #129 | Durable internal SLA and opt-in worker | External notifications and real crisis response |
 | #130 | Governed source-rights declaration and quarantine | General authorized web acquisition and independent legal/source validation |
+| #132 | Risk-prioritized case queue and exact counts | External response and independent professional verification |
+| #133 | Persistent locale drafts and Arabic RTL rendering | Verified translation, provider rendition and release approval |
 
 Registry reconciliation reflects the above merged capabilities only. Other target rows retain their existing planning classifications; this is not a fresh code audit of all rows. Open changes are not counted as merged. `gapClosureStatus` presents unresolved canonical IDs and cannot certify the tranche even if labels are changed to VERIFIED_IMPLEMENTED. No external effects enabled. NOT_CERTIFIED; TRANCHE 1 NOT CLOSED.
 
 | Inventory | NOT_IMPLEMENTED | DRAFT_ONLY | PARTIAL | VERIFIED_IMPLEMENTED | Total |
 |---|---:|---:|---:|---:|---:|
-| Engines | 3 | 3 | 30 | 0 | 36 |
+| Engines | 2 | 3 | 31 | 0 | 36 |
 | Workflows | 16 | 3 | 22 | 0 | 41 |
 
 A target state is not a progress percentage; the scope includes broader blueprint releases as well as customer-facing Tranche 1. Use exact requirements, test evidence and separately authorized production gates before marking the tranche closed. No implicit scope waiver or deferral.
