@@ -18,11 +18,17 @@ const object=(raw:unknown,allowed:readonly string[])=>{
   throw new BadRequestException('Invalid bounded community case input');
  return raw as Record<string,unknown>;
 };
+const slaHours=(priority:string)=>priority==='URGENT'?1:priority==='HIGH'?4:priority==='NORMAL'?24:72;
+const slaDeadline=(priority:string,now:Date)=>new Date(now.getTime()+slaHours(priority)*3600000);
+export const crisisSlaWorkerConfigured=()=>process.env.MARKETING_BRAIN_WORKER_ENABLED==='true'&&process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED==='true';
 type ReviewProjection={escalation:string;approvalId:string|null;decision:string};
 const projection=(row:SocialCommunityCase,specialistReviews:ReviewProjection[]=[])=>({
  caseId:row.id,brandId:row.brandId,discussionId:row.discussionId,
  disposition:row.disposition,escalations:row.escalations,priority:row.priority,status:row.status,
  version:row.version,reviewRound:row.reviewRound,specialistReviews,
+ slaDueAt:row.slaDueAt?.toISOString()??null,slaEscalatedAt:row.slaEscalatedAt?.toISOString()??null,
+ slaOverdue:row.status!=='RESOLVED_INTERNAL'&&!!row.slaDueAt&&row.slaDueAt<=new Date(),
+ slaWorkerConfigured:crisisSlaWorkerConfigured(),
  internalSpecialistReviewComplete:row.reviewRound!==null&&row.escalations.every(e=>specialistReviews.some(r=>r.escalation===e&&r.decision==='APPROVED')),
  createdBy:row.createdBy,assignedTo:row.assignedTo,closedBy:row.closedBy,
  closedAt:row.closedAt?.toISOString()??null,updatedAt:row.updatedAt.toISOString(),
@@ -81,9 +87,10 @@ export class SocialCommunityCaseService{
     if(existing.discussionDigest!==discussionDigest)throw new ConflictException('Fixture already has different immutable evidence');
     return{...await this.view(tx,existing),replayed:true};
    }
+   const now=new Date();
    const row=await tx.socialCommunityCase.create({data:{id:randomUUID(),organizationId:org,brandId,
     discussionId,discussionDigest,disposition:triage.disposition,escalations:triage.escalations,
-    priority,createdBy:actor}});
+    priority,createdBy:actor,createdAt:now,updatedAt:now,slaDueAt:slaDeadline(priority,now)}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:actor,
     action:'SOCIAL_CASE_CREATED',objectType:'SocialCommunityCase',objectId:row.id,
     correlationId:row.id,after:projection(row)}});
@@ -102,6 +109,35 @@ export class SocialCommunityCaseService{
    return{cases:await this.views(tx,rows.slice(0,100)),windowCapped:rows.length>100,syntheticOnly:true,
     externalEffectsAuthorized:false};
   });
+ }
+ /** Existing worker calls this bounded internal-only scan. No email, webhook
+  * or public response is emitted. The case queue and audit are authoritative. */
+ async escalateDueCases(org:string){
+  if(!crisisSlaWorkerConfigured())return{enabled:false,escalated:0,conflicted:0,failed:0};
+  const candidates=await withMarketingTenant(this.db,org,tx=>tx.socialCommunityCase.findMany({
+   where:{organizationId:org,status:{in:['OPEN','PENDING_REVIEW']},slaDueAt:{lte:new Date()},slaEscalatedAt:null},
+   orderBy:[{slaDueAt:'asc'},{id:'asc'}],take:10,select:{id:true,version:true}}));
+  let escalated=0,conflicted=0,failed=0;
+  for(const candidate of candidates){
+   try{
+    const changed=await withMarketingTenant(this.db,org,async tx=>{
+     const now=new Date();
+     const row=await tx.socialCommunityCase.findFirst({where:{organizationId:org,id:candidate.id,
+      version:candidate.version,status:{in:['OPEN','PENDING_REVIEW']},slaDueAt:{lte:now},slaEscalatedAt:null}});
+     if(!row)return false;
+     const result=await tx.socialCommunityCase.updateMany({where:{organizationId:org,id:row.id,version:row.version,
+      slaEscalatedAt:null,status:row.status},data:{version:{increment:1},slaEscalatedAt:now}});
+     if(result.count!==1)return false;
+     await tx.auditEvent.create({data:{organizationId:org,actorType:'SYSTEM',actorId:'community-sla-scheduler',
+      action:'SOCIAL_CASE_SLA_ESCALATED',objectType:'SocialCommunityCase',objectId:row.id,correlationId:row.id,
+      after:{priority:row.priority,status:row.status,reviewRound:row.reviewRound,version:row.version+1,
+       dueAt:row.slaDueAt!.toISOString(),escalatedAt:now.toISOString(),syntheticOnly:true,externalEffectsAuthorized:false}}});
+     return true;
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    if(changed)escalated++;else conflicted++;
+   }catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034')conflicted++;else failed++;}
+  }
+  return{enabled:true,escalated,conflicted,failed};
  }
  async transition(org:string,identity:VerifiedIdentity|undefined,idInput:unknown,raw:unknown){
   const id=identifier(idInput,'case');
@@ -135,7 +171,8 @@ export class SocialCommunityCaseService{
     case 'REOPEN':
      if(!['PENDING_REVIEW','RESOLVED_INTERNAL'].includes(row.status))
       throw new ConflictException('Only pending or internally resolved case can reopen');
-     changes={status:'OPEN',assignedTo:null,closedBy:null,closedAt:null,reviewRound:null};break;
+     {const now=new Date();changes={status:'OPEN',assignedTo:null,closedBy:null,closedAt:null,reviewRound:null,
+      updatedAt:now,slaDueAt:slaDeadline(row.priority,now),slaEscalatedAt:null};}break;
     default:throw new BadRequestException('Unknown case action');
    }
    const updated=await tx.socialCommunityCase.updateMany({where:{organizationId:org,id,version:row.version},
