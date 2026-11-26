@@ -15,6 +15,10 @@ type MarketTopic={topic:string;sector:string;evidenceCount:number;
 type Brief={organizationId:string;asOf:string;processed:number;
  registryWindowCappedAt:200;topics:MarketTopic[];
  independentVerification:false;externalPublishingEnabled:false};
+type PersistentWatch={watchId:string;topic:string;sector:string;intervalHours:number;
+ status:string;version:number;nextDueAt:string;lastEvaluatedAt:string|null;due:boolean;
+ lastEvaluation:null|{status:string;evidenceCount:number;addedCount:number;removedCount:number;freshness:string};
+ externalAcquisitionEnabled:false;automaticExecutionEnabled:false;independentVerification:false};
 const shell={background:"#fff",padding:20,borderRadius:12,
  border:"1px solid #dbe4ed",marginTop:18};
 const control={padding:"9px 12px",border:"1px solid #cbd5e1",
@@ -28,9 +32,37 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [loadedFor,setLoadedFor]=useState("");
+ const [watchTopic,setWatchTopic]=useState("");
+ const [watchSector,setWatchSector]=useState("");
+ const [watchInterval,setWatchInterval]=useState(24);
+ const [persistent,setPersistent]=useState<{scope:string;rows:PersistentWatch[]}|null>(null);
+ const [watchError,setWatchError]=useState("");
+ const [watchBusy,setWatchBusy]=useState(false);
  const [watch,setWatch]=useState<{scope:string;baseline:Brief;selection:WatchSelection[]}|null>(null);
  const [comparison,setComparison]=useState<{scope:string;result:ReturnType<typeof compareReviewedWatch>}|null>(null);
  const scope=identity?identity.organizationId+":"+identity.userId:"";
+ const canManage=!!identity&&["ADMIN","SUPER_ADMIN","CMO","MARKETING_DIRECTOR"].includes(identity.role.toUpperCase());
+ async function watchCall(path:string,body?:unknown){
+  const response=await fetch("/api/marketing/learning/watches"+path,{
+   method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",
+   ...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
+  const value=await response.json();
+  if(!response.ok)throw Error(typeof value.message==="string"?value.message:"Watch request denied");
+  return value;
+ }
+ async function loadWatches(){
+  const value=await watchCall("") as {watches:PersistentWatch[];automaticExecutionEnabled:false;externalAcquisitionEnabled:false};
+  if(value.automaticExecutionEnabled!==false||value.externalAcquisitionEnabled!==false||
+   !Array.isArray(value.watches)||value.watches.some(x=>x.independentVerification!==false||
+   x.externalAcquisitionEnabled!==false||x.automaticExecutionEnabled!==false))
+   throw Error("Unexpected watch provenance");
+  setPersistent({scope,rows:value.watches});
+ }
+ async function runWatch(task:()=>Promise<void>){
+  setWatchBusy(true);setWatchError("");
+  try{await task();}catch(e){setWatchError(e instanceof Error?e.message:"Watch request rejected");}
+  finally{setWatchBusy(false);}
+ }
  async function refresh(){
   setBusy(true);setError("");setBrief(null);setComparison(null);
   try{
@@ -68,6 +100,34 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
   <button type="button" disabled={busy} onClick={()=>void refresh()} style={{
    padding:"9px 13px",borderRadius:7,border:0,background:"#124d83",
    color:"white",cursor:"pointer"}}>{busy?"Loading…":"Refresh reviewed market intelligence"}</button>
+  {canManage&&<section aria-label="Persistent reviewed-evidence watches" style={{border:"1px solid #dbe4ed",borderRadius:8,padding:12,marginTop:16}}>
+   <h4 style={{margin:"0 0 8px"}}>Durable market watch registry</h4>
+   <p style={{fontSize:12}}>Configure an exact topic and sector. Due evaluations compare reviewed evidence IDs in PostgreSQL. No autonomous scheduler or external source acquisition is active.</p>
+   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+    <label style={{fontSize:12}}>Watch topic<input style={{...control,display:"block"}} maxLength={180} value={watchTopic} onChange={e=>setWatchTopic(e.target.value)}/></label>
+    <label style={{fontSize:12}}>Watch sector<input style={{...control,display:"block"}} maxLength={120} value={watchSector} onChange={e=>setWatchSector(e.target.value)}/></label>
+    <label style={{fontSize:12}}>Evaluation interval<select style={{...control,display:"block"}} value={watchInterval} onChange={e=>setWatchInterval(Number(e.target.value))}>
+     <option value={24}>Daily</option><option value={72}>Every three days</option><option value={168}>Weekly</option>
+    </select></label>
+   </div>
+   <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+    <button type="button" style={control} disabled={watchBusy||!watchTopic.trim()||!watchSector.trim()} onClick={()=>void runWatch(async()=>{
+     await watchCall("",{topic:watchTopic,sector:watchSector,intervalHours:watchInterval});await loadWatches();
+    })}>Create durable market watch</button>
+    <button type="button" style={control} disabled={watchBusy} onClick={()=>void runWatch(loadWatches)}>Refresh persistent watches</button>
+   </div>
+   {watchError&&<p role="alert" style={{color:"#b91c1c"}}>{watchError}</p>}
+   {persistent?.scope===scope&&persistent.rows.map(row=><article key={row.watchId} style={{borderTop:"1px solid #e2e8f0",padding:"10px 0",fontSize:12}}>
+    <strong>{row.topic} · {row.sector} · {row.status}</strong>
+    <p>Version {row.version} · {row.due?"Due for manual evaluation":"Not due"} · next: {row.nextDueAt}</p>
+    {row.lastEvaluation&&<p>{row.lastEvaluation.status} · reviewed records {row.lastEvaluation.evidenceCount} · added {row.lastEvaluation.addedCount} · removed {row.lastEvaluation.removedCount} · {row.lastEvaluation.freshness}</p>}
+    <div style={{display:"flex",gap:8}}>
+     {([["EVALUATE_DUE","Evaluate due watch",row.due],["PAUSE","Pause watch",row.status==="ACTIVE"],["RESUME","Resume watch",row.status==="PAUSED"]] as const).filter(x=>x[2]).map(([action,label])=><button type="button" key={action} style={control} disabled={watchBusy} onClick={()=>void runWatch(async()=>{
+      await watchCall("/"+encodeURIComponent(row.watchId)+"/transition",{action,expectedVersion:row.version});await loadWatches();
+     })}>{label}</button>)}
+    </div>
+   </article>)}
+  </section>}
   {error&&<p role="alert" style={{color:"#b91c1c"}}>{error}</p>}
   {visible&&<>
    <p role="status" style={{fontSize:12,color:"#475569"}}>
