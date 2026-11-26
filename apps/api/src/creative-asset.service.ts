@@ -164,7 +164,7 @@ export class CreativeAssetService{
   const assetId=ident(assetIdInput,'asset');
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||
      Object.keys(raw).some(k=>![
-      'editableCopy','pngBase64','requestKey','rightsExpiresAt','expectedVersion'
+      'editableCopy','pngBase64','requestKey','rightsExpiresAt','expectedVersion','layeredParentRevisionId','layeredSourceDigest'
      ].includes(k)))
    throw new BadRequestException('Only bounded offline creative iteration fields allowed');
   const v=raw as Record<string,unknown>;
@@ -175,10 +175,14 @@ export class CreativeAssetService{
   const requestKey=ident(v.requestKey,'offline revision command key');
   const {copy,rightsExpiresAt,renditionDigest,editableCopyDigest}=
    validatedOfflineRaster(v);
+  const derived=v.layeredParentRevisionId!==undefined||v.layeredSourceDigest!==undefined;
+  const parentId=derived?ident(v.layeredParentRevisionId,'layered parent revision'):null;
+  const parentDigest=derived?clean(v.layeredSourceDigest,'layered source digest',71):null;
+  if(derived&&!/^sha256:[a-f0-9]{64}$/.test(parentDigest??''))throw new BadRequestException('Exact layered source digest required');
   const commandId='offline-raster-revision-'+requestKey;
   const requestDigest='sha256:'+createHash('sha256').update(JSON.stringify([
    't4a-offline-creative-revision-v1',organizationId,assetId,expected,
-   renditionDigest,editableCopyDigest,rightsExpiresAt.toISOString()
+   renditionDigest,editableCopyDigest,rightsExpiresAt.toISOString(),...(derived?[parentId,parentDigest]:[])
   ])).digest('hex');
   return this.scoped(organizationId,async tx=>{
    const previous=await tx.commandReceipt.findUnique({where:{
@@ -203,11 +207,19 @@ export class CreativeAssetService{
    if(!brand)throw new ConflictException('Creative brand is no longer active');
    const current=await tx.creativeAssetRevision.findFirst({where:{
     organizationId,assetId,version:expected
-   },select:{sourceKind:true,sourceRef:true,offlineRasterBase64:true,
-     offlineEditableCopy:true}});
-   if(current?.sourceKind!=='FLATTENED_EXPORT'||
+   }});
+   if(derived){
+    if(!current||current.id!==parentId||!current.offlineLayeredSpec||current.offlineLayeredSourceDigest!==parentDigest)
+     throw new ConflictException('Current exact layered parent required');
+    const design=renderOfflineLayeredSpec(current.offlineLayeredSpec);
+    if(design.sourceDigest!==parentDigest||design.renditionDigest!==current.renditionDigest||copy!==`${design.spec.title}\n${design.spec.body}`.trim())
+     throw new ConflictException('Layered source or copy changed');
+    const bytes=Buffer.from(v.pngBase64 as string,'base64');
+    const expectedHeight=design.spec.format==='PORTRAIT'?1350:1080;
+    if(bytes.readUInt32BE(16)!==1080||bytes.readUInt32BE(20)!==expectedHeight)throw new BadRequestException('Rendition dimensions must match stored design');
+   }else if(current?.sourceKind!=='FLATTENED_EXPORT'||
       !current.sourceRef.startsWith('internal:creative-source/offline/')||
-      !current.offlineRasterBase64||!current.offlineEditableCopy)
+      !current.offlineRasterBase64||!current.offlineEditableCopy||current.offlineRenditionParentRevisionId)
     throw new ConflictException('Only an existing offline raster creative can be iterated');
    const changed=await tx.creativeAsset.updateMany({where:{
     organizationId,id:assetId,status:'ACTIVE',version:expected as number
@@ -220,10 +232,12 @@ export class CreativeAssetService{
     sourceKind:'FLATTENED_EXPORT',
     sourceRef:'internal:creative-source/offline/'+revisionId,
     renditionDigest,offlineRasterBase64:v.pngBase64 as string,
-    offlineEditableCopy:copy,rightsExpiresAt,createdBy:actorId
+    offlineEditableCopy:copy,rightsExpiresAt,createdBy:actorId,
+    offlineRenditionParentRevisionId:parentId,offlineRenditionSourceDigest:parentDigest
    }});
    const result={assetId,revisionId,version,brandId:asset.brandId,
     renditionDigest,editableCopyDigest,requestDigest,
+    offlineRenditionParentRevisionId:parentId,offlineRenditionSourceDigest:parentDigest,visualFidelityVerified:false,
     rightsExpiresAt:rightsExpiresAt.toISOString(),
     sourceKind:'FLATTENED_EXPORT' as const,layeredEditableImage:false as const,
     editableCopyAvailable:true as const,verifiedMediaRights:false as const,
@@ -235,7 +249,7 @@ export class CreativeAssetService{
     actorId,action:'OFFLINE_RASTER_CREATIVE_REVISION_CREATED',
     objectType:'CreativeAssetRevision',objectId:revisionId,correlationId:revisionId,
     after:{assetId,version,previousVersion:expected,
-     renditionDigest,editableCopyDigest,requiresIndependentRightsReview:true,
+     renditionDigest,editableCopyDigest,offlineRenditionParentRevisionId:parentId,offlineRenditionSourceDigest:parentDigest,requiresIndependentRightsReview:true,
      previousApprovalsAreStale:true,offlineOnly:true,
      externalEffectsAuthorized:false}}});
    return{...result,replayed:false};
@@ -352,7 +366,7 @@ export class CreativeAssetService{
     include:{revisions:{orderBy:{version:'desc'},take:30,select:{
      id:true,version:true,sourceKind:true,renditionDigest:true,
      rightsExpiresAt:true,rightsReviewedBy:true,rightsReviewedAt:true,createdAt:true,
-     sourceRef:true,offlineLayeredSourceDigest:true,offlineLayeredParentRevisionId:true
+     sourceRef:true,offlineLayeredSourceDigest:true,offlineLayeredParentRevisionId:true,offlineRenditionParentRevisionId:true,offlineRenditionSourceDigest:true
     }}}});
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    const {revisions,...safe}=asset;
@@ -402,7 +416,7 @@ export class CreativeAssetService{
     externalEffectsAuthorized:false};
   });
  }
- async reviewRights(organizationId:string,reviewerId:string,revisionIdInput:unknown,reasonRaw:unknown){
+ async reviewRights(organizationId:string,reviewerId:string,revisionIdInput:unknown,reasonRaw:unknown,comparison?:unknown){
   ident(reviewerId,'reviewer');
   const revisionId=ident(revisionIdInput,'revision');
   const reason=clean(reasonRaw,'rights review rationale',500);
@@ -419,6 +433,13 @@ export class CreativeAssetService{
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    if(revision.createdBy===reviewerId||asset.createdBy===reviewerId)
     throw new ForbiddenException('Asset creator cannot review own rights');
+   if(revision.offlineRenditionParentRevisionId){
+    const attestation=comparison as {parentRevisionId?:unknown;sourceDigest?:unknown;renditionDigest?:unknown;visuallyCompared?:unknown}|undefined;
+    const parent=await tx.creativeAssetRevision.findFirst({where:{id:revision.offlineRenditionParentRevisionId,organizationId,assetId:asset.id}});
+    const media=await tx.verifiedMediaEvidence.findUnique({where:{organizationId_creativeAssetRevisionId:{organizationId,creativeAssetRevisionId:revisionId}}});
+    if(!parent||parent.createdBy===reviewerId||asset.version!==revision.version||attestation?.visuallyCompared!==true||attestation.parentRevisionId!==parent.id||attestation.sourceDigest!==revision.offlineRenditionSourceDigest||attestation.renditionDigest!==revision.renditionDigest||media?.status!=='VERIFIED_READBACK'||media.evidenceOrigin!=='OFFLINE_DB_RASTER'||media.sha256Digest!==revision.renditionDigest)
+     throw new ConflictException('Independent exact source comparison and current raster readback required');
+   }
    if(revision.rightsReviewedAt)return{revisionId,alreadyReviewed:true,externalEffectsAuthorized:false};
    if(revision.rightsExpiresAt<=new Date())throw new ConflictException('Rights have expired');
    const changed=await tx.creativeAssetRevision.updateMany({
@@ -429,6 +450,7 @@ export class CreativeAssetService{
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:reviewerId,
     action:'CREATIVE_RIGHTS_REVIEWED',objectType:'CreativeAssetRevision',objectId:revisionId,
     correlationId:revisionId,after:{reviewerId,reason,rightsExpiresAt:revision.rightsExpiresAt.toISOString(),
+     ...(revision.offlineRenditionParentRevisionId?{visualComparisonAttested:true,parentRevisionId:revision.offlineRenditionParentRevisionId,sourceDigest:revision.offlineRenditionSourceDigest,renditionDigest:revision.renditionDigest}:{}),
      externalEffectsAuthorized:false}}});
    return{revisionId,rightsReviewed:true,externalEffectsAuthorized:false};
   });

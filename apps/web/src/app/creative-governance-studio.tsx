@@ -4,7 +4,7 @@ import {useEffect,useState} from "react";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Asset={id:string;brandId:string;title:string;version:number;status:string};
 type Revision={id:string;version:number;sourceKind:string;renditionDigest:string;
- rightsExpiresAt:string;rightsReviewedAt:string|null;rightsReviewedBy:string|null};
+ rightsExpiresAt:string;rightsReviewedAt:string|null;rightsReviewedBy:string|null;offlineRenditionParentRevisionId?:string|null;offlineRenditionSourceDigest?:string|null};
 type Detail=Asset&{revisions:Revision[]};
 type Decision={approvalId:string;decision:string;scopeCurrent:boolean;
  humanDecisionValid:boolean;externallyExecutable:false};
@@ -36,6 +36,8 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
  const [digest,setDigest]=useState("sha256:");
  const [rightsExpiry,setRightsExpiry]=useState("");
  const [rightsReason,setRightsReason]=useState("");
+ const [comparison,setComparison]=useState<{revisionId:string;parentRevisionId:string;sourceDigest:string;renditionDigest:string;svg:string;png:string}|null>(null);
+ const [compared,setCompared]=useState(false);
  const [selectedRevision,setSelectedRevision]=useState("");
  const [channel,setChannel]=useState("SOCIAL");
  const [destinationRef,setDestinationRef]=useState("internal:connected-destination/");
@@ -163,13 +165,25 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
      {chosen&&<p style={{color:"#475569",fontSize:12}}>
       Media hash {chosen.renditionDigest} · Rights expire {new Date(chosen.rightsExpiresAt).toLocaleString()}
      </p>}
+     {chosen?.offlineRenditionParentRevisionId&&<div style={{border:"1px solid #cbd5e1",padding:12,marginTop:10}}>
+      <p>Derived offline rendition: compare the stored editable source with the exact PNG bytes before recording rights review. This is human attestation, not automated fidelity or legal verification.</p>
+      <button type="button" style={button} disabled={busy||!canEdit} onClick={()=>void run(async()=>{
+       setComparison(null);setCompared(false);
+       const parent=await call("assets/revisions/"+encodeURIComponent(chosen.offlineRenditionParentRevisionId!)+"/layered-preview");
+       const raster=await call("assets/revisions/"+encodeURIComponent(chosen.id)+"/offline-preview");
+       if(parent.sourceDigest!==chosen.offlineRenditionSourceDigest||raster.renditionDigest!==chosen.renditionDigest||!raster.current||!/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/.test(parent.svgDataUrl)||!/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(raster.imageDataUrl))throw Error("Exact comparison evidence unavailable");
+       await call("media/evidence/"+encodeURIComponent(chosen.id)+"/verify-offline",{});
+       setComparison({revisionId:chosen.id,parentRevisionId:parent.revisionId,sourceDigest:parent.sourceDigest,renditionDigest:raster.renditionDigest,svg:parent.svgDataUrl,png:raster.imageDataUrl});
+      })}>Load exact source and verified PNG</button>
+      {comparison?.revisionId===chosen.id&&<><div style={group}><img src={comparison.svg} alt="Stored layered source" style={{maxWidth:"100%"}}/><img src={comparison.png} alt="Stored flattened rendition" style={{maxWidth:"100%"}}/></div><label><input type="checkbox" checked={compared} onChange={e=>setCompared(e.target.checked)}/> I independently compared these exact versions and found the visual rendition suitable for offline rehearsal.</label></>}
+     </div>}
      <label style={{display:"block"}}>Independent rights reviewer rationale
       <textarea style={{...field,minHeight:60}} maxLength={500} value={rightsReason}
        onChange={e=>setRightsReason(e.target.value)}/></label>
-     <button style={{...button,marginTop:9}} disabled={!canEdit||busy||!selectedRevision||rightsReason.trim().length<12}
+     <button style={{...button,marginTop:9}} disabled={!canEdit||busy||!selectedRevision||rightsReason.trim().length<12||!!chosen?.offlineRenditionParentRevisionId&&(!compared||comparison?.revisionId!==selectedRevision)}
       onClick={()=>void run(async()=>{
-       await call("assets/revisions/"+encodeURIComponent(selectedRevision)+"/rights-review",{reason:rightsReason.trim()});
-       await loadDetail(detail.id);setRightsReason("");
+       await call("assets/revisions/"+encodeURIComponent(selectedRevision)+"/rights-review",{reason:rightsReason.trim(),...(chosen?.offlineRenditionParentRevisionId&&comparison&&compared?{comparison:{parentRevisionId:comparison.parentRevisionId,sourceDigest:comparison.sourceDigest,renditionDigest:comparison.renditionDigest,visuallyCompared:true}}:{})});
+       await loadDetail(detail.id);setRightsReason("");setComparison(null);setCompared(false);
        setNotice("Rights review recorded. This does not authorize distribution.");
       })}>Record independent rights review</button>
     </>}

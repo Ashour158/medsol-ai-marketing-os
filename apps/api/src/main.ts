@@ -148,7 +148,7 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/assets') createCreativeAsset(@Req() req:any,@Body() body:any){return this.creativeAssets.create(req.identity.organizationId,req.identity.userId,body)}
  @Get('marketing/assets/:id') getCreativeAsset(@Req() req:any,@Param('id') id:string){return this.creativeAssets.detail(req.identity.organizationId,id)}
  @Post('marketing/assets/:id/revisions') createCreativeRevision(@Req() req:any,@Param('id') id:string,@Body() body:any){return this.creativeAssets.addRevision(req.identity.organizationId,req.identity.userId,id,body)}
- @Post('marketing/assets/revisions/:id/rights-review') reviewCreativeRights(@Req() req:any,@Param('id') id:string,@Body() body:any){return this.creativeAssets.reviewRights(req.identity.organizationId,req.identity.userId,id,body?.reason)}
+ @Post('marketing/assets/revisions/:id/rights-review') reviewCreativeRights(@Req() req:any,@Param('id') id:string,@Body() body:any){return this.creativeAssets.reviewRights(req.identity.organizationId,req.identity.userId,id,body?.reason,body?.comparison)}
  @Post('marketing/assets/revisions/:id/submit-approval') submitCreativeApproval(@Req() req:any,@Param('id') id:string,@Body() body:any){return this.creativeAssets.submitForApproval(req.identity.organizationId,req.identity.userId,id,body)}
  @Get('marketing/assets/approvals/:id') creativeApprovalState(@Req() req:any,@Param('id') id:string){return this.creativeAssets.reviewApprovalState(req.identity.organizationId,id)}
  @Get('marketing/tenancy/roles') listTenantRoles(@Req() req:any){return this.tenantRoles.list(req.identity.organizationId,req.identity)}
