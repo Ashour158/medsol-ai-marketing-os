@@ -228,6 +228,23 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
       externalEffectsAuthorized:false},createdBy:reviewer
     }});
    })).rejects.toThrow();
+   const failedDomainKey='domain-'+randomUUID();
+   const domainBlocked=await synthetic.simulateEmailJourney(org,identity,{...audience,
+    requestKey:failedDomainKey,senderDomainScenario:'DKIM_MISALIGNED',journey});
+   expect(domainBlocked).toMatchObject({status:'BLOCKED',results:{
+    syntheticEligible:1,domainBlockedEligible:1,senderDomainPreflight:{fixtureEligible:false,senderDomainVerified:false},
+    syntheticTransport:{simulatedEligible:0,virtualAccepted:0,virtualCallbackCount:0,syntheticReadback:'UNAVAILABLE'},
+    syntheticJourneyPlan:null,actualMessagesSent:0,verifiedProviderReceipts:0}});
+   expect(await synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:failedDomainKey,
+    senderDomainScenario:'DKIM_MISALIGNED',journey})).toMatchObject({replayed:true,simulationId:domainBlocked.simulationId});
+   await expect(synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:failedDomainKey,
+    senderDomainScenario:'ALIGNED',journey})).rejects.toThrow('changed audience, consent or creative');
+   expect(await synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:'domain-'+randomUUID(),
+    senderDomainScenario:'ALIGNED',journey})).toMatchObject({status:'SIMULATED',results:{
+    domainBlockedEligible:0,senderDomainPreflight:{fixtureEligible:true,senderDomainVerified:false},
+    syntheticTransport:{virtualAccepted:1},syntheticJourneyPlan:{actualMessagesSent:0}}});
+   await expect(synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:'domain-'+randomUUID(),
+    senderDomainScenario:'REAL_DOMAIN'})).rejects.toThrow('Unknown synthetic sender-domain scenario');
    // New withdrawal invalidates the previous audience snapshot, and all
    // synthetic recipients are now suppressed. No automatic send or replay.
    await action(eligible!,'SIMULATED_WITHDRAWAL','consent-'+randomUUID());
