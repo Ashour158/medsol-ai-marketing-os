@@ -161,8 +161,8 @@ export default function Home() {
     </header>
     <WorkspaceNavigation authenticated={Boolean(identity)} focused={focused} onNavigate={navigateWorkspace} onShowAll={()=>setFocused("")}/>
     <div className="alpha-content">
-    {focused&&<div className="alpha-focus-bar"><strong>{WORKSPACE_LINKS.find(x=>x.id===focused)?.label}</strong><button type="button" onClick={()=>setFocused("")}>Return to all workspaces</button></div>}
-    {!focused&&<AlphaExecutiveDashboard authenticated={!!identity} overview={overview} campaigns={campaigns} runs={brainRunsLoaded?brainRuns:null} approvals={pendingApprovals} approvalUnavailable={approvalInboxUnavailable} busy={busy} onRefresh={()=>void perform(async()=>{await loadDashboard();setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);})} onNavigate={navigateWorkspace}/>}
+    {focused&&<div className="alpha-focus-bar"><strong>{WORKSPACE_LINKS.find(x=>x.id===focused)?.label}</strong><button type="button" onClick={()=>setFocused("")}>Return to all workspaces</button><span className="alpha-subtle">If a workspace is unavailable, sign in with an authorized role or return to the directory.</span></div>}
+    {!focused&&<AlphaExecutiveDashboard authenticated={!!identity} overview={overview} campaigns={campaigns} runs={brainRunsLoaded?brainRuns:null} approvals={pendingApprovals} approvalUnavailable={approvalInboxUnavailable} busy={busy} onRefresh={()=>void perform(async()=>{await loadDashboard();try{setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);}catch(e){setBrainRuns([]);setBrainRunsLoaded(false);if(!(e instanceof MarketingRequestError&&e.status===403))throw e;}})} onNavigate={navigateWorkspace}/>}
     <section id="identity" hidden={isHidden("identity")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
       <h2 style={{ marginTop: 0 }}>1. Connect to your organization</h2>
       <p style={{ color: "#64748b", fontSize: 13 }}>Sign in through your organization's identity provider. Sessions use encrypted HTTP-only cookies and authenticated requests are proxied server-side.</p>
@@ -194,6 +194,7 @@ export default function Home() {
     <div id="operations" data-workspace-panel hidden={isHidden("operations")} style={{scrollMarginTop:120}}><OperationsConsole key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
       identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
+      if(focused)navigateWorkspace("agent-brain");
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
     }} /></div>
     <section id="portfolio" hidden={isHidden("portfolio")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
@@ -398,9 +399,9 @@ export default function Home() {
           </details>
         </>}
         <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio
-         onPrepareOfflineWorkflow={manifest=>setOfflineHandoff(previous=>({
+         onPrepareOfflineWorkflow={manifest=>{setOfflineHandoff(previous=>({
           organizationId:identity.organizationId,manifest,revision:(previous?.revision??0)+1
-         }))}/>}</div>
+         }));if(focused)navigateWorkspace("workflow-studio");}}/>}</div>
         <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio
          key={identity?.organizationId??"signed-out"} identity={identity}
          importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
