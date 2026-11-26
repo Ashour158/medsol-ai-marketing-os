@@ -15,6 +15,8 @@ import {senderDomainFixture} from './synthetic-sender-domain.js';
  * Never expose a live send endpoint through this service.
  */
 type Tx=Prisma.TransactionClient;
+type ConsentChannel='EMAIL'|'WHATSAPP'|'SMS';
+const channelOf=(value:unknown):ConsentChannel=>{if(value===undefined)return 'EMAIL';if(value==='EMAIL'||value==='WHATSAPP'||value==='SMS')return value;throw new BadRequestException('Known synthetic consent channel required');};
 type ConsentAction='SIMULATED_OPT_IN'|'SIMULATED_WITHDRAWAL'|'SIMULATED_COMPLAINT'|'SIMULATED_HARD_BOUNCE';
 const actions=new Set<string>([
  'SIMULATED_OPT_IN','SIMULATED_WITHDRAWAL','SIMULATED_COMPLAINT','SIMULATED_HARD_BOUNCE'
@@ -51,9 +53,9 @@ export class SyntheticAudienceEmailService{
    return fn(tx);
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
  }
- private async permanentSuppressions(tx:Tx,organizationId:string,contactIds:string[]){
+ private async permanentSuppressions(tx:Tx,organizationId:string,contactIds:string[],channel:ConsentChannel='EMAIL'){
   const rows=await tx.marketingSyntheticConsent.groupBy({by:['contactId','action'],
-   where:{organizationId,contactId:{in:contactIds},action:{in:permanentActions}}});
+   where:{organizationId,contactId:{in:contactIds},channel,action:{in:permanentActions}}});
   const result=new Map<string,string[]>();
   for(const r of rows)result.set(r.contactId,[...(result.get(r.contactId)??[]),r.action]);
   return result;
@@ -96,15 +98,15 @@ export class SyntheticAudienceEmailService{
   });
  }
  async listSyntheticContacts(organizationId:string,identity:VerifiedIdentity,
-  brandIdInput:unknown){
-  const brandId=refId(brandIdInput,'brand');
+  brandIdInput:unknown,channelInput?:unknown){
+  const brandId=refId(brandIdInput,'brand'),channel=channelOf(channelInput);
   return this.scoped(organizationId,async tx=>{
    await this.administrator(tx,organizationId,identity);
    const rows=await tx.marketingSyntheticContact.findMany({where:{
     organizationId,brandId},orderBy:{createdAt:'desc'},take:100,
-    include:{consentEvents:{orderBy:{sequence:'desc'},take:1}}});
-   const permanent=await this.permanentSuppressions(tx,organizationId,rows.map(r=>r.id));
-   return rows.map(r=>({contactId:r.id,brandId:r.brandId,
+    include:{consentEvents:{where:{channel},orderBy:{sequence:'desc'},take:1}}});
+   const permanent=await this.permanentSuppressions(tx,organizationId,rows.map(r=>r.id),channel);
+   return rows.map(r=>({contactId:r.id,brandId:r.brandId,channel,
     syntheticRecipientRef:r.syntheticRecipientRef,
     latestSimulatedConsent:r.consentEvents[0]?.action??'NONE',
     effectiveSyntheticEligibility:eligibility(r.consentEvents[0]?.action,permanent.get(r.id)??[]),
@@ -115,14 +117,15 @@ export class SyntheticAudienceEmailService{
   contactIdInput:unknown,raw:unknown){
   const contactId=refId(contactIdInput,'contact');
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||
-    Object.keys(raw).some(k=>!['action','requestKey','providerFeedback'].includes(k)))
+    Object.keys(raw).some(k=>!['action','requestKey','providerFeedback','channel'].includes(k)))
    throw new BadRequestException('Synthetic consent action and key, or anonymous provider feedback only');
   const r=raw as Record<string,unknown>;
+  const channel=channelOf(r.channel);
   let action:ConsentAction;
   let feedback:SyntheticProviderFeedback|undefined;
   let eventKey:unknown[];
   if(Object.prototype.hasOwnProperty.call(r,'providerFeedback')){
-   if(Object.keys(r).length!==1)
+   if(Object.keys(r).length!==1||channel!=='EMAIL')
     throw new BadRequestException('Do not mix manual consent and provider feedback fixtures');
    try{feedback=normalizeSyntheticProviderFeedback(r.providerFeedback)}
    catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid synthetic provider fixture')}
@@ -136,7 +139,7 @@ export class SyntheticAudienceEmailService{
     throw new BadRequestException('Synthetic consent action not recognized');
    action=r.action as ConsentAction;
    const requestKey=key(r.requestKey,'synthetic consent idempotency key');
-   eventKey=['medsol-r2h-consent-event-v1',organizationId,contactId,requestKey];
+   eventKey=channel==='EMAIL'?['medsol-r2h-consent-event-v1',organizationId,contactId,requestKey]:['medsol-synthetic-channel-consent-v1',organizationId,contactId,channel,requestKey];
   }
   const evidenceRef='internal:synthetic-consent/'+source(eventKey);
   const provenance=feedback?{providerFixture:feedback.provider,verifiedProviderReceipt:false as const,
@@ -150,28 +153,28 @@ export class SyntheticAudienceEmailService{
     organizationId,contactId,evidenceRef
    }});
    if(prior){
-    if(prior.action!==action)
+    if(prior.action!==action||prior.channel!==channel)
      throw new ConflictException('Consent event key reused for a different action');
-    return{contactId,action,sequence:prior.sequence,replayed:true,...provenance,
+    return{contactId,channel,action,sequence:prior.sequence,replayed:true,...provenance,
      verifiedLegalConsent:false,externalEffectsAuthorized:false};
    }
    const latest=await tx.marketingSyntheticConsent.findFirst({where:{
     organizationId,contactId},orderBy:{sequence:'desc'}});
    if(action==='SIMULATED_OPT_IN'){
     const suppression=await tx.marketingSyntheticConsent.findFirst({where:{
-     organizationId,contactId,action:{in:permanentActions}}});
+     organizationId,contactId,channel,action:{in:permanentActions}}});
     if(suppression)throw new ConflictException('Permanent suppression is irreversible for synthetic contact');
    }
    const event=await tx.marketingSyntheticConsent.create({data:{
     id:randomUUID(),organizationId,contactId,sequence:(latest?.sequence??0)+1,
-    action,evidenceRef,recordedBy:identity.userId
+    channel,action,evidenceRef,recordedBy:identity.userId
    }});
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',
     actorId:identity.userId,action:'SYNTHETIC_CONSENT_EVENT_RECORDED',
     objectType:'MarketingSyntheticConsent',objectId:event.id,
-    correlationId:contactId,after:{contactId,action,sequence:event.sequence,...provenance,
+    correlationId:contactId,after:{contactId,channel,action,sequence:event.sequence,...provenance,
      simulatedOnly:true,verifiedLegalConsent:false,externalEffectsAuthorized:false}}});
-   return{contactId,action,sequence:event.sequence,replayed:false,...provenance,
+   return{contactId,channel,action,sequence:event.sequence,replayed:false,...provenance,
     verifiedLegalConsent:false,externalEffectsAuthorized:false};
   });
  }
@@ -217,7 +220,7 @@ export class SyntheticAudienceEmailService{
     throw new ConflictException('Recorded independent campaign approval required');
    const contacts=await tx.marketingSyntheticContact.findMany({where:{
     organizationId,brandId,id:{in:sorted}
-   },include:{consentEvents:{orderBy:{sequence:'desc'},take:1}}});
+   },include:{consentEvents:{where:{channel:'EMAIL'},orderBy:{sequence:'desc'},take:1}}});
    if(contacts.length!==sorted.length)
     throw new ConflictException('Audience contains absent, foreign-tenant or cross-brand contact');
    const permanent=await this.permanentSuppressions(tx,organizationId,sorted);
@@ -288,6 +291,58 @@ export class SyntheticAudienceEmailService{
      verifiedProviderReceipts:0,externalEffectsAuthorized:false}}});
    return{simulationId:row.id,status,audienceDigest,
     results,replayed:false,externalEffectsAuthorized:false};
+  });
+ }
+ async rehearseMessage(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact synthetic messaging fixture required');
+  const v=raw as Record<string,unknown>,fields=['campaignId','brandId','contactIds','contentDigest','requestKey','channel','purpose','scenario','fixtureOnly'];
+  if(Object.keys(v).length!==fields.length||fields.some(k=>!Object.prototype.hasOwnProperty.call(v,k))||v.fixtureOnly!==true)
+   throw new BadRequestException('Exact synthetic messaging fixture required');
+  const channel=channelOf(v.channel);
+  if(channel==='EMAIL'||!['CAMPAIGN','RETENTION_CHECK_IN','RENEWAL_REMINDER','WIN_BACK'].includes(String(v.purpose))||
+   !['MOCK_ACCEPTED','MOCK_REJECTED','OUTCOME_UNKNOWN','TEMPLATE_REJECTED'].includes(String(v.scenario)))
+   throw new BadRequestException('Known non-email channel, purpose and mock outcome required');
+  const campaignId=refId(v.campaignId,'campaign'),brandId=refId(v.brandId,'brand'),requestKey=key(v.requestKey,'message rehearsal key');
+  if(typeof v.contentDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(v.contentDigest)||!Array.isArray(v.contactIds)||v.contactIds.length<1||v.contactIds.length>100)
+   throw new BadRequestException('Bounded anonymous audience and exact content digest required');
+  const contentDigest=v.contentDigest,ids=v.contactIds.map(x=>refId(x,'contact')).sort();
+  if(new Set(ids).size!==ids.length)throw new BadRequestException('Duplicate synthetic contact');
+  const purpose=String(v.purpose),scenario=String(v.scenario),commandId='message-'+source([organizationId,requestKey]);
+  return this.scoped(organizationId,async tx=>{
+   await this.administrator(tx,organizationId,identity);
+   const campaign=await tx.campaign.findFirst({where:{organizationId,id:campaignId,brandId,status:'APPROVED'},select:{id:true,version:true}});
+   const brand=await tx.brand.findFirst({where:{organizationId,id:brandId,status:'ACTIVE'},select:{id:true}});
+   const approval=await tx.approval.findFirst({where:{organizationId,objectType:'Campaign',objectId:campaignId,decision:'APPROVED',decidedBy:{not:null}},select:{id:true,requestedBy:true,decidedBy:true}});
+   if(!campaign||!brand||!approval?.decidedBy||approval.decidedBy===approval.requestedBy)
+    throw new ConflictException('Current independent same-brand campaign approval required');
+   const contacts=await tx.marketingSyntheticContact.findMany({where:{organizationId,brandId,id:{in:ids}},include:{consentEvents:{where:{channel},orderBy:{sequence:'desc'},take:1}}});
+   if(contacts.length!==ids.length)throw new ConflictException('Absent or cross-brand synthetic contact');
+   const permanent=await this.permanentSuppressions(tx,organizationId,ids,channel);
+   const snapshot=ids.map(id=>{const event=contacts.find(c=>c.id===id)?.consentEvents[0];return[id,event?.id??null,eligibility(event?.action,permanent.get(id)??[])];});
+   const audienceDigest=digest(['synthetic-channel-audience-v1',organizationId,brandId,campaignId,channel,snapshot]);
+   const inputDigest=digest(['synthetic-message-v1',organizationId,brandId,campaignId,campaign.version,approval.id,channel,purpose,scenario,contentDigest,audienceDigest]);
+   const prior=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId,commandId}}});
+   const n=snapshot.filter(x=>x[2]==='SYNTHETIC_ELIGIBLE').length;
+   const result={schema:'medsol.synthetic-messaging.v1',campaignId,brandId,channel,purpose,scenario,contentDigest,audienceDigest,inputDigest,
+    status:n===0?'BLOCKED':'SIMULATED',syntheticRecipients:ids.length,syntheticEligible:n,suppressedOrMissing:ids.length-n,
+    virtualAccepted:scenario==='MOCK_ACCEPTED'?n:0,virtualOutcomeUnknown:scenario==='OUTCOME_UNKNOWN'?n:0,
+    virtualRejected:['MOCK_REJECTED','TEMPLATE_REJECTED'].includes(scenario)?n:0,
+    actualMessagesSent:0,actualNetworkRequests:0,verifiedProviderReceipts:0,realConsentVerified:false,
+    realLoyaltyPointsIssued:0,financialLiabilityCreated:false,automaticRetryAllowed:false,externalEffectsAuthorized:false,syntheticOnly:true};
+   if(prior){const p=prior.response as Record<string,unknown>|null;
+    if(prior.commandType!=='SyntheticMessageRehearsal'||p?.inputDigest!==inputDigest||p?.externalEffectsAuthorized!==false)
+     throw new ConflictException('Message key reused with changed consent, creative or scope; no automatic retry');
+    return{...result,rehearsalId:commandId,replayed:true};}
+   await tx.commandReceipt.create({data:{organizationId,commandId,commandType:'SyntheticMessageRehearsal',correlationId:commandId,status:'COMPLETED',response:result}});
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:identity.userId,action:'SYNTHETIC_MESSAGE_REHEARSAL_RECORDED',objectType:'Campaign',objectId:campaignId,correlationId:commandId,after:result}});
+   return{...result,rehearsalId:commandId,replayed:false};
+  });
+ }
+ async listMessageRehearsals(organizationId:string,identity:VerifiedIdentity){
+  return this.scoped(organizationId,async tx=>{
+   await this.administrator(tx,organizationId,identity);
+   const rows=await tx.commandReceipt.findMany({where:{organizationId,commandType:'SyntheticMessageRehearsal'},orderBy:{commandId:'asc'},take:101});
+   return{rehearsals:rows.slice(0,100).map(x=>({rehearsalId:x.commandId,result:x.response,historicalOnly:true})),windowCapped:rows.length>100,externalEffectsAuthorized:false};
   });
  }
  async listEmailSimulations(organizationId:string,identity:VerifiedIdentity){
