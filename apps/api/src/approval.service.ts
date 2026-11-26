@@ -8,6 +8,7 @@ import {SYNTHETIC_EXPERIMENT,readSyntheticExperiment,validateSyntheticExperiment
 import {SYNTHETIC_PRICING,readPriceProposal,validatePriceProposalApproval} from './synthetic-price-proposal.js';
 import {SYNTHETIC_CAMPAIGN_PLAN,readChannelPlan,validateChannelPlanApproval} from './synthetic-campaign-channel-plan.js';
 import {ACTIVATION_REVIEW,readActivationReview,validateActivationReview} from './customer-activation-review.js';
+import {LOYALTY,readLoyalty,validateLoyaltyApproval} from './synthetic-loyalty.js';
 import {communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
@@ -122,6 +123,12 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
      throw new ForbiddenException('Independent OIDC synthetic lead review required');
     await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,
      email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
+   }
+   if(a.objectType===LOYALTY){
+    const scope=readLoyalty(a);
+    if(cmd.approverUserId===scope.requestedBy||!reviewer.oidcSubject)throw new ForbiddenException('Independent OIDC loyalty review required');
+    await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
+    if(cmd.decision==='APPROVED')await validateLoyaltyApproval(tx,a,new Date());
    }
    if(a.objectType===ACTIVATION_REVIEW){
     const scope=readActivationReview(a);
