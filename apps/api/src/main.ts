@@ -135,6 +135,9 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
   return this.creativeAssets.reviseOfflineRasterDraft(
    req.identity.organizationId,req.identity.userId,id,b);
  }
+ @Post('marketing/assets/:id/offline-motion-video') saveOfflineMotionVideo(@Req() req:any,@Param('id') id:string,@Body() b:unknown){return this.creativeAssets.saveOfflineMotionVideo(req.identity.organizationId,req.identity.userId,id,b)}
+ @Get('marketing/assets/revisions/:id/motion-video-preview') motionVideoPreview(@Req() req:any,@Param('id') id:string){return this.creativeAssets.offlineMotionVideoPreview(req.identity.organizationId,id)}
+ @Post('marketing/media/evidence/:id/verify-motion-video') verifyMotionVideo(@Req() req:any,@Param('id') id:string){return this.verifiedMedia.verifyOfflineMotionVideo(req.identity.organizationId,id)}
  @Post('marketing/assets/:id/offline-layered-revisions') appendOfflineLayeredDraft(@Req() req:any,@Param('id') id:string,@Body() b:unknown){
   return this.creativeAssets.appendOfflineLayeredDraft(req.identity.organizationId,req.identity.userId,id,b);
  }
