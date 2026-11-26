@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 /** Descriptive campaign KPIs from reviewed, but not cohort-matched, source rows.
  * No sales attribution, true ROI, currency normalization or causal claims.
  * This is the one calculation helper for MarketingPerformanceService; the
@@ -161,4 +162,33 @@ export function reconcileReviewedMonetaryCohorts(rows:readonly ReviewedCohortRow
  return{...base,matchedGroups,incompleteGroups,currencyConflictGroups,unknownCurrencyRows,currencies,
   status:matchedGroups===0?"NO_MATCHED_MONETARY_GROUPS" as const:incompleteGroups||currencyConflictGroups||unknownCurrencyRows?
    "PARTIAL_MONETARY_MATCH" as const:"EXACT_MONETARY_SOURCE_MATCH" as const};
+}
+
+/** Read-only manifest from the exact same repeatable-read ledger snapshot.
+ * No source URLs, names, contact IDs or record IDs are returned. Digests are
+ * evidence fingerprints, not digital signatures or independent verification. */
+export function reviewedCommercialEvidenceManifest(organizationId:string,campaignId:string,rows:readonly ReviewedCohortRow[]){
+ const flags={independentVerification:false as const,attributionValidated:false as const,revenueVerified:false as const,
+  roiValidated:false as const,fxConversionPerformed:false as const,signed:false as const,externalEffectsAuthorized:false as const};
+ if(rows.length>COHORT_ROW_LIMIT)return{...flags,status:'ROW_LIMIT_EXCEEDED' as const,rowCount:null,sourceDigest:null,groups:[]};
+ const groups=new Map<string,ReviewedCohortRow[]>();
+ for(const row of rows){
+  if(!row.sourceSystem||!row.sourceRecordId||!row.sourceReference||!(row.observedAt instanceof Date)||
+   !Number.isFinite(row.observedAt.getTime())||typeof row.value!=='bigint'||row.value<0n||
+   ![...allowed,...monetaryKeys].some(k=>k===row.metricKey))throw Error('Invalid reviewed commercial evidence');
+  const key=JSON.stringify([row.sourceSystem,row.sourceRecordId,row.sourceReference,row.observedAt.toISOString()]);
+  const previous=groups.get(key)??[];
+  if(previous.some(r=>r.metricKey===row.metricKey))throw Error('Duplicate reviewed commercial metric');
+  previous.push(row);groups.set(key,previous);
+ }
+ const digest=(value:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const records=[...groups.entries()].map(([key,entries])=>{
+  const sorted=[...entries].sort((a,b)=>a.metricKey.localeCompare(b.metricKey));
+  const metrics=sorted.map(r=>({metricKey:r.metricKey,value:r.value.toString(),currency:r.currency??null}));
+  const recordDigest=digest(['medsol-reviewed-commercial-record-v1',organizationId,campaignId,key,metrics]);
+  const funnel=reconcileReviewedFunnelCohorts(sorted),money=reconcileReviewedMonetaryCohorts(sorted);
+  return{recordDigest,metrics,funnelStatus:funnel.status,monetaryStatus:money.status};
+ }).sort((a,b)=>a.recordDigest.localeCompare(b.recordDigest));
+ return{...flags,status:'BOUNDED_REVIEWED_SOURCE_MANIFEST' as const,rowCount:rows.length,
+  sourceDigest:digest(['medsol-reviewed-commercial-manifest-v1',organizationId,campaignId,records]),groups:records};
 }
