@@ -3,7 +3,8 @@ import {Prisma,type SocialCommunityCase} from '@prisma/client';
 import {createHash,randomUUID} from 'node:crypto';
 import {triageSocialDiscussion} from '@medsol/agent-runtime';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
-import {hasMarketingPermission,type MarketingPermission} from './marketing-permissions.js';
+import {type MarketingPermission} from './marketing-permissions.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
 
 const identifier=(raw:unknown,label:string)=>{
@@ -29,19 +30,9 @@ type Tx=Prisma.TransactionClient;
 export class SocialCommunityCaseService{
  constructor(private readonly db:PrismaService){}
  private async actor(tx:Tx,org:string,identity:VerifiedIdentity|undefined,permission:MarketingPermission){
-  if(!identity||identity.organizationId!==org||!identity.subject||
-     !hasMarketingPermission(identity,permission))throw new ForbiddenException('Verified community operator required');
-  const user=await tx.user.findFirst({where:{organizationId:org,id:identity.userId,
-   oidcSubject:identity.subject,disabledAt:null},select:{role:true,tenantRoleDefinitionId:true}});
-  if(!user||user.role.toUpperCase()!==identity.role.toUpperCase())
-   throw new ForbiddenException('Active matching community operator required');
-  if(user.tenantRoleDefinitionId){
-   const role=await tx.tenantRoleDefinition.findFirst({where:{id:user.tenantRoleDefinitionId,
-    organizationId:org,status:'ACTIVE'},select:{permissions:true}});
-   if(!role||!Array.isArray(role.permissions)||!role.permissions.includes(permission))
-    throw new ForbiddenException('Tenant role policy denies: '+permission);
-  }else if(process.env.MARKETING_REQUIRE_TENANT_ROLE==='true'&&!['ADMIN','SUPER_ADMIN'].includes(user.role.toUpperCase()))
-   throw new ForbiddenException('Explicit tenant role assignment required');
+  if(!identity||identity.organizationId!==org||!identity.subject)
+   throw new ForbiddenException('Verified community operator required');
+  await assertActorPermissionInTenantTransaction(tx,identity,permission);
   return identity.userId;
  }
  private async brand(tx:Tx,org:string,brandId:string){
