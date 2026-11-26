@@ -180,7 +180,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
   if (method === 'POST' && path === '/marketing/learning/signals') return 'SUBMIT_EVIDENCE';
   if (method === 'POST' && (path === '/marketing/learning/verify' || path === '/marketing/learning/proposals')) return 'DECIDE_APPROVAL';
   if (method === 'GET' && (path === '/marketing/brain/runs' || /^\/marketing\/brain\/runs\/[^/]+$/.test(path) || /^\/marketing\/brain\/runs\/[^/]+\/recovery$/.test(path))) return 'READ_AUDIT';
-  if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/quarantine$/.test(path)) return 'DECIDE_APPROVAL';
+  if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/(quarantine|cancel)$/.test(path)) return 'DECIDE_APPROVAL';
   if (method === 'POST' && /^\/marketing\/brain\/runs\/[^/]+\/execute$/.test(path)) return 'EXECUTE_WORKFLOW';
   if (method === 'POST' && path === '/marketing/brain/runs') return 'EXECUTE_WORKFLOW';
   if(method==='GET'&&(path==='/marketing/architecture/readiness'||
