@@ -101,7 +101,10 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
  const layered=page.getByRole("region",{name:"Persistent editable design source"});
  await layered.getByLabel("Layered design asset ID").fill(assetId);
  await layered.getByRole("button",{name:"Load editable design asset"}).click();
- await layered.getByLabel("Layered design headline").fill("Editable scientific communication");
+ await layered.getByLabel("Draft locale").selectOption("ar-EG");
+ await layered.getByLabel("Layered design headline").fill("البحث والابتكار");
+ await layered.getByLabel("Layered body copy").fill("مسودة عربية للمراجعة العلمية");
+ await expect(layered.getByLabel("Layered design headline")).toHaveAttribute("dir","rtl");
  await layered.getByLabel("Layered canvas").selectOption("PORTRAIT");
  await layered.getByRole("button",{name:"Save layered design as new unapproved version"}).click();
  await expect(layered.getByRole("status")).toContainText("Saved immutable editable design revision 3");
@@ -111,7 +114,8 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
  expect(v3.version).toBe(3);expect(v3.revisions[0]).toMatchObject({layeredPreviewAvailable:true,offlineLayeredParentRevisionId:newId});
  const layeredId=v3.revisions[0].id as string;
  const stored=await ok(page,"assets/revisions/"+layeredId+"/layered-preview");
- expect(stored).toMatchObject({parentRevisionId:newId,releaseAuthorized:false,current:true});
+ expect(stored).toMatchObject({parentRevisionId:newId,releaseAuthorized:false,current:true,spec:{locale:'ar-EG',title:'البحث والابتكار'}});
+ expect(Buffer.from(stored.svgDataUrl.split(',')[1],'base64').toString('utf8')).toContain('direction="rtl"');
  const exportPromise=page.waitForEvent("download");
  await layered.getByRole("button",{name:"Download stored editable SVG"}).click();
  expect((await exportPromise).suggestedFilename()).toBe("medsol-layered-unapproved-"+layeredId+".svg");
