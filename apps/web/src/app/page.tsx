@@ -138,7 +138,7 @@ export default function Home() {
     </section>
     <CampaignReadinessBoard identity={identity}/>
     <CustomerDeliveryDossierStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/>
-    <div id="journey" style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio identity={identity} /></div>
+    <div id="journey" style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} campaigns={identity?campaigns:[]}/></div>
     <div id="creative" style={{scrollMarginTop:120}}><CreativeGovernanceStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} /></div>
     <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
     <div id="email" style={{scrollMarginTop:120}}><SyntheticEmailStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
