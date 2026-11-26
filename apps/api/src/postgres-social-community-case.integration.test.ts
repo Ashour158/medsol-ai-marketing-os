@@ -36,7 +36,7 @@ describe('T1 durable offline community case lifecycle',()=>{
    expect(JSON.stringify(row)).not.toContain('private-mock-text-marker');
    expect(await service.create(org,author,raw)).toMatchObject({caseId:row.caseId,replayed:true});
    await expect(service.create(org,author,{...raw,text:'Changed evidence'})).rejects.toThrow('different immutable evidence');
-   await expect(service.create(org,viewer,raw)).rejects.toThrow('Verified community operator');
+   await expect(service.create(org,viewer,raw)).rejects.toThrow('Marketing permission denied');
    await expect(service.create(org,author,{...raw,brandId:otherBrand})).rejects.toThrow('Active tenant brand');
    await expect(service.create(org,author,{...raw,discussionId:'real-provider-id'})).rejects.toThrow('fixture');
    await expect(service.create(org,author,{...raw,customerEmail:'person@example.invalid'})).rejects.toThrow('bounded');
@@ -50,7 +50,7 @@ describe('T1 durable offline community case lifecycle',()=>{
    await expect(transition(reviewer,'CLAIM',1)).rejects.toThrow('revision changed');
    await expect(transition(author,'SUBMIT_REVIEW',2)).rejects.toThrow('assigned operator');
    expect(await transition(operator,'SUBMIT_REVIEW',2)).toMatchObject({version:3,status:'PENDING_REVIEW'});
-   await expect(transition(operator,'CLOSE_INTERNAL',3)).rejects.toThrow('Verified community operator');
+   await expect(transition(operator,'CLOSE_INTERNAL',3)).rejects.toThrow('Marketing permission denied');
    await expect(transition(author,'CLOSE_INTERNAL',3)).rejects.toThrow('Independent manager');
    expect(await transition(reviewer,'CLOSE_INTERNAL',3)).toMatchObject({version:4,status:'RESOLVED_INTERNAL',
     closedBy:reviewer.userId,specialistApprovalVerified:false,externalResolutionVerified:false});
