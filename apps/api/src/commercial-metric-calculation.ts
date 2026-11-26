@@ -7,6 +7,7 @@ export type ReviewedMetricRow={
  metricKey:string;_sum:{value:bigint|null};_count:{_all:number}
 };
 const allowed=["impressions","clicks","engagements","leads","qualified_leads","spend_micros"] as const;
+export const monetaryKeys=["spend_micros","reported_revenue_micros","reported_gross_profit_micros"] as const;
 const ratio=(numerator:bigint|null,denominator:bigint|null)=>{
  if(numerator===null||denominator===null||denominator<=0n||
    numerator<0n||numerator>denominator)return null;
@@ -78,7 +79,7 @@ export function summarizeReviewedCommercialMetrics(rows:readonly ReviewedMetricR
 export const COHORT_ROW_LIMIT=1000;
 export type ReviewedCohortRow={
  sourceSystem:string;sourceRecordId:string;sourceReference:string;
- observedAt:Date;metricKey:string;value:bigint;
+ observedAt:Date;metricKey:string;value:bigint;currency?:string|null;
 };
 const funnelKeys=["impressions","clicks","leads","qualified_leads"] as const;
 export function reconcileReviewedFunnelCohorts(rows:readonly ReviewedCohortRow[]){
@@ -94,7 +95,7 @@ export function reconcileReviewedFunnelCohorts(rows:readonly ReviewedCohortRow[]
  for(const row of rows){
   if(!row.sourceSystem||!row.sourceRecordId||!row.sourceReference||
    !(row.observedAt instanceof Date)||!Number.isFinite(row.observedAt.getTime())||
-   typeof row.value!=="bigint"||row.value<0n||!allowed.some(k=>k===row.metricKey))
+   typeof row.value!=="bigint"||row.value<0n||![...allowed,...monetaryKeys].some(k=>k===row.metricKey))
    throw Error("Invalid reviewed cohort observation");
   if(!funnelKeys.some(k=>k===row.metricKey)){excludedNonFunnelRows++;continue;}
   const key=JSON.stringify([row.sourceSystem,row.sourceRecordId,row.sourceReference,row.observedAt.toISOString()]);
@@ -117,4 +118,47 @@ export function reconcileReviewedFunnelCohorts(rows:readonly ReviewedCohortRow[]
    leads:leads.toString(),qualifiedLeads:qualified.toString()}:null,
   rates:matchedGroups?{ctrPercent:ratio(clicks,impressions),
    clickToLeadPercent:ratio(leads,clicks),leadQualificationPercent:ratio(qualified,leads)}:emptyRates};
+}
+
+/** Same-source monetary matching; amounts are human-reviewed reports, never
+ * verified finance postings, attributed revenue, exchange-rate conversions or ROI. */
+export function reconcileReviewedMonetaryCohorts(rows:readonly ReviewedCohortRow[]){
+ const base={independentVerification:false as const,attributionValidated:false as const,
+  revenueVerified:false as const,roiValidated:false as const,fxConversionPerformed:false as const};
+ const empty={...base,matchedGroups:0,incompleteGroups:0,currencyConflictGroups:0,unknownCurrencyRows:0,
+  currencies:[] as {currency:string;matchedGroups:number;reportedSpendMicros:string;reportedRevenueMicros:string;
+   grossProfitMatchedGroups:number;reportedGrossProfitMicros:string|null}[]};
+ if(rows.length>COHORT_ROW_LIMIT)return{...empty,status:"ROW_LIMIT_EXCEEDED" as const};
+ const groups=new Map<string,Map<string,ReviewedCohortRow>>();
+ let unknownCurrencyRows=0;
+ for(const row of rows){
+  if(!monetaryKeys.some(k=>k===row.metricKey))continue;
+  if(!row.sourceSystem||!row.sourceRecordId||!row.sourceReference||
+   !(row.observedAt instanceof Date)||!Number.isFinite(row.observedAt.getTime())||
+   typeof row.value!=="bigint"||row.value<0n)throw Error("Invalid monetary source observation");
+  if(!row.currency||! /^[A-Z]{3}$/.test(row.currency))unknownCurrencyRows++;
+  const key=JSON.stringify([row.sourceSystem,row.sourceRecordId,row.sourceReference,row.observedAt.toISOString()]);
+  const group=groups.get(key)??new Map<string,ReviewedCohortRow>();
+  if(group.has(row.metricKey))throw Error("Duplicate monetary metric in source record");
+  group.set(row.metricKey,row);groups.set(key,group);
+ }
+ let matchedGroups=0,incompleteGroups=0,currencyConflictGroups=0;
+ const amounts=new Map<string,{matchedGroups:number;spend:bigint;revenue:bigint;grossCount:number;gross:bigint}>();
+ for(const group of groups.values()){
+  const spend=group.get("spend_micros"),revenue=group.get("reported_revenue_micros"),gross=group.get("reported_gross_profit_micros");
+  if(!spend||!revenue||!spend.currency||!revenue.currency||! /^[A-Z]{3}$/.test(spend.currency)||! /^[A-Z]{3}$/.test(revenue.currency)){
+   incompleteGroups++;continue;
+  }
+  if(spend.currency!==revenue.currency||(gross&&gross.currency!==spend.currency)){currencyConflictGroups++;continue;}
+  const a=amounts.get(spend.currency)??{matchedGroups:0,spend:0n,revenue:0n,grossCount:0,gross:0n};
+  a.matchedGroups++;a.spend+=spend.value;a.revenue+=revenue.value;
+  if(gross){a.grossCount++;a.gross+=gross.value;}
+  matchedGroups++;amounts.set(spend.currency,a);
+ }
+ const currencies=[...amounts.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([currency,a])=>({
+  currency,matchedGroups:a.matchedGroups,reportedSpendMicros:a.spend.toString(),reportedRevenueMicros:a.revenue.toString(),
+  grossProfitMatchedGroups:a.grossCount,reportedGrossProfitMicros:a.grossCount?a.gross.toString():null}));
+ return{...base,matchedGroups,incompleteGroups,currencyConflictGroups,unknownCurrencyRows,currencies,
+  status:matchedGroups===0?"NO_MATCHED_MONETARY_GROUPS" as const:incompleteGroups||currencyConflictGroups||unknownCurrencyRows?
+   "PARTIAL_MONETARY_MATCH" as const:"EXACT_MONETARY_SOURCE_MATCH" as const};
 }
