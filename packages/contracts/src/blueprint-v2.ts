@@ -36,7 +36,7 @@ export const TARGET_ENGINES = [
     "release": "R4",
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
-    "blocker": "Reviewed signal diagnostics and persistent manual watches exist; automated due evaluation, lawful acquisition and independent corroboration remain"
+    "blocker": "Persistent exact-topic watches and opt-in worker evaluation exist; permitted source import is quarantined; external acquisition and independent corroboration remain"
   },
   {
     "id": "E04",
@@ -71,8 +71,8 @@ export const TARGET_ENGINES = [
     "goal": "Versioned editorial calendar linked to approved campaigns and exact creative revisions",
     "release": "R2",
     "owner": "CampaignService",
-    "state": "DRAFT_ONLY",
-    "blocker": "Campaign/publication schedules exist; editorial calendar coordination and conflict optimization remain"
+    "state": "PARTIAL",
+    "blocker": "Canonical approval schedule calendar and conflict-aware advisory slots exist; mutable approved calendar coordination and external publishing remain"
   },
   {
     "id": "E08",
@@ -80,8 +80,8 @@ export const TARGET_ENGINES = [
     "goal": "Timing, frequency and provider constraints",
     "release": "R2",
     "owner": "CampaignService",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No campaign scheduling service"
+    "state": "PARTIAL",
+    "blocker": "Bounded conflict analysis and advisory slot suggestions exist; no automatic rescheduling or verified platform timing constraints"
   },
   {
     "id": "E09",
@@ -90,7 +90,7 @@ export const TARGET_ENGINES = [
     "release": "R4",
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
-    "blocker": "MIT Maestro rubric integrated; synthetic conversion submission is durable; no actual CRM or independently verified commercial opportunity"
+    "blocker": "MIT Maestro rubric and durable synthetic form/CRM mock request/readback exist; real qualification lifecycle and independently verified lead evidence remain"
   },
   {
     "id": "E10",
@@ -108,7 +108,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Verified synthetic PNG revisions and local editable SVG exports exist; persisted editable source, multiformat production and external editor integration remain"
+    "blocker": "Persistent layered source and deterministic SVG plus verified synthetic PNG exist; layered release rendition, multiformat production and external editor remain"
   },
   {
     "id": "E12",
@@ -116,8 +116,8 @@ export const TARGET_ENGINES = [
     "goal": "Approved copy derivatives for language and locale",
     "release": "R2",
     "owner": "Creative & DAM",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No versioned locale renditions"
+    "state": "PARTIAL",
+    "blocker": "Versioned locale drafts and Arabic RTL rendering merged; independent translation validation, provider rendition and release approval remain"
   },
   {
     "id": "E13",
@@ -135,7 +135,7 @@ export const TARGET_ENGINES = [
     "release": "R1",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Versioned DAM, independently reviewed rights and PNG verification; local SVG handoff does not inherit approval; durable editable source and multimedia remain"
+    "blocker": "Immutable DAM, independently reviewed rights and PNG verification, layered source and parent lineage exist; layered release rendition and multimedia remain"
   },
   {
     "id": "E15",
@@ -171,7 +171,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Social & Community",
     "state": "PARTIAL",
-    "blocker": "Internal synthetic case lifecycle merged; external inbox and replies, SLA alerts and specialist signoff remain"
+    "blocker": "Durable internal case lifecycle, exact-round independent review, risk-prioritized queue and worker SLA escalation exist; authorized provider inbox/replies and professional credential verification remain"
   },
   {
     "id": "E19",
@@ -180,7 +180,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Social & Community",
     "state": "PARTIAL",
-    "blocker": "Scientific/brand/privacy escalation and independent internal closure exist; dedicated specialist decisions and timers remain"
+    "blocker": "Exact-round independent internal decisions, exact escalation counts and once-per-cycle opt-in SLA escalation exist; professional credentials and real crisis response remain unverified"
   },
   {
     "id": "E20",
@@ -189,7 +189,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "MarketingPerformanceService",
     "state": "PARTIAL",
-    "blocker": "Exact source-record funnel and currency-separated spend/revenue/gross profit matching exist; verified provider/finance data and evidence exports remain"
+    "blocker": "Exact source-record funnel, same-currency reported monetary reconciliation and scoped evidence manifests/export exist; verified provider and finance sources remain"
   },
   {
     "id": "E21",
@@ -198,7 +198,7 @@ export const TARGET_ENGINES = [
     "release": "R4",
     "owner": "MarketingPerformanceService",
     "state": "PARTIAL",
-    "blocker": "Reported same-source money and synthetic conversion ledger exist; no verified causal attribution or reconciled CRM/finance outcomes"
+    "blocker": "Reported same-source currency metrics and synthetic CRM protocol exist; verified causal attribution and actual CRM/finance reconciliation remain"
   },
   {
     "id": "E22",
@@ -279,7 +279,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Email & Messaging",
     "state": "PARTIAL",
-    "blocker": "Synthetic no-send journeys exist; verified ESP delivery, domain authentication and real purpose-specific consent remain"
+    "blocker": "Synthetic no-send journeys and strict mock sender-authentication preflight exist; verified ESP delivery, real DNS and legal consent remain"
   },
   {
     "id": "E31",
@@ -288,7 +288,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Email & Messaging",
     "state": "PARTIAL",
-    "blocker": "MIT Dittofeed event mappings feed synthetic suppression ledger; real ESP callbacks, deliverability and domain authentication remain"
+    "blocker": "Durable synthetic feedback/suppression and mock sender SPF/DKIM/DMARC preflight exist; verified ESP callbacks and deliverability remain"
   },
   {
     "id": "E32",
@@ -297,7 +297,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Synthetic creative iteration and layered SVG draft handoff exist; persistent editable source, multimodal brief and render jobs remain"
+    "blocker": "Persistent layered title/body/accent and deterministic rendition lineage exist; multimodal brief and separately verified release render jobs remain"
   },
   {
     "id": "E33",
@@ -305,8 +305,8 @@ export const TARGET_ENGINES = [
     "goal": "Authorized web acquisition, source rights, bounded reviewed import, quarantine and evidence provenance",
     "release": "R4",
     "owner": "Market Research & Acquisition",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Fixed Europe PMC and manual reviewed sources exist; general authorized fetch, source policy, automatic acquisition and independent source verification remain"
+    "state": "PARTIAL",
+    "blocker": "Explicit source rights, collection scope and expiry import into quarantine exist; rights declarations are not legal proof; general authorized fetch and independent verification remain"
   },
   {
     "id": "E34",
@@ -370,9 +370,9 @@ export const TARGET_WORKFLOWS = [
     "name": "Campaign plan and calendar",
     "release": "R2",
     "owner": "CampaignService",
-    "state": "DRAFT_ONLY",
+    "state": "PARTIAL",
     "goal": "Approved campaign editorial coordination, timing constraints and version-bound publication schedule",
-    "blocker": "Durable editorial planning and conflict handling remain"
+    "blocker": "Canonical approved schedule calendar and conflict-aware advisory suggestions exist; changing exact schedule requires new approval"
   },
   {
     "id": "WF06",
@@ -381,7 +381,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Creative production with editable source, verified raster and rendition lineage",
-    "blocker": "Synthetic PNG and local SVG handoff exist; persisted source and render workflow remain"
+    "blocker": "Persistent structured editable source and deterministic SVG with immutable lineage exist; separately verified layered release rendition remains"
   },
   {
     "id": "WF07",
@@ -406,7 +406,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Social & Community",
     "state": "PARTIAL",
     "goal": "Synthetic community intake, assignment, independent closure and reopening",
-    "blocker": "Durable internal case queue exists; real inbox, replies and specialist signoffs remain"
+    "blocker": "Durable internal queue and exact-round independent reviews exist; authorized live inbox/replies and credential verification remain"
   },
   {
     "id": "WF10",
@@ -415,7 +415,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Social & Community",
     "state": "PARTIAL",
     "goal": "Risk-prioritized crisis escalation, independent internal review and incident response",
-    "blocker": "Internal risk routing exists; timer/SLA and specialist signoffs remain"
+    "blocker": "Internal risk routing, exact-round review and opt-in automatic internal SLA escalation exist; external response and professional signoff remain"
   },
   {
     "id": "WF11",
@@ -424,7 +424,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "MarketingPerformanceService",
     "state": "PARTIAL",
     "goal": "Reviewed evidence, funnel and currency-separated monetary reconciliation, optimization",
-    "blocker": "Exact source-record matching exists; verified attribution and evidence exports remain"
+    "blocker": "Matched source-record reconciliation, same-currency evidence and export manifests exist; independently verified revenue and causal attribution remain"
   },
   {
     "id": "WF12",
@@ -470,7 +470,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Email & Messaging",
     "state": "PARTIAL",
     "goal": "Consent-bound email journey and mock transport",
-    "blocker": "No-send simulation exists; provider protocol and domain authentication remain"
+    "blocker": "No-send journey and strict mock sender-auth preflight exist; verified live ESP and domain authentication remain"
   },
   {
     "id": "WF18",
@@ -488,7 +488,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Brief to layered editable design, verified render and independent rights review",
-    "blocker": "Synthetic PNG iteration and SVG handoff exist; durable source and multimedia remain"
+    "blocker": "Persisted layered source and deterministic SVG plus immutable parent lineage exist; verified release rendition and multimedia remain"
   },
   {
     "id": "WF20",
@@ -497,7 +497,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Market Research & Acquisition",
     "state": "PARTIAL",
     "goal": "Governed source authorization, acquisition quarantine, provenance and evidence review",
-    "blocker": "Manual reviewed source and fixed Europe PMC exist; general acquisition control remains"
+    "blocker": "Manual permitted source rights import into quarantine and fixed Europe PMC exist; general permissioned network acquisition remains"
   },
   {
     "id": "WF21",
@@ -506,7 +506,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
     "goal": "Reviewed market diagnostics, source references, freshness and approved report",
-    "blocker": "Reviewed market intelligence and session/durable watches exist; independent verification and report delivery remain"
+    "blocker": "Reviewed market intelligence, persistent watches and opt-in due evaluation exist; independent corroboration and report delivery remain"
   },
   {
     "id": "WF22",
@@ -594,7 +594,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Conversion & Growth",
     "state": "PARTIAL",
     "goal": "BANT/ICP review, consent-gated synthetic CRM handoff and immutable ambiguous outcome",
-    "blocker": "Maestro rubric and durable mock submission merged; actual CRM connector and lead lifecycle remain"
+    "blocker": "Maestro rubric and durable consent-gated mock CRM request/readback/reconciliation exist; actual CRM and authoritative lead lifecycle remain"
   },
   {
     "id": "WF34",
@@ -617,7 +617,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
     "goal": "Persistent exact-topic watch, due evaluation, scheduling, evidence-change notification and lawful acquisition",
-    "blocker": "Manual due evaluation and pause/resume merged; worker automation and acquisition remain"
+    "blocker": "Persistent watches, pause/resume and opt-in due evaluation through existing worker exist; lawful automatic acquisition and external notifications remain"
   },
   {
     "id": "WF37",

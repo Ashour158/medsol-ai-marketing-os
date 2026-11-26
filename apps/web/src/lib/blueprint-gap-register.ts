@@ -50,3 +50,14 @@ export function gapCounts(input:GapInventory){
   byState:Object.fromEntries(GAP_STATES.map(s=>[s,[...engines,...workflows]
    .filter(x=>x.state===s).length])) as Record<string,number>};
 }
+
+/** Planning gate only. A complete registry cannot substitute for independent
+ * operator acceptance, security validation or actual provider readiness. */
+export function gapClosureStatus(input:GapInventory){
+ const {engines,workflows}=validateGapInventory(input);
+ const unresolvedEngines=engines.filter(x=>x.state!=='VERIFIED_IMPLEMENTED').map(x=>x.id);
+ const unresolvedWorkflows=workflows.filter(x=>x.state!=='VERIFIED_IMPLEMENTED').map(x=>x.id);
+ return{registryGate:unresolvedEngines.length||unresolvedWorkflows.length?'REGISTRY_GAPS_REMAIN':'INDEPENDENT_ACCEPTANCE_REQUIRED',
+  unresolvedEngines,unresolvedWorkflows,independentAcceptanceRequired:true as const,
+  closed:false as const,productionCertified:false as const};
+}
