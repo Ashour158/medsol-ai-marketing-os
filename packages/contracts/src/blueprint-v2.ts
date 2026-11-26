@@ -116,8 +116,8 @@ export const TARGET_ENGINES = [
     "goal": "Approved copy derivatives for language and locale",
     "release": "R2",
     "owner": "Creative & DAM",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No versioned locale renditions"
+    "state": "PARTIAL",
+    "blocker": "Versioned locale drafts and Arabic RTL rendering merged; independent translation validation, provider rendition and release approval remain"
   },
   {
     "id": "E13",
@@ -171,7 +171,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Social & Community",
     "state": "PARTIAL",
-    "blocker": "Durable internal case lifecycle, exact-round independent review and worker SLA escalation exist; authorized provider inbox/replies and professional credential verification remain"
+    "blocker": "Durable internal case lifecycle, exact-round independent review, risk-prioritized queue and worker SLA escalation exist; authorized provider inbox/replies and professional credential verification remain"
   },
   {
     "id": "E19",
@@ -180,7 +180,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Social & Community",
     "state": "PARTIAL",
-    "blocker": "Exact-round independent internal decisions and once-per-cycle opt-in SLA escalation exist; professional credentials and real crisis response remain unverified"
+    "blocker": "Exact-round independent internal decisions, exact escalation counts and once-per-cycle opt-in SLA escalation exist; professional credentials and real crisis response remain unverified"
   },
   {
     "id": "E20",
