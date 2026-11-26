@@ -2,7 +2,9 @@
 import {useState} from "react";
 type Revision={id:string;version:number;offlinePreviewAvailable:boolean;layeredPreviewAvailable:boolean};
 type Asset={id:string;title:string;version:number;brandId:string;revisions:Revision[]};
-type Spec={format:"SQUARE"|"PORTRAIT";title:string;body:string;accent:string};
+const locales=["en-EG","en-GB","en-US","ar-EG","ar-SA","ar-AE","fr-FR","fr-MA"] as const;
+type Locale=typeof locales[number];
+type Spec={format:"SQUARE"|"PORTRAIT";title:string;body:string;accent:string;locale?:Locale};
 type Preview={assetId:string;revisionId:string;version:number;current:boolean;parentRevisionId:string;spec:Spec;
  sourceDigest:string;renditionDigest:string;svgDataUrl:string;offlineOnly:true;releaseAuthorized:false;externalEffectsAuthorized:false};
 const button={background:"#124d83",color:"#fff",padding:"9px 12px",border:0,borderRadius:7,cursor:"pointer"};
@@ -46,8 +48,13 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
   <button type="button" style={button} disabled={!enabled||busy||!assetId} onClick={()=>void run(load)}>Load editable design asset</button>
   {asset&&<p>{asset.title} · current revision {asset.version}</p>}
   {asset&&parent&&(parent.offlinePreviewAvailable||parent.layeredPreviewAvailable)&&<>
-   <label>Layered design headline<input style={field} value={spec.title} maxLength={90} onChange={e=>edit({title:e.target.value})} disabled={!enabled||busy}/></label>
-   <label>Layered body copy<textarea style={field} value={spec.body} maxLength={400} onChange={e=>edit({body:e.target.value})} disabled={!enabled||busy}/></label>
+   <label>Draft locale<select style={field} value={spec.locale??""} disabled={!enabled||busy} onChange={e=>{
+    const locale=e.target.value as Locale|"";
+    setSpec(s=>{const {locale:previous,...rest}=s;return locale?{...rest,locale}:rest;});setKey("");setExpiry("");
+   }}><option value="">Unspecified · original layout</option>{locales.map(locale=><option key={locale}>{locale}</option>)}</select></label>
+   <p style={{fontSize:12}}>Provide the translated text yourself. The selected locale controls draft text direction; translation accuracy and typography require independent review.</p>
+   <label>Layered design headline<input style={field} value={spec.title} lang={spec.locale} dir={spec.locale?.startsWith("ar-")?"rtl":"ltr"} maxLength={90} onChange={e=>edit({title:e.target.value})} disabled={!enabled||busy}/></label>
+   <label>Layered body copy<textarea style={field} value={spec.body} lang={spec.locale} dir={spec.locale?.startsWith("ar-")?"rtl":"ltr"} maxLength={400} onChange={e=>edit({body:e.target.value})} disabled={!enabled||busy}/></label>
    <label>Layered accent<input style={field} value={spec.accent} maxLength={7} onChange={e=>edit({accent:e.target.value})} disabled={!enabled||busy}/></label>
    <label>Layered canvas<select style={field} value={spec.format} onChange={e=>edit({format:e.target.value as Spec["format"]})} disabled={!enabled||busy}>
     <option value="SQUARE">Square</option><option value="PORTRAIT">Portrait</option>
@@ -63,7 +70,7 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
   </>}
   {preview&&<div style={{marginTop:10,fontSize:12}}>
    <img src={preview.svgDataUrl} alt="Stored deterministic editable design preview; unapproved" style={{maxWidth:"100%",width:300,border:"1px solid #cbd5e1"}}/>
-   <p>Version {preview.version} · parent {preview.parentRevisionId} · source {preview.sourceDigest}</p>
+   <p>Version {preview.version} · parent {preview.parentRevisionId} · locale {preview.spec.locale??"unspecified"} · source {preview.sourceDigest}</p>
    <button type="button" style={button} disabled={busy||!preview.current} onClick={()=>void run(async()=>{
     const fresh=await loadPreview(preview.revisionId);
     if(!fresh.current||fresh.renditionDigest!==preview.renditionDigest)throw Error("Design changed; refresh before export");
