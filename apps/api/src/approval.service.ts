@@ -3,6 +3,7 @@ import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
+import {SYNTHETIC_LEAD_REVIEW,currentSyntheticLeadTarget,matchSyntheticQualification} from './synthetic-lead-qualification.js';
 import {communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
@@ -107,6 +108,16 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
    if(a.objectType==='Campaign' && cmd.decision==='APPROVED'){
     const history=await tx.auditEvent.findMany({where:{organizationId:cmd.organizationId,objectType:'Campaign',objectId:a.objectId,action:{in:['CAMPAIGN_CREATED','CAMPAIGN_STATUS_CHANGED']}},select:{actorType:true,actorId:true,action:true}});
     assertIndependentCampaignReviewer(cmd.approverUserId,history);
+   }
+   if(a.objectType===SYNTHETIC_LEAD_REVIEW){
+    const target=cmd.decision==='APPROVED'?await currentSyntheticLeadTarget(tx,cmd.organizationId,a.objectId):
+     await tx.marketingConversionSubmission.findFirst({where:{organizationId:cmd.organizationId,id:a.objectId},include:{form:true}});
+    if(!target||!matchSyntheticQualification(target,a))
+     throw new ConflictException('Exact synthetic lead qualification scope invalid or stale');
+    if(cmd.approverUserId===a.requestedBy||cmd.approverUserId===target.createdBy||!reviewer.oidcSubject)
+     throw new ForbiddenException('Independent OIDC synthetic lead review required');
+    await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,
+     email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
    }
    if(a.objectType==='MarketingConversionForm'&&cmd.decision==='APPROVED'){
     const form=await tx.marketingConversionForm.findFirst({where:{organizationId:cmd.organizationId,id:a.objectId,approvalId:a.id}});
