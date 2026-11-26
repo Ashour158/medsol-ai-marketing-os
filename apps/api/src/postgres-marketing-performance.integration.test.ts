@@ -59,6 +59,12 @@ describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
    }
    const monetary=await metrics.summary(organizationId,campaignA.id);
    expect(monetary.totals.spend_micros).toBeUndefined();
+   expect(monetary.evidenceManifest).toMatchObject({status:'BOUNDED_REVIEWED_SOURCE_MANIFEST',rowCount:11,signed:false,externalEffectsAuthorized:false});
+   expect(monetary.evidenceManifest.groups.filter(x=>x.monetaryStatus==='EXACT_MONETARY_SOURCE_MATCH')).toHaveLength(2);
+   expect((await metrics.summary(organizationId,campaignA.id)).evidenceManifest.sourceDigest).toBe(monetary.evidenceManifest.sourceDigest);
+   expect(JSON.stringify(monetary.evidenceManifest)).not.toContain('internal:monetary-report');
+   expect((await metrics.summary(otherOrganization,campaignB.id)).evidenceManifest).toMatchObject({rowCount:0,groups:[]});
+
    expect(monetary.monetaryReconciliation).toMatchObject({status:'EXACT_MONETARY_SOURCE_MATCH',matchedGroups:2,
     currencies:[{currency:'EGP',reportedSpendMicros:'1000000',reportedRevenueMicros:'5000000'},
      {currency:'USD',reportedSpendMicros:'2000000',reportedRevenueMicros:'8000000'}],
