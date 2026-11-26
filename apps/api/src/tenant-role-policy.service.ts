@@ -18,6 +18,29 @@ const rolePermissions=(value:unknown):MarketingPermission[]=>{
   throw new BadRequestException('Known, distinct role permissions required');
  return value;
 };
+/** Same restrictive IAM check, reusable inside an already tenant-scoped transaction. */
+export async function assertActorPermissionInTenantTransaction(tx:Prisma.TransactionClient,actor:VerifiedIdentity,permission:MarketingPermission):Promise<void>{
+ if(!hasMarketingPermission(actor,permission))
+  throw new ForbiddenException('Marketing permission denied: '+permission);
+ // Recheck current User state on every authorized API call rather than
+ // trusting a stale role in an otherwise valid JWT/session.
+ const user=await tx.user.findFirst({where:{id:actor.userId,organizationId:actor.organizationId,
+  disabledAt:null,oidcSubject:actor.subject},select:{
+   role:true,tenantRoleDefinitionId:true}});
+ if(!user||user.role.toUpperCase()!==actor.role.toUpperCase())
+  throw new ForbiddenException('OIDC user permissions changed or disabled');
+ if(!user.tenantRoleDefinitionId){
+  if(process.env.MARKETING_REQUIRE_TENANT_ROLE==='true'&&
+     !['ADMIN','SUPER_ADMIN'].includes(user.role.toUpperCase()))
+   throw new ForbiddenException('Explicit tenant role assignment required');
+  return;
+ }
+ const role=await tx.tenantRoleDefinition.findFirst({where:{id:user.tenantRoleDefinitionId,
+  organizationId:actor.organizationId,status:'ACTIVE'},select:{permissions:true}});
+ if(!role||!Array.isArray(role.permissions)||!role.permissions.includes(permission))
+  throw new ForbiddenException('Tenant role policy denies: '+permission);
+}
+
 /** Owns restrictive custom roles. User remains the only OIDC subject and
  *  existing static User.role remains an unbreakable permission ceiling.
  *  Requires trusted OIDC identity; never trusts role/tenant from HTTP body.
@@ -130,24 +153,6 @@ export class TenantRolePolicyService{
  async assertActorPermission(actor:VerifiedIdentity,permission:MarketingPermission):Promise<void>{
   if(!hasMarketingPermission(actor,permission))
    throw new ForbiddenException('Marketing permission denied: '+permission);
-  await this.transaction(actor.organizationId,async tx=>{
-   // Recheck current User state on every authorized API call rather than
-   // trusting a stale role in an otherwise valid JWT/session.
-   const user=await tx.user.findFirst({where:{id:actor.userId,organizationId:actor.organizationId,
-    disabledAt:null,oidcSubject:actor.subject},select:{
-     role:true,tenantRoleDefinitionId:true}});
-   if(!user||user.role.toUpperCase()!==actor.role.toUpperCase())
-    throw new ForbiddenException('OIDC user permissions changed or disabled');
-   if(!user.tenantRoleDefinitionId){
-    if(process.env.MARKETING_REQUIRE_TENANT_ROLE==='true'&&
-       !['ADMIN','SUPER_ADMIN'].includes(user.role.toUpperCase()))
-     throw new ForbiddenException('Explicit tenant role assignment required');
-    return;
-   }
-   const role=await tx.tenantRoleDefinition.findFirst({where:{id:user.tenantRoleDefinitionId,
-    organizationId:actor.organizationId,status:'ACTIVE'},select:{permissions:true}});
-   if(!role||!Array.isArray(role.permissions)||!role.permissions.includes(permission))
-    throw new ForbiddenException('Tenant role policy denies: '+permission);
-  });
+  await this.transaction(actor.organizationId,tx=>assertActorPermissionInTenantTransaction(tx,actor,permission));
  }
 }
