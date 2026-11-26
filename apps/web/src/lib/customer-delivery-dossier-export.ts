@@ -1,4 +1,4 @@
-import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
+import {OFFLINE_CAMPAIGN_STAGE_KEYS,validateCombinedCommercialSummary,type CombinedCommercialSummary} from '@medsol/contracts';
 /** Unsigned operator exports of the server's read-only, sanitized dossier.
  * No CRM contacts, recipient identifiers, approval actors or provider secrets.
  */
@@ -28,7 +28,7 @@ export type DeliveryDossier={
   commercial:{sourceStatus:string;reviewedTotals:Record<string,string>;
    derived:Record<string,number|string|null>;pendingReviewCount:number;
    evidenceWarnings:string[];revenueVerified:false;roiVerified:false;
-   spendCurrencyVerified:false}
+   spendCurrencyVerified:false;combinedCommercial?:CombinedCommercialSummary|null}
  };
  limitations:string[];signed:false;independentlyVerified:false;
  externalEffectsAuthorized:false;realProviderDeliveryVerified:false;
@@ -72,6 +72,8 @@ export function validateDossierForExport(d:DeliveryDossier){
     throw Error('Invalid synthetic conversion dossier counts');
   }
  }
+ if(d.pillars.commercial.combinedCommercial!==undefined&&d.pillars.commercial.combinedCommercial!==null)
+  validateCombinedCommercialSummary(d.pillars.commercial.combinedCommercial);
  return d;
 }
 const cell=(v:unknown)=>{
@@ -104,6 +106,14 @@ function dossierRows(d:DeliveryDossier):DossierRow[]{
   ...d.pillars.commercial.evidenceWarnings.map(w=>
    ['commercial_warning',w,'PRESENT','REQUIRES_RECONCILIATION'] as [string,string,unknown,string])
  ];
+ const combined=d.pillars.commercial.combinedCommercial;
+ if(combined){
+  rows.push(['commercial','combined_cohort_status',combined.status,'REPORTED_NOT_VERIFIED']);
+  rows.push(['commercial','combined_source_digest',combined.sourceDigest,'REVIEWED_MANIFEST']);
+  for(const key of ['matchedGroups','excludedGroups','invalidGrossProfitGroups'] as const)rows.push(['commercial',key,combined[key],'REPORTED_NOT_VERIFIED']);
+  for(const c of combined.currencies)for(const [key,value] of Object.entries(c))if(key!=='currency')
+   rows.push(['commercial',c.currency+'_'+key,value,'REPORTED_SAME_CURRENCY_NO_CAUSAL_ATTRIBUTION']);
+ }
  const synthetic=d.pillars.conversion.syntheticLedger;
  if(synthetic){
   rows.push(['conversion','synthetic_ledger_status',synthetic.status,'HISTORICAL_MOCK_RECORDS_NOT_REAL_LEADS']);

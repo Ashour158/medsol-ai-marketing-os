@@ -1,4 +1,4 @@
-import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
+import {OFFLINE_CAMPAIGN_STAGE_KEYS,combinedReviewedCommercial,validateCombinedCommercialSummary,type CombinedCommercialManifest} from '@medsol/contracts';
 /** T8A read-only cross-engine campaign dossier.
  * Reuses authoritative campaign, DAM, social, email, learning and performance
  * owners. No duplicate writes, customer-contact export or certification.
@@ -22,6 +22,7 @@ type CampaignMetrics={
  pendingReviewCount:number;warnings:string[];
  attributionValidated:boolean;roiValidated:boolean;revenueVerified:boolean;
  independentlyVerified:boolean;
+ evidenceManifest?:CombinedCommercialManifest & {organizationId:string;campaignId:string};
 };
 type ConversionLedger={
  organizationId:string;campaignId:string;windowCapped:boolean;syntheticOnly:boolean;externalEffectsAuthorized:boolean;
@@ -130,6 +131,9 @@ export function buildCustomerDeliveryDossier(
   }
  }
  const syntheticLedger=projectConversionLedger(organizationId,journey.campaign,conversionLedger);
+ const manifest=performance.evidenceManifest;
+ if(manifest&&(manifest.organizationId!==organizationId||manifest.campaignId!==journey.campaign.id))reject('Commercial manifest scope mismatch');
+ const combinedCommercial=manifest?validateCombinedCommercialSummary(combinedReviewedCommercial(manifest)):null;
  const linked=journey.creativeAssets.filter(a=>a.publicationLinked);
  const reviewed=linked.filter(a=>a.current&&!!a.rightsReviewedAt&&
   a.approvals.some(x=>x.decision==='APPROVED'));
@@ -179,7 +183,7 @@ export function buildCustomerDeliveryDossier(
     crmQualifiedOutcomesVerified:false,causalAttributionVerified:false,syntheticLedger},
    commercial:{sourceStatus:performance.status,reviewedTotals:totals,
     derived:performance.derived,pendingReviewCount:performance.pendingReviewCount,
-    evidenceWarnings:[...performance.warnings],
+    evidenceWarnings:[...performance.warnings],combinedCommercial,
     revenueVerified:false,roiVerified:false,spendCurrencyVerified:false}
   },
   limitations:[
@@ -187,6 +191,7 @@ export function buildCustomerDeliveryDossier(
    'Creative drafts may be brand scoped and are not campaign linked until approved publication scope',
    'Market topics are tenant-wide reviewed signals, not campaign-attributed intelligence or independently verified market facts',
    'Reviewed observations are not verified CRM conversions, revenue or ROI',
+   'Combined commercial evidence uses exact same-record funnels and reported monetary values separately per currency; no FX, causal lift or verified return is inferred',
    'Synthetic conversion counts reflect bounded historical form, mock protocol and qualification records; no current consent or real lead is inferred. Separate owner snapshots are not atomic',
    'This report is an unsigned operator inspection, not independent 500-case QA or production certification'
   ],

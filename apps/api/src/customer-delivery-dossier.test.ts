@@ -39,7 +39,22 @@ const conversion=()=>({organizationId:'tenant-1',campaignId:'campaign-1',windowC
   protocolEvidence:{fixtureOnly:true,actualCrmRequests:0,verifiedRemoteReceipts:0,automaticRetryAuthorized:false,externalEffectsAuthorized:false}}],
  qualifications:[{submissionId:'submission-1',decision:'APPROVED',independentInternalReviewRecorded:true,syntheticOnly:true,
   realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false}]});
+const manifest=()=>({organizationId:'tenant-1',campaignId:'campaign-1',status:'BOUNDED_REVIEWED_SOURCE_MANIFEST',sourceDigest:'sha256:'+'a'.repeat(64),rowCount:6,
+ independentVerification:false as const,attributionValidated:false as const,revenueVerified:false as const,roiValidated:false as const,
+ fxConversionPerformed:false as const,signed:false as const,externalEffectsAuthorized:false as const,
+ groups:[{recordDigest:'sha256:'+'b'.repeat(64),funnelStatus:'EXACT_SOURCE_RECORD_MATCH',monetaryStatus:'EXACT_MONETARY_SOURCE_MATCH',
+ metrics:[{metricKey:'impressions',value:'1000',currency:null},{metricKey:'clicks',value:'200',currency:null},
+  {metricKey:'leads',value:'20',currency:null},{metricKey:'qualified_leads',value:'5',currency:null},
+  {metricKey:'spend_micros',value:'12000000',currency:'EGP'},{metricKey:'reported_revenue_micros',value:'36000000',currency:'EGP'}]}]});
 describe('T8A six-engine read-only customer dossier',()=>{
+ it('recomputes same-record currency-separated commercial evidence from the canonical manifest',()=>{
+  const d=buildCustomerDeliveryDossier('tenant-1',journey(),{...performance(),evidenceManifest:manifest()},market(),now);
+  expect(d.pillars.commercial.combinedCommercial).toMatchObject({status:'EXACT_COMBINED_MATCH',matchedGroups:1,currencies:[{
+   currency:'EGP',reportedSpendMicros:'12000000',reportedRevenueMicros:'36000000',spendMicrosPerQualifiedLead:'2400000',
+   reportedRevenueToSpendRatio:'3.0000'}],revenueVerified:false,roiValidated:false});
+  expect(JSON.stringify(d)).not.toContain('recordDigest');
+  expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),{...performance(),evidenceManifest:{...manifest(),campaignId:'foreign'}},market(),now)).toThrow('scope mismatch');
+ });
  it('projects linked creative, virtual social/email, tenant-wide intelligence and reviewed KPIs without PII',()=>{
   const d=buildCustomerDeliveryDossier('tenant-1',journey(),performance(),market(),now);
   expect(d).toMatchObject({schema:'medsol.customer_delivery_dossier.v1',

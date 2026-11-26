@@ -34,6 +34,22 @@ const fixture=():DeliveryDossier=>({
  productionStatus:'NOT_CERTIFIED'
 });
 describe('T8A operator dossier export safety',()=>{
+ it('exports exact combined commercial aggregate without accepting invented arithmetic or extra identifiers',()=>{
+  const d=fixture(),summary={status:'EXACT_COMBINED_MATCH' as const,sourceDigest:'sha256:'+'a'.repeat(64),
+   matchedGroups:1,excludedGroups:0,invalidGrossProfitGroups:0,independentVerification:false as const,attributionValidated:false as const,
+   revenueVerified:false as const,roiValidated:false as const,fxConversionPerformed:false as const,externalEffectsAuthorized:false as const,
+   currencies:[{currency:'EGP',matchedGroups:1,impressions:'1000',clicks:'200',leads:'20',qualifiedLeads:'5',
+    reportedSpendMicros:'12000000',reportedRevenueMicros:'36000000',reportedGrossProfitMicros:null,grossProfitMatchedGroups:0,
+    spendMicrosPerLead:'600000',spendMicrosPerQualifiedLead:'2400000',reportedRevenueToSpendRatio:'3.0000'}]};
+  d.pillars.commercial.combinedCommercial=summary;
+  expect(dossierPillarCsv(d,'commercial')).toContain('EGP_reportedRevenueToSpendRatio');
+  expect(dossierPillarCsv(d,'commercial')).toContain('REPORTED_SAME_CURRENCY_NO_CAUSAL_ATTRIBUTION');
+  summary.currencies[0]!.reportedRevenueToSpendRatio='30.0000';
+  expect(()=>dossierCsv(d)).toThrow('arithmetic');
+  summary.currencies[0]!.reportedRevenueToSpendRatio='3.0000';
+  Object.assign(summary.currencies[0]!,{contactId:'forged'});
+  expect(()=>dossierCsv(d)).toThrow('Invalid combined commercial dossier');
+ });
  it('exports all six sections with explicit offline qualifications and CSV formula protection',()=>{
   const csv=dossierCsv(fixture());
   for(const section of ['creative','social','email','intelligence','conversion','commercial'])

@@ -218,13 +218,14 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     status:'INSUFFICIENT_REVIEWED_DATA',attributionValidated:false,
     independentlyVerified:false});
    const syntheticMetrics=[
-    ['impressions',1000],['clicks',200],['leads',20],['qualified_leads',5]
+    ['impressions',1000],['clicks',200],['leads',20],['qualified_leads',5],['spend_micros',12000000],['reported_revenue_micros',36000000]
    ] as const;
+   const sourceRecordId='r3o-ci-virtual-'+randomUUID(),observedAt=new Date().toISOString();
    for(const [metricKey,value] of syntheticMetrics){
     const observation=await performance.ingest(org,creator,{
      campaignId,sourceSystem:'MANUAL_EXPORT',
-     sourceRecordId:'r3o-ci-virtual-'+randomUUID(),metricKey,value,
-     observedAt:new Date().toISOString(),
+     sourceRecordId,metricKey,value,observedAt,
+     ...((metricKey==='spend_micros'||metricKey==='reported_revenue_micros')?{currency:'EGP'}:{}),
      sourceReference:'internal:r3o-disposable-synthetic-funnel-not-real'
     });
     expect(observation.status).toBe('QUARANTINED');
@@ -260,7 +261,7 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    });
    expect(timeline.offlineSimulationOnly).toBe(true);
    expect(timeline.externalEffectsAuthorized).toBe(false);
-   expect(timeline.observations).toHaveLength(4);
+   expect(timeline.observations).toHaveLength(6);
    expect(timeline.observations.every(x=>x.status==='REVIEWED')).toBe(true);
    expect(JSON.stringify(timeline.observations)).not.toContain('private@example.com');
    const conversionAuthor='conversion-author-'+randomUUID(),conversionSubject='oidc-'+randomUUID();
@@ -291,7 +292,7 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
      social:{sandboxSimulated:1,realPostsPublished:0},
      email:{syntheticSimulations:1,actualMessagesSent:0},
      conversion:{reviewedQualifiedLeadCount:'5',causalAttributionVerified:false,syntheticLedger:{status:'BOUNDED_HISTORICAL_SYNTHETIC_LEDGER',counts:{forms:1,submissions:1,outcomeUnknown:1,protocolRecorded:1,qualificationReviews:1,independentInternalQualificationApprovals:1},actualCrmWrites:0}},
-     commercial:{roiVerified:false}},
+     commercial:{roiVerified:false,combinedCommercial:{status:'EXACT_COMBINED_MATCH',matchedGroups:1,currencies:[{currency:'EGP',reportedRevenueToSpendRatio:'3.0000',spendMicrosPerQualifiedLead:'2400000'}]}}},
     signed:false,externalEffectsAuthorized:false
    });
    expect(JSON.stringify(dossier)).not.toContain(contact.contactId);
