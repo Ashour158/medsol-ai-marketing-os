@@ -1164,6 +1164,7 @@ model SocialCommunityCase {
  priority String
  status String @default("OPEN")
  version Int @default(1)
+ reviewRound Int?
  createdBy String
  assignedTo String?
  closedBy String?
