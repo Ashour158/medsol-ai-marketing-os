@@ -42,7 +42,11 @@ describe('T1 durable offline community case lifecycle',()=>{
    await expect(service.create(org,author,{...raw,brandId:otherBrand})).rejects.toThrow('Active tenant brand');
    await expect(service.create(org,author,{...raw,discussionId:'real-provider-id'})).rejects.toThrow('fixture');
    await expect(service.create(org,author,{...raw,customerEmail:'person@example.invalid'})).rejects.toThrow('bounded');
-   expect((await service.list(foreign,outsider,otherBrand)).cases).toEqual([]);
+   const foreignQueue=await service.list(foreign,outsider,otherBrand);
+   expect(foreignQueue.cases).toEqual([]);
+   expect(foreignQueue.queueSummary).toMatchObject({activeCount:0,overdueCount:0,escalatedCount:0,withoutDeadlineCount:0,externalNotificationAuthorized:false});
+   const initialQueue=await service.list(org,author,brandId);
+   expect(initialQueue.queueSummary).toMatchObject({activeCount:1,overdueCount:0,escalatedCount:0,withoutDeadlineCount:0});
    const transition=(identity:typeof author,action:string,expectedVersion:number)=>
     service.transition(identity.organizationId,identity,row.caseId,{action,expectedVersion});
    await expect(transition(outsider,'CLAIM',1)).rejects.toThrow('not found');
@@ -127,7 +131,11 @@ describe('T1 durable offline community case lifecycle',()=>{
     process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED='true';
     const outcomes=await Promise.all([service.escalateDueCases(org),service.escalateDueCases(org)]);
     expect(outcomes.reduce((n,x)=>n+x.escalated,0)).toBe(1);
-    const escalated=(await service.list(org,reviewer,brandId)).cases.find(x=>x.caseId===slaId);
+    const queue=await service.list(org,reviewer,brandId);
+    expect(queue.queueSummary).toMatchObject({activeCount:2,overdueCount:1,escalatedCount:1,withoutDeadlineCount:0});
+    expect(queue.queueSummary.byPriority.find(x=>x.priority==='HIGH')).toEqual({priority:'HIGH',active:2,overdue:1,escalated:1,withoutDeadline:0});
+    expect(queue.cases[0]?.caseId).toBe(slaId);
+    const escalated=queue.cases.find(x=>x.caseId===slaId);
     expect(escalated).toMatchObject({status:'PENDING_REVIEW',version:4,reviewRound:3,slaOverdue:true});
     expect(escalated?.slaEscalatedAt).not.toBeNull();
     expect((await service.escalateDueCases(org)).escalated).toBe(0);
@@ -136,6 +144,9 @@ describe('T1 durable offline community case lifecycle',()=>{
     const req=(await approvals.listPending(org)).find(x=>x.objectId===slaId);
     expect(req).toBeDefined();await decide(req!.id,reviewer);
     await service.transition(org,reviewer,slaId,{action:'CLOSE_INTERNAL',expectedVersion:4});
+    const closedQueue=await service.list(org,reviewer,brandId);
+    expect(closedQueue.queueSummary).toMatchObject({activeCount:1,overdueCount:0,escalatedCount:0});
+    expect(closedQueue.cases[0]?.caseId).toBe(row.caseId);
     const reopened=await service.transition(org,reviewer,slaId,{action:'REOPEN',expectedVersion:5});
     expect(reopened).toMatchObject({reviewRound:null,slaEscalatedAt:null,slaOverdue:false});
     expect(Date.parse(reopened.slaDueAt!)).toBeGreaterThan(Date.now());
