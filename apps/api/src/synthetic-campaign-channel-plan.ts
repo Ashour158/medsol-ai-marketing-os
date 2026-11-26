@@ -83,3 +83,27 @@ export async function validateChannelPlanApproval(tx:Prisma.TransactionClient,a:
  if(current.scopeDigest!==a.scopeDigest)throw new ConflictException('Campaign, policy or evidence changed since channel plan');
  return s;
 }
+
+export const CHANNEL_REHEARSAL_COMMAND='RehearseSyntheticCampaignChannel';
+export const channelRehearsalCommandId=(org:string,approvalId:string)=>'channel-rehearsal-'+hash([org,approvalId]).slice(7);
+export function normalizeChannelRehearsal(raw:unknown){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact synthetic rehearsal input required');
+ const r=raw as Record<string,unknown>;
+ if(Object.keys(r).length!==2||r.fixtureOnly!==true||!['MOCK_ACCEPTED','MOCK_REJECTED','OUTCOME_UNKNOWN'].includes(String(r.scenario)))throw new BadRequestException('Explicit known synthetic transport scenario required');
+ return r.scenario as 'MOCK_ACCEPTED'|'MOCK_REJECTED'|'OUTCOME_UNKNOWN';
+}
+export function buildChannelRehearsal(a:Approval,scenario:ReturnType<typeof normalizeChannelRehearsal>){
+ const scope=readChannelPlan(a);
+ if(a.decision!=='APPROVED'||!a.decidedBy||a.decidedBy===a.requestedBy||!a.decidedAt)throw new ConflictException('Independent exact channel plan approval required');
+ const reference=hash(['synthetic-channel-rehearsal-v1',a.organizationId,a.id,a.scopeDigest,scenario]);
+ return{schema:'medsol.synthetic-channel-rehearsal.v1' as const,approvalId:a.id,campaignId:scope.campaignId,scopeDigest:a.scopeDigest,
+  scenario,kind:scope.input.kind,channel:scope.input.channel,fixtureReference:reference,
+  virtualOutcome:scenario==='MOCK_ACCEPTED'?'VIRTUAL_ACCEPTED':scenario==='MOCK_REJECTED'?'VIRTUAL_REJECTED':'UNKNOWN_NO_RETRY',
+  mockReadback:scenario==='MOCK_ACCEPTED'?'FIXTURE_MATCHED':scenario==='MOCK_REJECTED'?'FIXTURE_REJECTED':'UNCONFIRMED',
+  // An accepted fixture is not proof of audience exposure, media mentions,
+  // delivery, campaign performance, or settlement of a hypothetical budget.
+  plannedBudgetMicros:scope.input.budgetMicros,currency:scope.input.currency,
+  actualMediaSpendMicros:'0',actualPublications:0,actualNetworkRequests:0,verifiedProviderReceipts:0,
+  actualImpressionsVerified:false,earnedMediaMentionsVerified:false,
+  syntheticOnly:true as const,automaticRetryAuthorized:false as const,externalEffectsAuthorized:false as const};
+}
