@@ -54,6 +54,18 @@ describe('T8A operator dossier export safety',()=>{
    else expect(data).toContain('"email","synthetic_simulations"');
   }
  });
+ it('exports bounded historical synthetic ledger counts only, refusing fabricated outcomes',()=>{
+  const d=fixture();
+  d.pillars.conversion.syntheticLedger={status:'BOUNDED_HISTORICAL_SYNTHETIC_LEDGER',syntheticOnly:true,actualLeadsCreated:0,
+   actualCrmWrites:0,realConsentVerified:false,externalEffectsAuthorized:false,counts:{forms:1,approvedFormDecisions:1,submissions:1,
+    mockAccepted:0,mockRejected:0,outcomeUnknown:1,protocolRecorded:1,qualificationReviews:1,independentInternalQualificationApprovals:1}};
+  const data=dossierPillarCsv(d,'conversion');
+  expect(data).toContain('independentInternalQualificationApprovals');expect(data).toContain('SYNTHETIC_ONLY_NOT_CRM_VERIFIED');
+  d.pillars.conversion.syntheticLedger.counts!.mockAccepted=2;
+  expect(()=>dossierCsv(d)).toThrow('Invalid synthetic conversion dossier counts');
+  d.pillars.conversion.syntheticLedger={...d.pillars.conversion.syntheticLedger,status:'WINDOW_CAPPED',counts:null};
+  expect(dossierPillarCsv(d,'conversion')).toContain('WINDOW_CAPPED');
+ });
  it('rejects renamed or reordered stages, faked missing-gate counts and CRM claims',()=>{
   const wrong=fixture();
   wrong.stages[0]!.key='other-stage';
