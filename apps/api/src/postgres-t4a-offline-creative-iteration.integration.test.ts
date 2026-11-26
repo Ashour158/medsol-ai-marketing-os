@@ -3,6 +3,7 @@ import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
 import {CreativeAssetService} from './creative-asset.service.js';
+import {VerifiedMediaEvidenceService} from './verified-media-evidence.service.js';
 import {ApprovalService} from './approval.service.js';
 import {withMarketingTenant} from './prisma.service.js';
 
@@ -18,13 +19,13 @@ function pngChunk(name:string,bytes:Buffer){
  len.writeUInt32BE(bytes.length);crc.writeUInt32BE(crc32(Buffer.concat([type,bytes])));
  return Buffer.concat([len,type,bytes,crc]);
 }
-function png64(red=22):string{
- const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(64,0);ihdr.writeUInt32BE(64,4);
+function png64(red=22,size=64):string{
+ const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(size,0);ihdr.writeUInt32BE(size,4);
  ihdr[8]=8;ihdr[9]=6;
- const rows=Buffer.alloc(64*(1+64*4));
- for(let y=0;y<64;y++){
-  const off=y*(1+64*4);
-  for(let x=0;x<64;x++){
+ const rows=Buffer.alloc(size*(1+size*4));
+ for(let y=0;y<size;y++){
+  const off=y*(1+size*4);
+  for(let x=0;x<size;x++){
    rows[off+1+x*4]=red;rows[off+2+x*4]=86;
    rows[off+3+x*4]=134;rows[off+4+x*4]=255;
   }
@@ -143,6 +144,19 @@ describe.skipIf(!enabled)('T4A actual PostgreSQL offline creative iteration and 
    expect(layerPreview.quality).toMatchObject({status:'NO_LITERAL_FINDINGS',policyVersion:1,policyScope:'TENANT_MASTER_ONLY',
     sourceDigest:layerPreview.sourceDigest,renditionDigest:layerPreview.renditionDigest,releaseAuthorized:false,externalEffectsAuthorized:false});
    await expect(creative.offlineLayeredPreview(other,layer.revisionId)).rejects.toThrow('not found');
+   const payload={expectedVersion:3,layeredParentRevisionId:layer.revisionId,layeredSourceDigest:layerPreview.sourceDigest,editableCopy:'Scientific draft\nInternal review only',pngBase64:png64(55,1080),requestKey:randomUUID(),rightsExpiresAt:future};
+   await expect(creative.reviseOfflineRasterDraft(org,creator,first.assetId,{...payload,layeredSourceDigest:'sha256:'+'0'.repeat(64)})).rejects.toThrow('Current exact layered parent');
+   await expect(creative.reviseOfflineRasterDraft(org,creator,first.assetId,{...payload,pngBase64:png64()})).rejects.toThrow('dimensions');
+   const candidate=await creative.reviseOfflineRasterDraft(org,creator,first.assetId,payload);
+   expect(candidate).toMatchObject({version:4,offlineRenditionParentRevisionId:layer.revisionId,visualFidelityVerified:false});
+   const attestation={parentRevisionId:layer.revisionId,sourceDigest:layerPreview.sourceDigest,renditionDigest:candidate.renditionDigest,visuallyCompared:true};
+   await expect(creative.reviewRights(org,reviewer,candidate.revisionId,'Review the exact offline rendition',attestation)).rejects.toThrow('readback required');
+   const media=new VerifiedMediaEvidenceService(db as any);await media.verifyOfflineRaster(org,candidate.revisionId);
+   await expect(creative.reviewRights(org,reviewer,candidate.revisionId,'Review the exact offline rendition')).rejects.toThrow('comparison');
+   await creative.reviewRights(org,reviewer,candidate.revisionId,'Fixture only: independent comparison attestation',attestation);
+   const next=await creative.submitForApproval(org,creator,candidate.revisionId,{channel:'SOCIAL',destinationRef:'internal:connected-destination/inert',audienceRef:'internal:audience-snapshot/closed',policyVersion:'v1',scheduledAt:later(7),expiresAt:later(9)});
+   await approvals.approve({organizationId:org,approvalId:next.approvalId,approverUserId:reviewer,decision:'APPROVED',commandId:randomUUID(),correlationId:randomUUID(),rationale:'Fixture offline rendition decision'});
+   expect(await creative.reviewApprovalState(org,next.approvalId)).toMatchObject({humanDecisionValid:true,externallyExecutable:false});
   }finally{await db.$disconnect();}
  },90000);
 });
