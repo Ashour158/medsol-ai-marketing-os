@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {gapInventoryCsv,gapCounts,type GapInventory} from './blueprint-gap-register';
+import {gapInventoryCsv,gapCounts,gapClosureStatus,type GapInventory} from './blueprint-gap-register';
 const fixture=():GapInventory=>({
  version:'2.1',targetStateOnly:true,counts:{engines:36,workflows:41},
  engines:Array.from({length:36},(_,i)=>({id:'E'+String(i+1).padStart(2,'0'),
@@ -18,6 +18,16 @@ describe('T8B blueprint gap export',()=>{
   expect(csv).toContain("'=HYPERLINK");
   expect(gapCounts(fixture()).byState.PARTIAL).toBe(36);
   expect(gapCounts(fixture()).byState.NOT_IMPLEMENTED).toBe(41);
+ });
+ it('never closes a tranche from target labels alone',()=>{
+  const input=fixture();
+  const pending=gapClosureStatus(input);
+  expect(pending).toMatchObject({registryGate:'REGISTRY_GAPS_REMAIN',closed:false,productionCertified:false,independentAcceptanceRequired:true});
+  expect(pending.unresolvedEngines).toHaveLength(36);
+  expect(pending.unresolvedWorkflows).toHaveLength(41);
+  for(const row of [...input.engines,...input.workflows])row.state='VERIFIED_IMPLEMENTED';
+  expect(gapClosureStatus(input)).toEqual({registryGate:'INDEPENDENT_ACCEPTANCE_REQUIRED',
+   unresolvedEngines:[],unresolvedWorkflows:[],closed:false,productionCertified:false,independentAcceptanceRequired:true});
  });
  it('rejects forged counts, reordered/duplicate IDs and fake runtime statuses',()=>{
   const f=fixture();f.counts.engines=35;
