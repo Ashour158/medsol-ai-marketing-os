@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import PersistentLayeredDesignStudio from "./persistent-layered-design-studio";
+import SyntheticChannelPlanStudio from "./synthetic-channel-plan-studio";
 import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
 import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
@@ -608,6 +609,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
      Withdrawals and complaints can be tested in the existing Email Studio.</p>
    </div>
 
+   {campaignId&&identity&&<SyntheticChannelPlanStudio key={identity.organizationId+":"+identity.userId+":"+campaignId} campaignId={campaignId}/>}
    <div style={section}>
     <h3 style={{marginTop:0}}>8 · Reporting: keep simulations separate from real evidence</h3>
     <button style={secondary} disabled={blocked||!campaignId}

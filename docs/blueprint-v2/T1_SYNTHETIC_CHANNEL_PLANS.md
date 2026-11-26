@@ -1,0 +1,3 @@
+# Tranche 1 — synthetic communications and paid channel plans
+
+WF39 and WF34 internal planning candidates use the existing CampaignService, KnowledgeDocument and ApprovalService. Exact campaign version, current brand policy, reviewed unexpired evidence IDs and content digests, proposed copy, hypothetical budget/currency, requester and expiry are pinned to the independent decision. Source revocation or scope change blocks approval. No claims, rights, professional credentials, actual finance authority, ad spend, publication or media monitoring are verified. All outputs remain historical internal rehearsals. Unit and PostgreSQL tests, authenticated route inventory and studio are provided. Full CI/merge required; live monitoring, ad execution and provider acceptance remain.

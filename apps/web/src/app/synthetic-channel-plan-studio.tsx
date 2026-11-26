@@ -1,0 +1,29 @@
+"use client";
+import {useState} from "react";
+type Plan={approvalId:string;decision:string;expired:boolean;input:{kind:string;channel:string;headline:string;currency:string|null;budgetMicros:string|null};reviewRoles:string[]};
+const field={width:"100%",boxSizing:"border-box" as const,border:"1px solid #cbd5e1",borderRadius:6,padding:9};
+const button={background:"#124d83",color:"#fff",border:0,borderRadius:7,padding:9};
+export default function SyntheticChannelPlanStudio({campaignId}:{campaignId:string}){
+ const [kind,setKind]=useState("COMMUNICATIONS"),[channel,setChannel]=useState("PRESS_RELEASE"),[headline,setHeadline]=useState(""),[body,setBody]=useState(""),[sources,setSources]=useState(""),[expiry,setExpiry]=useState(""),[currency,setCurrency]=useState("EGP"),[budget,setBudget]=useState(""),[regulated,setRegulated]=useState(false),[confirmed,setConfirmed]=useState(false),[key,setKey]=useState("");
+ const [plans,setPlans]=useState<Plan[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const path="/api/marketing/campaigns/"+encodeURIComponent(campaignId)+"/channel-plans";
+ async function call(payload?:unknown){const res=await fetch(path,{method:payload===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",...(payload===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(payload)})});const out=await res.json();if(!res.ok)throw Error(String(out.message??out.error??"Channel plan denied"));return out;}
+ async function task(fn:()=>Promise<void>){setBusy(true);setError("");setNotice("");try{await fn();}catch(e){setError(e instanceof Error?e.message:"Operation failed");}finally{setBusy(false);}}
+ const change=(fn:(v:string)=>void,v:string)=>{fn(v);setKey("");};
+ const channels=kind==="COMMUNICATIONS"?["PRESS_RELEASE","EARNED_MEDIA_PITCH","EXECUTIVE_STATEMENT","CRISIS_RESPONSE"]:["SEARCH_ADS","SOCIAL_ADS","DISPLAY_ADS"];
+ return <section aria-label="Synthetic campaign channel plans" style={{border:"1px solid #cbd5e1",borderRadius:10,padding:12,marginTop:12}}>
+ <h3>Communications and paid media planning — internal rehearsal</h3><p>Use reviewed local source IDs. Internal human review does not verify scientific claims, media rights, professional credentials, actual spend or release authorization.</p>
+ <label>Plan type<select style={field} value={kind} disabled={busy} onChange={e=>{const k=e.target.value;setKind(k);setChannel(k==="COMMUNICATIONS"?"PRESS_RELEASE":"SEARCH_ADS");setKey("");}}><option>COMMUNICATIONS</option><option>PAID_MEDIA</option></select></label>
+ <label>Channel<select style={field} value={channel} disabled={busy} onChange={e=>change(setChannel,e.target.value)}>{channels.map(x=><option key={x}>{x}</option>)}</select></label>
+ <label>Draft headline<input style={field} value={headline} maxLength={140} disabled={busy} onChange={e=>change(setHeadline,e.target.value)}/></label>
+ <label>Draft copy<textarea style={field} value={body} maxLength={1800} disabled={busy} onChange={e=>change(setBody,e.target.value)}/></label>
+ <label>Reviewed knowledge document IDs (1–5, comma-separated)<input style={field} value={sources} disabled={busy} onChange={e=>change(setSources,e.target.value)}/></label>
+ <label>Expires within 30 days<input type="date" style={field} value={expiry} disabled={busy} onChange={e=>change(setExpiry,e.target.value)}/></label>
+ {kind==="PAID_MEDIA"&&<><label>Hypothetical currency<input style={field} maxLength={3} value={currency} disabled={busy} onChange={e=>change(setCurrency,e.target.value)}/></label><label>Hypothetical budget (millionths of currency)<input style={field} value={budget} disabled={busy} onChange={e=>change(setBudget,e.target.value)}/></label></>}
+ <label><input type="checkbox" checked={regulated} disabled={busy} onChange={e=>{setRegulated(e.target.checked);setKey("");}}/> Regulated claim review needed</label>
+ <label><input type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)}/> Fixture rehearsal only; no external effects.</label>
+ <p><button style={button} disabled={busy||!confirmed||!headline.trim()||!body.trim()||!sources.trim()||!expiry} onClick={()=>void task(async()=>{const requestKey=key||"fixture-"+crypto.randomUUID();setKey(requestKey);const p=await call({requestKey,kind,channel,headline,body,sourceIds:sources.split(",").map(s=>s.trim()).filter(Boolean),expiresAt:new Date(expiry+"T23:59:59Z").toISOString(),fixtureOnly:true,regulatedClaim:regulated,currency:kind==="PAID_MEDIA"?currency:null,budgetMicros:kind==="PAID_MEDIA"?budget:null});setNotice("Independent internal review requested: "+p.approvalId);setPlans((await call()).plans);})}>Request exact channel plan review</button>{" "}<button style={button} disabled={busy} onClick={()=>void task(async()=>setPlans((await call()).plans))}>Load channel plans</button></p>
+ {plans.map(p=><article key={p.approvalId} style={{borderTop:"1px solid #cbd5e1",padding:9}}><strong>{p.input.channel} · {p.decision}{p.expired?" · expired":""}</strong><p>{p.input.headline} {p.input.currency&&" · hypothetical "+p.input.currency+" "+p.input.budgetMicros+" micros"}</p><p>Required review disciplines: {p.reviewRoles.join(", ")}. Historical internal review only.</p><small>{p.approvalId}</small></article>)}
+ {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
+ </section>;
+}
