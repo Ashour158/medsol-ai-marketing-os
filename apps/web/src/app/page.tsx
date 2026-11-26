@@ -18,7 +18,7 @@ import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 import CampaignReadinessBoard from "./campaign-readiness-board";
 import CustomerDeliveryDossierStudio from "./customer-delivery-dossier-studio";
-import {gapCounts,gapInventoryCsv} from "../lib/blueprint-gap-register";
+import {gapCounts,gapInventoryCsv,gapClosureStatus} from "../lib/blueprint-gap-register";
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
@@ -288,7 +288,7 @@ export default function Home() {
         </div>}
       </div>
       <div style={{marginTop:20,padding:18,border:"1px solid #cbd5e1",borderRadius:12}}>
-        <h3 style={{marginTop:0}}>Blueprint v2.0 — development target register</h3>
+        <h3 style={{marginTop:0}}>Blueprint v2.1 — development target register</h3>
         <p style={{color:"#64748b",fontSize:13}}>Target-state concepts are NOT activated agents or functional external integrations. This register tracks planned scope separately from what has passed production acceptance.</p>
         <button style={buttonStyle} disabled={busy} onClick={()=>perform(async()=>{
           setBlueprintInventory(await call("architecture/blueprint") as NonNullable<typeof blueprintInventory>);
@@ -316,6 +316,14 @@ export default function Home() {
               Export 36-engine + 41-workflow gaps (unsigned CSV)
             </button>
           </div>
+          <section aria-label="Tranche closure gate" style={{padding:12,border:"1px solid #cbd5e1",borderRadius:8,marginBottom:12}}>
+            <strong>Tranche 1 · NOT CLOSED</strong>
+            <p style={{fontSize:12}}>{gapClosureStatus(blueprintInventory).unresolvedEngines.length}/36 engine targets and {gapClosureStatus(blueprintInventory).unresolvedWorkflows.length}/41 workflow targets lack verified implementation classification. Independent acceptance is required even if all planning classifications are later updated.</p>
+            <details><summary>Unresolved target identifiers</summary>
+             <p style={{fontSize:12,overflowWrap:"anywhere"}}>Engines: {gapClosureStatus(blueprintInventory).unresolvedEngines.join(", ")||"None in registry"}</p>
+             <p style={{fontSize:12,overflowWrap:"anywhere"}}>Workflows: {gapClosureStatus(blueprintInventory).unresolvedWorkflows.join(", ")||"None in registry"}</p>
+            </details>
+          </section>
           {([
             ["Engines",blueprintInventory.engines],["Workflows",blueprintInventory.workflows],
             ["Studios",blueprintInventory.studios]
