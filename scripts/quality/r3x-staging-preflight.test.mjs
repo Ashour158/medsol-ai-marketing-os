@@ -16,7 +16,7 @@ test('R3X permits only disposable offline CI and emits no secrets or signoff',()
  const manifest=assertDisposableStaging(base(),census());
  assert.equal(manifest.productionReady,false);
  assert.equal(manifest.externalProviderCredentialsPresent,false);
- assert.equal(manifest.database.forceRlsTables,46);
+ assert.equal(manifest.database.forceRlsTables,47);
  assert.equal(JSON.stringify(manifest).includes('secret'),false);
 });
 test('R3X rejects customer and public network database URLs',()=>{
