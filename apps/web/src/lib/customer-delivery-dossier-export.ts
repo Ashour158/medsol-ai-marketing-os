@@ -2,6 +2,10 @@ import {OFFLINE_CAMPAIGN_STAGE_KEYS} from '@medsol/contracts';
 /** Unsigned operator exports of the server's read-only, sanitized dossier.
  * No CRM contacts, recipient identifiers, approval actors or provider secrets.
  */
+type SyntheticLedgerCounts={forms:number;approvedFormDecisions:number;submissions:number;mockAccepted:number;mockRejected:number;outcomeUnknown:number;
+ protocolRecorded:number;qualificationReviews:number;independentInternalQualificationApprovals:number};
+type SyntheticLedger={status:'WINDOW_CAPPED'|'BOUNDED_HISTORICAL_SYNTHETIC_LEDGER';counts:SyntheticLedgerCounts|null;
+ syntheticOnly:true;actualLeadsCreated:0;actualCrmWrites:0;realConsentVerified:false;externalEffectsAuthorized:false};
 export type DeliveryDossier={
  schema:'medsol.customer_delivery_dossier.v1';
  organizationId:string;campaign:{id:string;code:string;name:string;status:string;brandId:string|null};
@@ -20,7 +24,7 @@ export type DeliveryDossier={
    sourceScope:'TENANT_WIDE_NOT_CAMPAIGN_ATTRIBUTED';marketClaimsIndependentlyVerified:false};
   conversion:{reviewedLeadCount:string|null;reviewedQualifiedLeadCount:string|null;
    clickToLeadPercent:number|null;leadQualificationPercent:number|null;
-   crmQualifiedOutcomesVerified:false;causalAttributionVerified:false};
+   crmQualifiedOutcomesVerified:false;causalAttributionVerified:false;syntheticLedger?:SyntheticLedger|null};
   commercial:{sourceStatus:string;reviewedTotals:Record<string,string>;
    derived:Record<string,number|string|null>;pendingReviewCount:number;
    evidenceWarnings:string[];revenueVerified:false;roiVerified:false;
@@ -53,6 +57,21 @@ export function validateDossierForExport(d:DeliveryDossier){
   d.pillars.commercial.spendCurrencyVerified!==false||
   d.pillars.commercial.roiVerified!==false)
   throw Error('Unsafe or incomplete operator dossier export');
+ const ledger=d.pillars.conversion.syntheticLedger;
+ if(ledger){
+  if(Object.keys(ledger).some(k=>!['status','counts','syntheticOnly','actualLeadsCreated','actualCrmWrites','realConsentVerified','externalEffectsAuthorized'].includes(k))||
+   ledger.syntheticOnly!==true||ledger.actualLeadsCreated!==0||ledger.actualCrmWrites!==0||
+   ledger.realConsentVerified!==false||ledger.externalEffectsAuthorized!==false||
+   (ledger.status==='WINDOW_CAPPED'?ledger.counts!==null:ledger.status!=='BOUNDED_HISTORICAL_SYNTHETIC_LEDGER'||!ledger.counts))
+   throw Error('Unsafe synthetic conversion dossier');
+  if(ledger.counts){
+   const c=ledger.counts,keys=['forms','approvedFormDecisions','submissions','mockAccepted','mockRejected','outcomeUnknown','protocolRecorded','qualificationReviews','independentInternalQualificationApprovals'] as const;
+   if(Object.keys(c).length!==keys.length||keys.some(k=>!Number.isSafeInteger(c[k])||c[k]<0||c[k]>100)||
+    c.forms>50||c.approvedFormDecisions>c.forms||c.mockAccepted+c.mockRejected+c.outcomeUnknown!==c.submissions||
+    c.protocolRecorded>c.submissions||c.qualificationReviews>c.submissions||c.independentInternalQualificationApprovals>c.qualificationReviews)
+    throw Error('Invalid synthetic conversion dossier counts');
+  }
+ }
  return d;
 }
 const cell=(v:unknown)=>{
@@ -85,6 +104,12 @@ function dossierRows(d:DeliveryDossier):DossierRow[]{
   ...d.pillars.commercial.evidenceWarnings.map(w=>
    ['commercial_warning',w,'PRESENT','REQUIRES_RECONCILIATION'] as [string,string,unknown,string])
  ];
+ const synthetic=d.pillars.conversion.syntheticLedger;
+ if(synthetic){
+  rows.push(['conversion','synthetic_ledger_status',synthetic.status,'HISTORICAL_MOCK_RECORDS_NOT_REAL_LEADS']);
+  if(synthetic.counts)for(const [key,value] of Object.entries(synthetic.counts))
+   rows.push(['conversion',key,value,'SYNTHETIC_ONLY_NOT_CRM_VERIFIED']);
+ }
  return rows;
 }
 const encodeRows=(rows:DossierRow[])=>
