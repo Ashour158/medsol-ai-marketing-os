@@ -1,7 +1,9 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
-import {PrismaService} from './prisma.service.js';
+import {PrismaService,withMarketingTenant} from './prisma.service.js';
+import {ACTIVATION_REVIEW,activationReviewId,normalizeActivationInput,buildActivationReview,readActivationReview} from './customer-activation-review.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {TenantRolePolicyService} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
 
@@ -42,6 +44,38 @@ function actions(value:unknown):string[]{
 export class TenantBrandService{
  constructor(private readonly db:PrismaService,
   private readonly roles:TenantRolePolicyService){}
+ async requestActivationReview(org:string,identity:VerifiedIdentity,raw:unknown){
+  if(!identity||identity.organizationId!==org||!identity.subject)throw new ForbiddenException('Verified tenant activation operator required');
+  const input=normalizeActivationInput(raw),approvalId=activationReviewId(org,input.requestKey);
+  for(let attempt=0;attempt<3;attempt++)try{
+   return await withMarketingTenant(this.db,org,async tx=>{
+    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+    const prior=await tx.approval.findFirst({where:{organizationId:org,id:approvalId}});
+    if(prior){
+     const scope=readActivationReview(prior);
+     if(scope.requestedBy!==identity.userId||JSON.stringify(scope.input)!==JSON.stringify(input))
+      throw new ConflictException('Immutable activation review key already used');
+     return{approvalId,decision:prior.decision,...scope,replayed:true,historicalOnly:true};
+    }
+    const {scope,scopeDigest}=await buildActivationReview(tx,org,identity.userId,input,new Date());
+    await tx.approval.create({data:{id:approvalId,organizationId:org,objectType:ACTIVATION_REVIEW,objectId:input.brandId,
+     requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',requestedBy:identity.userId,scope,scopeDigest,scopeExpiresAt:new Date(input.expiresAt)}});
+    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'SYNTHETIC_ACTIVATION_REVIEW_REQUESTED',
+     objectType:ACTIVATION_REVIEW,objectId:input.brandId,correlationId:approvalId,after:{scopeDigest,campaignId:input.campaignId,externalEffectsAuthorized:false}}});
+    return{approvalId,decision:'PENDING',...scope,replayed:false,historicalOnly:true};
+   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }catch(e){const code=(e as {code?:string})?.code;if(code==='P2034'&&attempt<2)continue;
+   if(code==='P2034'||code==='P2002')throw new ConflictException('Concurrent activation review; refresh exact key');throw e;}
+  throw new ConflictException('Activation review retry limit');
+ }
+ async activationReviews(org:string,identity:VerifiedIdentity){
+  if(!identity||identity.organizationId!==org||!identity.subject)throw new ForbiddenException('Verified tenant activation reviewer required');
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'READ_TENANCY');
+   const rows=await tx.approval.findMany({where:{organizationId:org,objectType:ACTIVATION_REVIEW},orderBy:[{createdAt:'desc'},{id:'asc'}],take:101});
+   return{reviews:rows.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readActivationReview(a),expired:!!a.scopeExpiresAt&&a.scopeExpiresAt<=new Date(),historicalOnly:true})),windowCapped:rows.length>100,externalEffectsAuthorized:false};
+  });
+ }
  async createBrand(organizationId:string,actorId:string,raw:{slug?:unknown;name?:unknown}){
   id(organizationId,'tenant');id(actorId,'operator');
   const slug=str(raw?.slug,'brand slug',80).toLowerCase();
