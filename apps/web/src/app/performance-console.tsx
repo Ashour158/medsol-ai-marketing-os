@@ -1,11 +1,12 @@
 "use client";
 import {useState} from "react";
+import {reviewedCommercialEvidenceCsv,saveOfflineCsv,type CommercialEvidenceManifest} from "../lib/offline-evidence-csv";
 import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
 import SyntheticConversionLab from "./synthetic-conversion-lab";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
 type MonetarySummary={status:string;matchedGroups:number;incompleteGroups:number;currencyConflictGroups:number;unknownCurrencyRows:number;currencies:{currency:string;matchedGroups:number;reportedSpendMicros:string;reportedRevenueMicros:string;grossProfitMatchedGroups:number;reportedGrossProfitMicros:string|null}[]};
-type PerformanceSummary={monetaryReconciliation?:MonetarySummary;status:string;campaign:{id:string;name:string};totals:Record<string,string>;
+type PerformanceSummary={organizationId:string;evidenceManifest?:CommercialEvidenceManifest;monetaryReconciliation?:MonetarySummary;status:string;campaign:{id:string;name:string};totals:Record<string,string>;
  derived:{ctrPercent:number|null;clickToLeadPercent:number|null;spendMicrosPerLead:string|null;
  leadQualificationPercent:number|null;spendMicrosPerQualifiedLead:string|null};
  warnings:string[];cohortAligned:false;roiValidated:false;revenueVerified:false;
@@ -111,6 +112,20 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
       </div>)}
       <small>Human-reviewed source reports only. No cross-currency total, FX, finance verification, attributed revenue or verified ROI.</small>
      </section>}
+     {summary.evidenceManifest&&<div style={{marginTop:12}}>
+      <p>Reviewed evidence rows: {summary.evidenceManifest.rowCount??"Bound exceeded"} · unsigned source fingerprint only</p>
+      <button type="button" style={button} disabled={busy||!enabled||summary.evidenceManifest.status!=="BOUNDED_REVIEWED_SOURCE_MANIFEST"} onClick={()=>void act(async()=>{
+       const fresh=await call("performance/campaigns/"+encodeURIComponent(campaignId)) as PerformanceSummary;
+       if(fresh.organizationId!==summary.organizationId||fresh.campaign.id!==campaignId||!fresh.evidenceManifest)
+        throw Error("Commercial source scope changed");
+       if(fresh.evidenceManifest.sourceDigest!==summary.evidenceManifest?.sourceDigest){
+        setSummary(fresh);throw Error("Reviewed evidence changed; review refreshed data before exporting");
+       }
+       saveOfflineCsv(reviewedCommercialEvidenceCsv({...fresh,evidenceManifest:fresh.evidenceManifest},summary.organizationId,campaignId),
+        "medsol-reviewed-commercial-evidence.csv");
+       setNotice("Exported current bounded reviewed source evidence; not a verified finance report.");
+      })}>Export reviewed commercial evidence (unsigned CSV)</button>
+     </div>}
      <small>Rates describe separately reviewed observations; a matched cohort,
       reliable currency, revenue/ROI and multi-touch attribution have not been verified.
       Never treat a modeled return as measured commercial revenue.</small>
