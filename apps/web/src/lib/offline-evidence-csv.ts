@@ -1,3 +1,4 @@
+import {combinedReviewedCommercial} from '@medsol/contracts';
 import {compareReviewedWatch,type WatchSnapshot,type WatchSelection} from './reviewed-market-watch';
 /** Shared CSV encoding for unsigned, offline customer intelligence and revenue
  * scenario exports. No side effects, new business owners or provider calls.
@@ -321,7 +322,7 @@ export type CommercialEvidenceManifest={
 };
 /** Export the fresh bounded summary only, not the source documents or a
  * signed finance report. Validate each amount and preserve currency labels. */
-export function reviewedCommercialEvidenceCsv(summary:{campaign:{id:string};organizationId:string;evidenceManifest:CommercialEvidenceManifest},
+export function reviewedCommercialEvidenceCsv(summary:{campaign:{id:string};organizationId:string;evidenceManifest:CommercialEvidenceManifest;combinedCommercialReconciliation?:ReturnType<typeof combinedReviewedCommercial>},
  organizationId:string,campaignId:string){
  const m=summary?.evidenceManifest,digest=(v:unknown)=>typeof v==='string'&&/^sha256:[a-f0-9]{64}$/.test(v);
  const keys=['impressions','clicks','engagements','leads','qualified_leads','spend_micros','reported_revenue_micros','reported_gross_profit_micros'];
@@ -357,6 +358,18 @@ export function reviewedCommercialEvidenceCsv(summary:{campaign:{id:string};orga
    ['reconciliation',group.recordDigest,'monetary',group.monetaryStatus,'','NO_FX_OR_FINANCE_VERIFICATION']);
  }
  if(count!==m.rowCount)fail('Commercial manifest row count mismatch');
+ if(summary.combinedCommercialReconciliation){
+  const combined=combinedReviewedCommercial(m);
+  if(JSON.stringify(summary.combinedCommercialReconciliation)!==JSON.stringify(combined))
+   fail('Combined commercial arithmetic or source scope changed');
+  rows.push(['combined','','matched_groups',combined.matchedGroups,'','EXACT_SOURCE_RECORD_ONLY'],
+   ['combined','','excluded_groups',combined.excludedGroups,'','NOT_CAUSAL_ATTRIBUTION'],
+   ['combined','','invalid_gross_profit_groups',combined.invalidGrossProfitGroups,'','EXCLUDED_CONTRADICTORY']);
+  for(const row of combined.currencies){
+   for(const key of ['matchedGroups','impressions','clicks','leads','qualifiedLeads','reportedSpendMicros','reportedRevenueMicros','reportedGrossProfitMicros','grossProfitMatchedGroups','spendMicrosPerLead','spendMicrosPerQualifiedLead','reportedRevenueToSpendRatio'] as const)
+    rows.push(['combined','',key,row[key]??'',row.currency,'REPORTED_SAME_RECORD_NOT_FINANCE_VERIFIED']);
+  }
+ }
  rows.push(['release','','production_status','NOT_CERTIFIED','','UNSIGNED_OFFLINE_ONLY']);
  return csv(rows);
 }
