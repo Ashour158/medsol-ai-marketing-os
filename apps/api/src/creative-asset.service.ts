@@ -1,4 +1,5 @@
 import {renderOfflineLayeredSpec} from './offline-layered-design.js';
+import {inspectLayeredDraftQuality} from './layered-draft-quality.js';
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID,createHash} from 'node:crypto';
@@ -300,8 +301,11 @@ export class CreativeAssetService{
    const design=renderOfflineLayeredSpec(revision.offlineLayeredSpec);
    if(design.sourceDigest!==revision.offlineLayeredSourceDigest||design.renditionDigest!==revision.renditionDigest)
     throw new ConflictException('Stored source/rendition digest mismatch');
+   const policy=await tx.brandMasterRevision.findFirst({where:{organizationId:org,status:'APPROVED'},orderBy:{version:'desc'},
+    select:{id:true,version:true,rules:true,proposedBy:true,approvedBy:true,approvedAt:true}});
+   const quality=inspectLayeredDraftQuality(design.spec,design.sourceDigest,design.renditionDigest,policy);
    return{assetId:asset.id,revisionId:id,version:revision.version,current:asset.version===revision.version,
-    brandId:asset.brandId,parentRevisionId:revision.offlineLayeredParentRevisionId,
+    quality,brandId:asset.brandId,parentRevisionId:revision.offlineLayeredParentRevisionId,
     spec:design.spec,sourceDigest:design.sourceDigest,renditionDigest:design.renditionDigest,
     svgDataUrl:'data:image/svg+xml;base64,'+Buffer.from(design.svg,'utf8').toString('base64'),
     offlineOnly:true,rightsVerified:false,releaseAuthorized:false,externalEffectsAuthorized:false};

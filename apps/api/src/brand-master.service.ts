@@ -19,7 +19,7 @@ function listValue(value:unknown,name:string):string[]{
  if(new Set(out.map(x=>x.toLowerCase())).size!==out.length)throw new BadRequestException('Duplicate '+name);
  return out;
 }
-function parseRules(raw:unknown):BrandRules{
+export function parseRules(raw:unknown):BrandRules{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Structured brand rules required');
  const x=raw as Record<string,unknown>;
  if(Object.keys(x).some(k=>!['voice','primaryColor','prohibitedClaims','requiredDisclaimers'].includes(k)))

@@ -1,0 +1,3 @@
+# T1: exact stored layered-draft quality advisory
+
+Reuse CreativeAssetService, immutable source/rendition digests, and the latest independently approved tenant BrandMasterRevision. Reuse the existing authenticated layered preview route and operator studio. Literal normalized phrase/disclaimer and accent checks, plus fixed renderer text-on-white contrast, are advisory only. Missing, malformed or self-approved policy cannot produce a clean result. Unit and actual PostgreSQL tests cover binding and tenant denial. No new owner, database table, approval, release or external effects. Per-brand policy, factual/translation review, full accessibility, verified rights and multimedia QA remain outstanding. CI required.
