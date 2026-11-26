@@ -1059,6 +1059,7 @@ model KnowledgeDocument {
  title String
  sourceUrl String?
  sourceType String @default("MANUAL")
+ governedSourceEvidence Json?
  publishedAt DateTime?
  expiresAt DateTime?
  contentDigest String

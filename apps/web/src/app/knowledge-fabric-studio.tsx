@@ -4,7 +4,7 @@ import {useEffect,useState} from "react";
 type Identity={userId:string;organizationId:string;role:string};
 type Document={id:string;sourceKey:string;title:string;status:string;
  accessMode:string;agentScope:string[];contentDigest:string;
- sourceUrl:string|null;reviewedBy:string|null};
+ sourceUrl:string|null;reviewedBy:string|null;sourceType?:string;governedSourceEvidence?:null|{rightsBasis:string;scope:string;permissionExpiresAt:string;permissionReference:string;legalRightsVerified:false}};
 type Result={results:Array<{citationRef:string;snippet:string;
  sourceTitle:string;sourceUrl:string|null;score:number;independentlyVerified:false}>;
  retrievalMethod:string;independentlyVerified:false};
@@ -18,6 +18,13 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
  const [title,setTitle]=useState("");
  const [content,setContent]=useState("");
  const [url,setUrl]=useState("");
+ const [governed,setGoverned]=useState(false);
+ const [rightsBasis,setRightsBasis]=useState("LICENSED_CONTENT");
+ const [collectionScope,setCollectionScope]=useState("METADATA_ONLY");
+ const [rightsRef,setRightsRef]=useState("");
+ const [rightsExpiry,setRightsExpiry]=useState("");
+ const [collectionPermitted,setCollectionPermitted]=useState(false);
+ const [noPersonalData,setNoPersonalData]=useState(false);
  const [scope,setScope]=useState("MKT-SCI-001,MKT-STR-001");
  const [accessMode,setAccessMode]=useState("AGENT_SCOPED");
  const [query,setQuery]=useState("sequencing genomics");
@@ -86,12 +93,29 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
     <textarea style={{...field,minHeight:130}} value={content}
      onChange={e=>setContent(e.target.value)} spellCheck={false}/>
    </label>
-   <button disabled={busy} style={button} onClick={()=>void task(async()=>{
+   <label style={{display:"block",fontSize:13,marginTop:9}}>
+    <input type="checkbox" checked={governed} onChange={e=>{setGoverned(e.target.checked);setCollectionPermitted(false);setNoPersonalData(false);}}/> Governed market source import (permission declaration required)
+   </label>
+   {governed&&<fieldset style={{border:"1px solid #cbd5e1",padding:10,marginTop:9}}>
+    <legend>Operator-supplied source rights</legend>
+    <label>Rights basis<select style={field} value={rightsBasis} onChange={e=>setRightsBasis(e.target.value)}>
+     {["PUBLIC_DOMAIN","LICENSED_CONTENT","OWNER_PERMISSION"].map(x=><option key={x}>{x}</option>)}</select></label>
+    <label>Collection scope<select style={field} value={collectionScope} onChange={e=>setCollectionScope(e.target.value)}>
+     <option>METADATA_ONLY</option><option>TEXT_EXCERPT</option></select></label>
+    <label>Internal rights evidence reference<input style={field} value={rightsRef} onChange={e=>setRightsRef(e.target.value)} placeholder="internal:source-rights/approval-record"/></label>
+    <label>Permission expiry date<input type="date" style={field} value={rightsExpiry} onChange={e=>setRightsExpiry(e.target.value)}/></label>
+    <label style={{display:"block"}}><input type="checkbox" checked={collectionPermitted} onChange={e=>setCollectionPermitted(e.target.checked)}/> I attest collection is permitted within this scope</label>
+    <label style={{display:"block"}}><input type="checkbox" checked={noPersonalData} onChange={e=>setNoPersonalData(e.target.checked)}/> I attest no personal data is included</label>
+    <small>Independent review required. No automatic retrieval, legal-rights verification or external request is made.</small>
+   </fieldset>}
+   <button disabled={busy||(governed&&(!url.trim()||!rightsRef.trim()||!rightsExpiry||!collectionPermitted||!noPersonalData))} style={button} onClick={()=>void task(async()=>{
     const key=sourceKey||"local-"+crypto.randomUUID();
     if(!sourceKey)setSourceKey(key);
     const payload={sourceKey:key,title,text:content,sourceUrl:url||undefined,
      accessMode,agentScope:accessMode==="AGENT_SCOPED"?
-      scope.split(",").map(s=>s.trim()).filter(Boolean):[]};
+      scope.split(",").map(s=>s.trim()).filter(Boolean):[],
+     ...(governed?{expiresAt:new Date(rightsExpiry+"T23:59:59Z").toISOString(),governedImport:{rightsBasis,scope:collectionScope,
+      permissionReference:rightsRef,collectionPermitted,noPersonalData}}:{})};
     setLast(await call("",payload));
     await refresh();
    })}>Submit to quarantine (not trusted yet)</button>
@@ -136,7 +160,7 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
      <th align="left">Agent scope</th><th align="left">Governance</th></tr></thead>
     <tbody>{docs.map(doc=><tr key={doc.id}>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
-      <strong>{doc.title}</strong><div>{doc.sourceKey}</div></td>
+      <strong>{doc.title}</strong><div>{doc.sourceKey}</div>{doc.governedSourceEvidence&&<small>Declared {doc.governedSourceEvidence.rightsBasis} · {doc.governedSourceEvidence.scope} · expiry {doc.governedSourceEvidence.permissionExpiresAt} · rights reference {doc.governedSourceEvidence.permissionReference} · not legally verified</small>}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>{doc.status}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
       {doc.accessMode==="REVIEWERS_ONLY"?"Reviewers only":doc.agentScope.join(", ")}</td>
