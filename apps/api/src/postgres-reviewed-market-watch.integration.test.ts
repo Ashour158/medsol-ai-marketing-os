@@ -75,6 +75,39 @@ describe('T1 durable reviewed-evidence watch',()=>{
     await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingResearchWatch" FROM "'+role+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+role+'"');
    }
+
+   // Actual due evaluation must be opted-in, globally configured and authorized
+   // by a currently active manager. Competing workers cannot duplicate it.
+   const auto=await service.createReviewedWatch(org,manager,{topic:'Automation fixture',sector:'Life Sciences',intervalHours:24});
+   const disabled=await service.createReviewedWatch(org,manager,{topic:'Manual only fixture',sector:'Life Sciences',intervalHours:24});
+   const previousBrain=process.env.MARKETING_BRAIN_WORKER_ENABLED;
+   const previousWatch=process.env.MARKETING_REVIEWED_WATCH_WORKER_ENABLED;
+   try{
+    process.env.MARKETING_BRAIN_WORKER_ENABLED='true';
+    process.env.MARKETING_REVIEWED_WATCH_WORKER_ENABLED='false';
+    expect(await service.runDueReviewedWatches(org)).toMatchObject({enabled:false,evaluated:0});
+    const auth=await service.transitionReviewedWatch(org,manager,auto.watchId,{action:'ENABLE_AUTOMATION',expectedVersion:1});
+    expect(auth).toMatchObject({version:2,automaticEvaluationAuthorized:true,automaticExecutionEnabled:false});
+    process.env.MARKETING_REVIEWED_WATCH_WORKER_ENABLED='true';
+    const runs=await Promise.all([service.runDueReviewedWatches(org),service.runDueReviewedWatches(org)]);
+    expect(runs.reduce((n,x)=>n+x.evaluated,0)).toBe(1);
+    const list=await service.listReviewedWatches(org,manager);
+    expect(list.watches.find(x=>x.watchId===auto.watchId)).toMatchObject({version:3,due:false,lastEvaluation:{status:'BASELINE'}});
+    expect(list.watches.find(x=>x.watchId===disabled.watchId)).toMatchObject({version:1,automaticEvaluationAuthorized:false,lastEvaluatedAt:null});
+    const log=await withMarketingTenant(db,org,tx=>tx.auditEvent.findMany({where:{objectId:auto.watchId,action:'REVIEWED_WATCH_AUTOMATIC_EVALUATION'}}));
+    expect(log).toHaveLength(1);expect(log[0]).toMatchObject({actorType:'SYSTEM',actorId:'market-watch-scheduler'});
+    expect(await service.transitionReviewedWatch(org,manager,auto.watchId,{action:'DISABLE_AUTOMATION',expectedVersion:3}))
+     .toMatchObject({version:4,automaticEvaluationAuthorized:false});
+    const revoked=await service.createReviewedWatch(org,manager,{topic:'Revoked sponsor fixture',sector:'Life Sciences',intervalHours:24});
+    await service.transitionReviewedWatch(org,manager,revoked.watchId,{action:'ENABLE_AUTOMATION',expectedVersion:1});
+    await withMarketingTenant(db,org,tx=>tx.user.update({where:{id:manager.userId},data:{disabledAt:new Date()}}));
+    expect(await service.runDueReviewedWatches(org)).toMatchObject({paused:1,evaluated:0});
+    const stopped=await withMarketingTenant(db,org,tx=>tx.marketingResearchWatch.findFirstOrThrow({where:{id:revoked.watchId}}));
+    expect(stopped).toMatchObject({status:'PAUSED',automaticAuthorizedBy:null,lastEvaluatedAt:null,version:3});
+   }finally{
+    if(previousBrain===undefined)delete process.env.MARKETING_BRAIN_WORKER_ENABLED;else process.env.MARKETING_BRAIN_WORKER_ENABLED=previousBrain;
+    if(previousWatch===undefined)delete process.env.MARKETING_REVIEWED_WATCH_WORKER_ENABLED;else process.env.MARKETING_REVIEWED_WATCH_WORKER_ENABLED=previousWatch;
+   }
   }finally{await db.$disconnect();}
  },90000);
 });
