@@ -109,6 +109,40 @@ describe('T1 durable offline community case lifecycle',()=>{
     await db.$executeRawUnsafe('REVOKE SELECT ON "SocialCommunityCase" FROM "'+role+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+role+'"');
    }
+
+   // Seed a disposable historical case using the same deadline invariant.
+   // No real customer data, timer sleep or clock change is necessary.
+   const past=new Date(Date.now()-5*3600000),due=new Date(past.getTime()+4*3600000),slaId=randomUUID();
+   await withMarketingTenant(db,org,tx=>tx.socialCommunityCase.create({data:{
+    id:slaId,organizationId:org,brandId,discussionId:'fixture-'+randomUUID(),
+    discussionDigest:'sha256:'+'a'.repeat(64),disposition:'HUMAN_REVIEW_REQUIRED',escalations:['SCIENTIFIC_REVIEW'],
+    priority:'HIGH',createdBy:author.userId,createdAt:past,updatedAt:past,slaDueAt:due}}));
+   await service.transition(org,operator,slaId,{action:'CLAIM',expectedVersion:1});
+   const slaRound=await service.transition(org,operator,slaId,{action:'SUBMIT_REVIEW',expectedVersion:2});
+   expect(slaRound).toMatchObject({reviewRound:3,slaOverdue:true,slaEscalatedAt:null});
+   const priorBrain=process.env.MARKETING_BRAIN_WORKER_ENABLED,priorSla=process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED;
+   try{
+    process.env.MARKETING_BRAIN_WORKER_ENABLED='true';process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED='false';
+    expect(await service.escalateDueCases(org)).toMatchObject({enabled:false,escalated:0});
+    process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED='true';
+    const outcomes=await Promise.all([service.escalateDueCases(org),service.escalateDueCases(org)]);
+    expect(outcomes.reduce((n,x)=>n+x.escalated,0)).toBe(1);
+    const escalated=(await service.list(org,reviewer,brandId)).cases.find(x=>x.caseId===slaId);
+    expect(escalated).toMatchObject({status:'PENDING_REVIEW',version:4,reviewRound:3,slaOverdue:true});
+    expect(escalated?.slaEscalatedAt).not.toBeNull();
+    expect((await service.escalateDueCases(org)).escalated).toBe(0);
+    const logs=await withMarketingTenant(db,org,tx=>tx.auditEvent.findMany({where:{objectId:slaId,action:'SOCIAL_CASE_SLA_ESCALATED'}}));
+    expect(logs).toHaveLength(1);expect(logs[0]).toMatchObject({actorType:'SYSTEM',actorId:'community-sla-scheduler'});
+    const req=(await approvals.listPending(org)).find(x=>x.objectId===slaId);
+    expect(req).toBeDefined();await decide(req!.id,reviewer);
+    await service.transition(org,reviewer,slaId,{action:'CLOSE_INTERNAL',expectedVersion:4});
+    const reopened=await service.transition(org,reviewer,slaId,{action:'REOPEN',expectedVersion:5});
+    expect(reopened).toMatchObject({reviewRound:null,slaEscalatedAt:null,slaOverdue:false});
+    expect(Date.parse(reopened.slaDueAt!)).toBeGreaterThan(Date.now());
+   }finally{
+    if(priorBrain===undefined)delete process.env.MARKETING_BRAIN_WORKER_ENABLED;else process.env.MARKETING_BRAIN_WORKER_ENABLED=priorBrain;
+    if(priorSla===undefined)delete process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED;else process.env.MARKETING_CRISIS_SLA_WORKER_ENABLED=priorSla;
+   }
   }finally{await db.$disconnect();}
  },90000);
 });
