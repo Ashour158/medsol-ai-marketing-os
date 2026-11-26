@@ -1,7 +1,7 @@
 import {Prisma} from '@prisma/client';
 
 /** Only retry a local transaction that PostgreSQL/Prisma has confirmed aborted.
- * Applicable only to synthetic conversion form/read/qualification/submission work.
+ * Applicable only to local synthetic conversion form/read/qualification/submission and experiment proposal work.
  * Never retry a committed, ambiguous, or external CRM operation. The entire
  * tenant/permission/approval/consent check and immutable-key lookup reruns.
  */
