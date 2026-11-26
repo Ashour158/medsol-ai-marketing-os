@@ -54,7 +54,7 @@ const protectedTables=[
  'User','Agent','AgentExecution','BrainRun','BrainRunStep',
  'WorkflowExecution','WorkflowStepExecution','Approval',
  'ModelBudget','ModelUsage',
- 'AuditEvent','CommandReceipt','InboxEvent','IncidentResponse','OutboxEvent','SocialCommunityCase','MarketingResearchWatch'
+ 'AuditEvent','CommandReceipt','InboxEvent','IncidentResponse','OutboxEvent','SocialCommunityCase','MarketingResearchWatch','MarketingConversionForm','MarketingConversionSubmission'
 ];
 const byName=new Map(rows.map(x=>[x.name,x]));
 const missing=protectedTables.filter(name=>{
