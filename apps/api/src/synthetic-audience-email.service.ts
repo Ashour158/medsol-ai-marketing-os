@@ -7,6 +7,7 @@ import type {VerifiedIdentity} from './oidc-identity.js';
 import {assertSyntheticEmailScenario,simulateSyntheticEmailTransport} from './synthetic-email-transport.js';
 import {parseSyntheticJourney,syntheticJourneyDigest,simulateSyntheticJourney} from './synthetic-email-journey.js';
 import {normalizeSyntheticProviderFeedback,type SyntheticProviderFeedback} from './synthetic-provider-feedback.js';
+import {senderDomainFixture} from './synthetic-sender-domain.js';
 
 /** R2H: first bounded synthetic-only Audience/Consent & Email simulation
  * authority. It stores NO actual email addresses, legal consent, send tokens,
@@ -178,7 +179,7 @@ export class SyntheticAudienceEmailService{
   raw:unknown){
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||
      Object.keys(raw).some(k=>!['campaignId','brandId','contactIds',
-      'contentDigest','requestKey','scenario','journey'].includes(k)))
+      'contentDigest','requestKey','scenario','journey','senderDomainScenario'].includes(k)))
    throw new BadRequestException('Only bounded synthetic email simulation input is accepted');
   const v=raw as Record<string,unknown>;
   const campaignId=refId(v.campaignId,'campaign'),brandId=refId(v.brandId,'brand');
@@ -186,6 +187,10 @@ export class SyntheticAudienceEmailService{
   let scenario;
   try{scenario=assertSyntheticEmailScenario(v.scenario??'ACCEPTED');}
   catch{throw new BadRequestException('Unknown synthetic email provider scenario');}
+  let domainPreflight:ReturnType<typeof senderDomainFixture>|null=null;
+  try{if(v.senderDomainScenario!==undefined)domainPreflight=senderDomainFixture(v.senderDomainScenario);}
+  catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid synthetic sender-domain scenario');}
+  const domainBlocked=domainPreflight!==null&&!domainPreflight.fixtureEligible;
   let journey;
   try{journey=v.journey===undefined?null:parseSyntheticJourney(v.journey);}
   catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid synthetic journey');}
@@ -238,7 +243,8 @@ export class SyntheticAudienceEmailService{
     if(existing.campaignId!==campaignId||existing.brandId!==brandId||
        existing.contentDigest!==contentDigest||existing.audienceDigest!==audienceDigest||
        previous.syntheticTransportScenario!==scenario||
-       (previous.syntheticJourneyDigest??null)!==journeyDigest)
+       (previous.syntheticJourneyDigest??null)!==journeyDigest||
+       (previous.senderDomainScenario??null)!==(domainPreflight?.scenario??null))
      throw new ConflictException('Email simulation key reused for changed audience, consent or creative');
     return{simulationId:existing.id,status:existing.status,
      audienceDigest,results:existing.result,replayed:true,
@@ -246,14 +252,16 @@ export class SyntheticAudienceEmailService{
    }
    const syntheticTransport=simulateSyntheticEmailTransport({
     organizationId,brandId,campaignId,contentDigest,audienceDigest,
-    eligibleCount:syntheticEligible,scenario
+    eligibleCount:domainBlocked?0:syntheticEligible,scenario
    });
-   const syntheticJourneyPlan=journey?simulateSyntheticJourney({
+   const syntheticJourneyPlan=journey&&!domainBlocked?simulateSyntheticJourney({
     organizationId,brandId,campaignId,contentDigest,audienceDigest,
     eligibleAtSnapshot:syntheticEligible,definition:journey
    }):null;
    const results={
     syntheticTransportScenario:scenario,syntheticTransport,
+    senderDomainScenario:domainPreflight?.scenario??null,senderDomainPreflight:domainPreflight,
+    domainBlockedEligible:domainBlocked?syntheticEligible:0,
     syntheticJourneyDigest:journeyDigest,syntheticJourneyPlan,
     syntheticRecipients:sorted.length,syntheticEligible,withdrawn,
     complaintSuppressed,hardBounceSuppressed,missingConsent,
@@ -261,7 +269,7 @@ export class SyntheticAudienceEmailService{
     syntheticOnly:true,realConsentVerified:false,
     externalEffectsAuthorized:false,automaticRetryAllowed:false
    };
-   const status=syntheticEligible>0?'SIMULATED':'BLOCKED';
+   const status=syntheticEligible>0&&!domainBlocked?'SIMULATED':'BLOCKED';
    const row=await tx.marketingEmailSimulation.create({data:{
     id:randomUUID(),organizationId,brandId,campaignId,
     audienceDigest,contentDigest,requestKey,status,result:results,
