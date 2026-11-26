@@ -1,5 +1,6 @@
 "use client";
 import {useState} from "react";
+import {formatTime,secondsToFrame,frameToSeconds} from "../lib/openmotion-time";
 type Revision={id:string;version:number;offlinePreviewAvailable:boolean;layeredPreviewAvailable:boolean};
 type Asset={id:string;title:string;version:number;brandId:string;revisions:Revision[]};
 const locales=["en-EG","en-GB","en-US","ar-EG","ar-SA","ar-AE","fr-FR","fr-MA"] as const;
@@ -21,6 +22,9 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
  const [expiry,setExpiry]=useState("");
  const [playMotion,setPlayMotion]=useState(false),[frameIndex,setFrameIndex]=useState(0);
  const parent=asset?.revisions.find(x=>x.version===asset.version);
+ const previewFps=30;
+ const selectedSceneStart=preview?.motionFrames?.slice(0,frameIndex).reduce((sum,f)=>sum+f.seconds,0)??0;
+ const selectedStartFrame=secondsToFrame(selectedSceneStart,previewFps);
  async function call(path:string,body?:unknown){
   const r=await fetch("/api/marketing/"+path,{method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",
    ...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
@@ -91,6 +95,7 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
   {preview&&<div style={{marginTop:10,fontSize:12}}>
    <img src={preview.motionFrames&&!playMotion?(preview.motionFrames[frameIndex]?.svgDataUrl??preview.motionFrames[0]!.svgDataUrl):preview.svgDataUrl} alt="Stored deterministic editable design preview; unapproved" style={{maxWidth:"100%",width:300,border:"1px solid #cbd5e1"}}/>
    {preview.motionFrames&&<div><p>Motion draft · {preview.motionDurationSeconds} seconds · {preview.motionFrames.length} scenes</p>
+    <p aria-label="Selected scene timecode">Scene starts at {formatTime(frameToSeconds(selectedStartFrame,previewFps))} · frame {selectedStartFrame} (30 FPS planning only)</p>
     <button type="button" onClick={()=>setPlayMotion(v=>!v)}>{playMotion?"Stop animation":"Play animated preview"}</button>{" "}
     <label>Inspect still scene<select value={frameIndex} onChange={e=>{setFrameIndex(Number(e.target.value));setPlayMotion(false);}}>{preview.motionFrames.map((f,i)=><option key={i} value={i}>Scene {i+1} · {f.seconds}s</option>)}</select></label>
     <p>Motion SVG export is a watermarked local draft. Any browser-encoded video would be a separate unverified output, not an approved DAM rendition.</p></div>}
