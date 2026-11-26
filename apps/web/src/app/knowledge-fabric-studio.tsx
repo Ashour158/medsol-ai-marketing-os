@@ -160,7 +160,7 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
      <th align="left">Agent scope</th><th align="left">Governance</th></tr></thead>
     <tbody>{docs.map(doc=><tr key={doc.id}>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
-      <strong>{doc.title}</strong><div>{doc.sourceKey}</div></td>
+      <strong>{doc.title}</strong><div>{doc.sourceKey}</div>{doc.governedSourceEvidence&&<small>Declared {doc.governedSourceEvidence.rightsBasis} · {doc.governedSourceEvidence.scope} · expiry {doc.governedSourceEvidence.permissionExpiresAt} · rights reference {doc.governedSourceEvidence.permissionReference} · not legally verified</small>}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>{doc.status}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
       {doc.accessMode==="REVIEWERS_ONLY"?"Reviewers only":doc.agentScope.join(", ")}</td>
