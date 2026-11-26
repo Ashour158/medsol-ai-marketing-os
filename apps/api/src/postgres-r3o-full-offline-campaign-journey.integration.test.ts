@@ -181,6 +181,13 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     campaignId,approvalId:scope.approvalId,requestKey:'publication-'+randomUUID()
    });
    expect((await publications.preflight(org,pub.publicationId)).internalReady).toBe(true);
+   const calendarInput={brandId,start:new Date().toISOString(),end:later(7),spacingMinutes:'60'};
+   const calendar=await publications.calendar(org,identity,calendarInput);
+   expect(calendar).toMatchObject({brandId,source:'EXISTING_EXACT_CREATIVE_APPROVALS',scheduleChanged:false,externalEffectsAuthorized:false,
+    entries:[{approvalId:scope.approvalId,revisionId,approvalDecision:'APPROVED',publicationStatus:'PREPARED',current:true}],conflicts:[]});
+   await expect(publications.calendar(other,identity,calendarInput)).rejects.toThrow('Verified editorial operator');
+   await expect(publications.calendar(org,identity,{...calendarInput,brandId:'nonexistent'})).rejects.toThrow('Active tenant brand');
+
    const gate=await publications.releaseReadiness(org,identity,pub.publicationId);
    expect(gate).toMatchObject({releaseBlocked:true,externalReady:false,
     externalEffectsAuthorized:false,outgoingProviderCallsMade:0,

@@ -95,6 +95,9 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/email/simulations') simulateEmailJourney(@Req() req:any,@Body() b:any){return this.syntheticEmail.simulateEmailJourney(req.identity.organizationId,req.identity,b)}
  @Get('marketing/publications') listPublicationIntents(@Req() req:any){return this.publications.list(req.identity.organizationId,req.query?.campaignId)}
  @Post('marketing/publications') createPublicationIntent(@Req() req:any,@Body() b:any){return this.publications.prepare(req.identity.organizationId,req.identity.userId,b)}
+ @Get('marketing/publications/editorial-calendar') editorialCalendar(@Req() req:any){
+  return this.publications.calendar(req.identity.organizationId,req.identity,req.query);
+ }
  @Get('marketing/publications/:id') getPublicationIntent(@Req() req:any,@Param('id') id:string){return this.publications.detail(req.identity.organizationId,id)}
  @Get('marketing/publications/:id/preflight') getPublicationPreflight(@Req() req:any,@Param('id') id:string){return this.publications.preflight(req.identity.organizationId,id)}
  @Get('marketing/publications/:id/reconciliation') getPublicationReconciliation(@Req() req:any,@Param('id') id:string){return this.publications.reconcileProviderDelivery(req.identity.organizationId,id)}

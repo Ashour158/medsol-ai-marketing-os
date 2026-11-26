@@ -10,6 +10,8 @@ import {
 } from '@medsol/policy';
 import {hasMarketingPermission} from './marketing-permissions.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
+import {editorialCalendar,type EditorialEntry} from './editorial-calendar.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 
 /**
  * R2 publication intent is the owner of the *desired* campaign channel action.
@@ -227,6 +229,51 @@ export class CampaignPublicationService{
    orderBy:{createdAt:'desc'},select:{id:true,campaignId:true,approvalId:true,
     creativeAssetRevisionId:true,status:true,version:true,createdAt:true,updatedAt:true}
   }));
+ }
+ /** Derive the editorial calendar from the existing immutable approval
+  * schedule, not a parallel calendar database or mutable dispatch authority. */
+ async calendar(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  if(!identity||identity.organizationId!==organizationId)throw new ForbiddenException('Verified editorial operator required');
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['brandId','start','end','spacingMinutes'].includes(k)))
+   throw new BadRequestException('Bounded editorial calendar query required');
+  const r=raw as Record<string,unknown>,brandId=id(r.brandId,'brand');
+  const now=new Date();
+  const parse=(value:unknown)=>{
+   if(typeof value!=='string'||!Number.isFinite(Date.parse(value))||new Date(value).toISOString()!==value)
+    throw new BadRequestException('Exact UTC ISO calendar bounds required');
+   return value;
+  };
+  const start=parse(r.start),end=parse(r.end),spacing=Number(r.spacingMinutes);
+  if(Date.parse(start)<now.getTime()-86400000||Date.parse(end)>now.getTime()+90*86400000||
+     Date.parse(end)<=Date.parse(start)||Date.parse(end)-Date.parse(start)>31*86400000||
+     typeof r.spacingMinutes!=='string'||!/^\d{2,4}$/.test(r.spacingMinutes)||!Number.isSafeInteger(spacing)||spacing<15||spacing>1440)
+   throw new BadRequestException('Calendar window maximum 31 days; 15–1440 minute spacing required');
+  return this.scoped(organizationId,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'READ_AUDIT');
+   const brand=await tx.brand.findFirst({where:{organizationId,id:brandId,status:'ACTIVE'}});
+   if(!brand)throw new NotFoundException('Active tenant brand not found');
+   const master=await tx.brandMasterRevision.findFirst({where:{organizationId,status:'APPROVED'},orderBy:{version:'desc'},select:{version:true}});
+   const approvals=await tx.approval.findMany({where:{organizationId,objectType:'CreativeAssetRevision',
+    decision:{in:['PENDING','APPROVED']},scopeExpiresAt:{gt:now},creativeAssetRevision:{asset:{brandId}}},
+    orderBy:{id:'asc'},take:201,include:{creativeAssetRevision:{include:{asset:true}},
+    publications:{select:{status:true,scopeDigest:true},take:2}}});
+   if(approvals.length>200)throw new ConflictException('Editorial approval window exceeds 200 active candidates; no incomplete schedule proposed');
+   const entries:EditorialEntry[]=approvals.flatMap(approval=>{
+    const scope=approval.scope,revision=approval.creativeAssetRevision,asset=revision?.asset;
+    if(!isExactCreativeScope(scope)||!revision||!asset||scope.brandId!==brandId||
+     scope.assetId!==asset.id||scope.revisionId!==revision.id||scope.revisionVersion!==revision.version||
+     scope.renditionDigest!==revision.renditionDigest||scope.sourceRef!==revision.sourceRef||
+     exactCreativeScopeHash(scope)!==approval.scopeDigest||approval.scopeExpiresAt?.toISOString()!==scope.expiresAt)return[];
+    const linked=approval.publications;
+    const current=!!master&&asset.status==='ACTIVE'&&asset.version===revision.version&&revision.rightsReviewedAt!==null&&
+     revision.rightsExpiresAt.getTime()>Date.parse(scope.scheduledAt)&&scope.policyVersion==='v'+master.version&&
+     Date.parse(scope.scheduledAt)>now.getTime()&&linked.length<=1&&(!linked[0]||linked[0].scopeDigest===approval.scopeDigest);
+    return[{approvalId:approval.id,assetId:asset.id,revisionId:revision.id,channel:scope.channel,destinationRef:scope.destinationRef,
+     scheduledAt:scope.scheduledAt,expiresAt:scope.expiresAt,approvalDecision:approval.decision,publicationStatus:linked[0]?.status??null,current}];
+   });
+   return{organizationId,brandId,start,end,asOf:now.toISOString(),...editorialCalendar(entries,start,end,spacing),
+    source:'EXISTING_EXACT_CREATIVE_APPROVALS',providerOptimizationVerified:false};
+  });
  }
  async detail(organizationId:string,publicationIdInput:unknown){
   const publicationId=id(publicationIdInput,'publication');

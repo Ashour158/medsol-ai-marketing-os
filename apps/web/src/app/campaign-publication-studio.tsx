@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
 import SocialDiscussionTriageLab from "./social-discussion-triage-lab";
+import EditorialCalendarStudio from "./editorial-calendar-studio";
 import {socialSimulationCsv,saveOfflineCsv,type SocialTrialExport}
  from "../lib/offline-evidence-csv";
 
@@ -372,6 +373,8 @@ export default function CampaignPublicationStudio({identity}:{identity:Identity|
      whiteSpace:"pre-wrap",fontSize:12}}>{JSON.stringify(report,null,2)}</pre>}
    </section>
   </>}
+  {identity&&<EditorialCalendarStudio key={identity.organizationId+":"+identity.userId} organizationId={identity.organizationId}
+   enabled={["ADMIN","SUPER_ADMIN","CMO","MARKETING_DIRECTOR"].includes(identity.role.toUpperCase())}/>}
   <SocialDiscussionTriageLab identity={identity}/>
  </details>;
 }
