@@ -107,7 +107,7 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
     <label style={{display:"block"}}><input type="checkbox" checked={collectionPermitted} onChange={e=>setCollectionPermitted(e.target.checked)}/> I attest collection is permitted within this scope</label>
     <label style={{display:"block"}}><input type="checkbox" checked={noPersonalData} onChange={e=>setNoPersonalData(e.target.checked)}/> I attest no personal data is included</label>
     <small>Independent review required. No automatic retrieval, legal-rights verification or external request is made.</small>
-   </fieldset>
+   </fieldset>}
    <button disabled={busy||(governed&&(!url.trim()||!rightsRef.trim()||!rightsExpiry||!collectionPermitted||!noPersonalData))} style={button} onClick={()=>void task(async()=>{
     const key=sourceKey||"local-"+crypto.randomUUID();
     if(!sourceKey)setSourceKey(key);
