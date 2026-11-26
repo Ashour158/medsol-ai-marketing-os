@@ -6,7 +6,7 @@ import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
 import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
-type Brand={id:string;name:string};
+type Brand={id:string;name:string;status?:string};
 type ProductChoice={id:string;name:string;code:string;lifecycle?:string};
 type CampaignChoice={id:string;name:string;code:string;status:string};
 type Journey={
@@ -96,6 +96,8 @@ const dateAt=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[]}){
  const [brands,setBrands]=useState<Brand[]>([]);
  const [brandId,setBrandId]=useState("");
+ const [newBrandName,setNewBrandName]=useState("");
+ const [newBrandSlug,setNewBrandSlug]=useState("");
  const [objectiveId,setObjectiveId]=useState("");
  const [productId,setProductId]=useState("");
  const [objectiveName,setObjectiveName]=useState("Offline scientific campaign objective");
@@ -175,7 +177,7 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
   setVersionHistory([]);setHistoryId("");setHistoricalPreview(null);
   setDestinationRef("");
   setCreativeApprovalId("");setSyntheticContacts([]);setPublicationId("");
-  setBrandPolicyVersion("");setObjectiveId("");setBrandId("");setProductId("");
+  setBrandPolicyVersion("");setObjectiveId("");setBrandId("");setProductId("");setNewBrandName("");setNewBrandSlug("");
   if(!identity)return;
   void load().catch(e=>setError(e instanceof Error?e.message:"Unable to load brand context"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -289,10 +291,25 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
 
    <div style={section}>
     <h3 style={{marginTop:0}}>1 · Brief, objective and governed campaign</h3>
+    {admin&&<fieldset style={{border:"1px solid #cbd5e1",borderRadius:8,padding:12,marginBottom:12}}>
+     <legend>Register a tenant brand</legend>
+     <p style={{fontSize:12}}>Use the existing tenant brand registry. Registration does not approve a Brand Master policy or authorize external publication.</p>
+     <label style={label}>New brand name<input style={input} maxLength={150} disabled={blocked} value={newBrandName} onChange={e=>setNewBrandName(e.target.value)}/></label>
+     <label style={label}>New brand slug<input style={input} maxLength={80} disabled={blocked} value={newBrandSlug} onChange={e=>setNewBrandSlug(e.target.value)} placeholder="research-brand"/></label>
+     <button style={secondary} disabled={blocked||!newBrandName.trim()||! /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(newBrandSlug.trim())} onClick={()=>void run(async()=>{
+      const created=await api("tenancy/brands",{name:newBrandName.trim(),slug:newBrandSlug.trim()});
+      if(created.organizationId!==identity.organizationId||created.status!=="ACTIVE"||created.externalEffectsAuthorized!==false||typeof created.id!=="string")throw Error("Unexpected brand registration scope");
+      const list=await api("tenancy/brands") as Brand[];
+      if(!list.some(x=>x.id===created.id&&x.status==="ACTIVE"))throw Error("Registered brand not found in tenant readback; refresh before retrying");
+      setBrands(list);setNewBrandName("");setNewBrandSlug("");
+      setNotice("Tenant brand registered and read back; select it for a new campaign");
+     })}>Register tenant brand</button>
+     <button style={{...secondary,marginLeft:8}} disabled={blocked} onClick={()=>void run(async()=>{setBrands(await api("tenancy/brands") as Brand[]);setNotice("Tenant brand registry refreshed");})}>Refresh tenant brands</button>
+    </fieldset>}
     <label style={label}>Brand
      {brands.length?<select style={input} value={brandId} onChange={e=>setBrandId(e.target.value)}>
       <option value="">Choose active brand</option>
-      {brands.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+      {brands.filter(x=>!x.status||x.status==="ACTIVE").map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
      </select>:<input style={input} value={brandId} onChange={e=>setBrandId(e.target.value)}
       placeholder="Existing tenant Brand ID"/>}
     </label>
