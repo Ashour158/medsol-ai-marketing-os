@@ -516,7 +516,7 @@ jobs:
     name: Alpha offline image packaging rehearsal
     needs: alpha-lock
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
     steps:
@@ -553,6 +553,10 @@ jobs:
           printf '%s\n' 'PACKAGING_ONLY_NOT_DEPLOYED_NOT_CERTIFIED' > alpha-packaging-status.txt
       - name: Rehearse actual packaged application startup and durable volume replacement
         run: bash infra/staging/alpha-container-rehearsal.sh
+      - name: Scan exact API and web images for OS and library vulnerabilities
+        run: |
+          node --test scripts/quality/alpha-image-vulnerability-gate.test.mjs
+          bash infra/staging/alpha-image-scan.sh
       - name: Preserve local build provenance and candidate lockfile
         if: always()
         uses: actions/upload-artifact@v4
@@ -569,3 +573,7 @@ jobs:
             alpha-packaging-status.txt
             alpha-container-rehearsal-status.txt
             alpha-postgres-image.txt
+            alpha-scanner-image.txt
+            alpha-image-scan-db.json
+            alpha-api-vulnerabilities.json
+            alpha-web-vulnerabilities.json
