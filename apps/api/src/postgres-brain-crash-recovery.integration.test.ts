@@ -18,6 +18,14 @@ describe.skipIf(!enabled)('PostgreSQL Brain crash-window/fencing acceptance',()=
    const input={organizationId,correlationId,requestedOutcome:'Internal governed draft'};
    const current=await ledger.create(organizationId,input,'run-a-'+randomUUID());
    const other=await ledger.create(organizationId,input,'run-b-'+randomUUID());
+   const cancelled=await ledger.create(organizationId,input,'cancel-'+randomUUID());
+   await expect(ledger.cancelPending('another-tenant',cancelled.id,'operator-1','Cancel obsolete internal campaign rehearsal')).rejects.toThrow('not found');
+   expect(await ledger.cancelPending(organizationId,cancelled.id,'operator-1','Cancel obsolete internal campaign rehearsal')).toMatchObject({status:'CANCELLED',replayed:false});
+   expect(await ledger.cancelPending(organizationId,cancelled.id,'operator-1','Repeat obsolete campaign cancellation')).toMatchObject({status:'CANCELLED',replayed:true});
+   expect(await ledger.recoveryEvidence(organizationId,cancelled.id)).toMatchObject({evidenceStatus:'CANCELLED_BEFORE_START',automaticReplayAllowed:false,completedSteps:0});
+   expect(await db.brainRun.updateMany({where:{id:cancelled.id,organizationId,status:'PENDING'},data:{status:'RUNNING'}})).toMatchObject({count:0});
+   expect(await db.auditEvent.count({where:{organizationId,objectId:cancelled.id,action:'BRAIN_RUN_CANCELLED_BEFORE_START'}})).toBe(1);
+
    await db.brainRun.update({where:{id:current.id},data:{status:'RUNNING'}});
    const otherExecution=await db.agentExecution.create({data:{
     id:'other-'+randomUUID(),organizationId,agentId,correlationId,
