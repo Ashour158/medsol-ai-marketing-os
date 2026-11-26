@@ -54,6 +54,30 @@ test('T1E-001 real browser self-hosted staging OIDC login binds signed subject a
  expect(cookie?.httpOnly).toBe(true);
  expect(cookie?.secure).toBe(true);
  expect(cookie?.value.split('.')).toHaveLength(5);
+ const overview=page.getByRole('region',{name:'Executive overview'});
+ await expect(overview).toBeVisible();
+ const nav=page.getByRole('navigation',{name:'Marketing workspaces'});
+ await nav.getByRole('link',{name:'Agent brain & plans'}).click();
+ await expect(page.locator('#portfolio')).toBeHidden();
+ await page.getByRole('button',{name:'Load brain map',exact:true}).click();
+ const map=page.getByRole('region',{name:'Visual agent and nervous system map'});
+ await expect(map).toBeVisible();
+ await expect(map.locator('button[aria-pressed]')).toHaveCount(13);
+ await map.locator('button[aria-pressed]').last().click();
+ await expect(map.locator('button[aria-pressed=true]')).toHaveCount(1);
+ await nav.getByRole('link',{name:'Signed Agent Studio'}).click();
+ await expect(page.locator('#agent-brain')).toBeHidden();
+ await page.getByRole('button',{name:'Load canonical agents and releases'}).click();
+ await page.getByRole('combobox',{name:'Canonical agent',exact:true}).selectOption('MKT-CMO-001');
+ await expect(page.getByLabel('Agent release policy overview')).toBeVisible();
+ await page.setViewportSize({width:390,height:844});
+ await nav.getByRole('link',{name:'Sign in & organization'}).click();
+ await expect(page.locator('#identity')).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(392);
+ await nav.getByRole('button',{name:'Show all workspaces'}).click();
+ await expect(overview).toBeVisible();
+ await expect(page.locator('#portfolio')).toBeVisible();
+
 });
 test('T1E-002 independent reviewer uses actual interactive signed OIDC session',async({page})=>{
  await login(page,'reviewer');
