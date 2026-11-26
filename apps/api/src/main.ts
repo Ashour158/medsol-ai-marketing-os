@@ -56,12 +56,13 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  }
  @Get('marketing/journeys/:id/dossier') async customerDeliveryDossier(@Req() req:any,@Param('id') id:string){
   const organizationId=req.identity.organizationId;
-  const [journey,performance,market]=await Promise.all([
+  const [journey,performance,market,conversion]=await Promise.all([
    this.reads.offlineJourney(organizationId,id),
    this.performance.summary(organizationId,id),
-   this.learning.trendBrief(organizationId)
+   this.learning.trendBrief(organizationId),
+   this.conversion.list(organizationId,req.identity,id)
   ]);
-  return buildCustomerDeliveryDossier(organizationId,journey,performance,market,new Date());
+  return buildCustomerDeliveryDossier(organizationId,journey,performance,market,new Date(),conversion);
  }
  @Get('marketing/agents/manifests/baseline/:id') agentManifestBaseline(@Req() req:any,@Param('id') id:string){return this.agentManifests.baseline(req.identity.organizationId,req.identity,id)}
  @Get('marketing/agents/manifests') agentManifestsList(@Req() req:any){return this.agentManifests.list(req.identity.organizationId,req.identity,req.query?.agentId)}
