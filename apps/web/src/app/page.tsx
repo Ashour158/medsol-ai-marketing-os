@@ -20,6 +20,10 @@ import CampaignReadinessBoard from "./campaign-readiness-board";
 import CustomerDeliveryDossierStudio from "./customer-delivery-dossier-studio";
 import {gapCounts,gapInventoryCsv,gapClosureStatus} from "../lib/blueprint-gap-register";
 
+class MarketingRequestError extends Error {
+  constructor(message:string,readonly status:number){super(message);}
+}
+
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
   const [organizationId, setOrganizationId] = useState("");
@@ -32,6 +36,7 @@ export default function Home() {
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [agents, setAgents] = useState<unknown>(null);
   const [pendingApprovals, setPendingApprovals] = useState<unknown>(null);
+  const [approvalInboxUnavailable,setApprovalInboxUnavailable]=useState(false);
   const [identity, setIdentity] = useState<{userId:string;organizationId:string;email:string;role:string}|null>(null);
   const [offlineHandoff,setOfflineHandoff]=useState<{
    organizationId:string;manifest:string;revision:number
@@ -79,7 +84,7 @@ export default function Home() {
       cache: "no-store"
     });
     const result: unknown = await response.json();
-    if (!response.ok) throw new Error(typeof result === "object" && result !== null && "message" in result ? String(result.message) : "Request failed (" + response.status + ")");
+    if (!response.ok) throw new MarketingRequestError(typeof result === "object" && result !== null && "message" in result ? String(result.message) : "Request failed (" + response.status + ")",response.status);
     return result;
   }
   async function decide(decision: "APPROVED" | "REJECTED") {
@@ -89,13 +94,25 @@ export default function Home() {
       commandId: crypto.randomUUID(), correlationId: crypto.randomUUID(), organizationId: identity.organizationId,
       approvalId: selectedApprovalId, approverUserId: identity.userId, decision, rationale: approvalRationale.trim()
     });
-    setPendingApprovals(await call("approvals/pending"));
     setApprovalRationale(""); setSelectedApprovalId("");
     await loadDashboard();
   }
+  async function loadApprovalInbox(){
+    setPendingApprovals(null);setSelectedApprovalId("");setApprovalRationale("");setApprovalInboxUnavailable(false);
+    try{
+      const approvals=await call("approvals/pending");
+      if(!Array.isArray(approvals))throw new Error("Invalid approval inbox response");
+      setPendingApprovals(approvals);
+    }catch(e){
+      // The server decides access, including custom role policy. Only an explicit
+      // forbidden inbox response is optional; never suppress session or service failures.
+      if(e instanceof MarketingRequestError&&e.status===403){setApprovalInboxUnavailable(true);return;}
+      throw e;
+    }
+  }
   async function loadDashboard() {
-    const [summary, portfolio, objectiveList, productList, workflowList, history, approvals] = await Promise.all([
-      call("overview"), call("campaigns"), call("objectives"), call("products"), call("workflows"), call("agents/executions"), call("approvals/pending")
+    const [summary, portfolio, objectiveList, productList, workflowList, history] = await Promise.all([
+      call("overview"), call("campaigns"), call("objectives"), call("products"), call("workflows"), call("agents/executions")
     ]);
     setOverview(summary as Record<string, number>);
     setCampaigns(portfolio as typeof campaigns);
@@ -103,7 +120,7 @@ export default function Home() {
     setProducts(productList as typeof products);
     setWorkflows(workflowList as typeof workflows);
     setAgentHistory(history as typeof agentHistory);
-    setPendingApprovals(approvals);
+    await loadApprovalInbox();
   }
   async function perform(action: () => Promise<void>) {
     setBusy(true); setError("");
@@ -214,7 +231,8 @@ export default function Home() {
     <section id="approvals" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>5. Pending human approvals</h2>
       <p style={{ color: "#64748b" }}>Approval decisions require a verified OIDC user and an authorized marketing role. Shared bootstrap tokens cannot approve.</p>
-      <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { setPendingApprovals(await call("approvals/pending")); })}>Refresh approval inbox</button>
+      <button style={buttonStyle} disabled={busy||!identity} onClick={() => perform(loadApprovalInbox)}>Refresh approval inbox</button>
+      {approvalInboxUnavailable&&<p>Approval inbox is not available for your current permissions. Your permitted portfolio remains accessible.</p>}
       {Array.isArray(pendingApprovals) && <p>{pendingApprovals.length} pending approval(s)</p>}
       {identity && Array.isArray(pendingApprovals) && pendingApprovals.length > 0 && <div style={{ marginTop: 16 }}>
         <label>Approval to decide<select style={fieldStyle} value={selectedApprovalId} onChange={e => setSelectedApprovalId(e.target.value)}>

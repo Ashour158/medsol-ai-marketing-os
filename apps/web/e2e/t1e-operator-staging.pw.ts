@@ -64,6 +64,12 @@ test('T1E-002 independent reviewer uses actual interactive signed OIDC session',
 });
 test('T1E-003 signed viewer cannot bypass canonical permission checks from browser',async({page})=>{
  await login(page,'viewer');
+ // READ_PORTFOLIO is permitted, READ_APPROVALS is not. A forbidden inbox
+ // must not prevent the authorized portfolio from loading.
+ await expect(page.locator('#portfolio').getByText('active Objectives',{exact:true})).toBeVisible();
+ await expect(page.getByText('Approval inbox is not available for your current permissions. Your permitted portfolio remains accessible.')).toBeVisible();
+ expect((await bff(page,'approvals/pending')).status).toBe(403);
+ await expect(page.locator('#approvals').getByRole('button',{name:'Approve',exact:true})).toHaveCount(0);
  const denied=await bff(page,'assets/offline-raster',{
   brandId,title:'Forged offline creative',
   editableCopy:'Viewer cannot create',pngBase64:'iVBORw0KGgo',

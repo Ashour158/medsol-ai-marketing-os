@@ -132,7 +132,14 @@ test('T01-027 revoked server session rejects reinstalled stolen encrypted cookie
  expect((await state(request)).revokedSessions).toContain(sessionId);
 });
 test('T01-028 viewer direct BFF mutation is refused by role authority',async({page,request})=>{
+ await fault(request,'GET','/marketing/approvals/pending',403,'Marketing permission denied: READ_APPROVALS');
  await login(page,'viewer');
+ await expect(page.locator('#portfolio').getByText('Chromium-only scientific campaign',{exact:true})).toBeVisible();
+ await expect(page.getByText('Approval inbox is not available for your current permissions. Your permitted portfolio remains accessible.')).toBeVisible();
+ await expect(page.locator('#approvals').getByRole('button',{name:'Approve',exact:true})).toHaveCount(0);
+ await fault(request,'GET','/marketing/approvals/pending',503,'Approval service unavailable');
+ await page.getByRole('button',{name:'Refresh approval inbox'}).click();
+ await expect(page.getByRole('alert').filter({hasText:'Approval service unavailable'})).toBeVisible();
  const r=await direct(page,'objectives',{name:'Unauthorized'});
  expect(r.status).toBe(403);
  expect((await state(request)).requestLog.filter((v:any)=>v.path==='/marketing/objectives')).toHaveLength(0);
