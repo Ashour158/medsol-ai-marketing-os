@@ -48,6 +48,24 @@ export class BrainRunLedgerService {
   * Explicit operator quarantine for an abandoned execution.
   * This never retries steps: a remote execution may have succeeded before the checkpoint.
   */
+ async cancelPending(organizationId:string,runId:string,actorId:string,reason:unknown){
+  if(typeof reason!=='string'||reason.trim().length<12||reason.length>2000)
+   throw new BadRequestException('Cancellation requires a rationale of 12 to 2000 characters');
+  const rationale=reason.trim();
+  return withMarketingTenant(this.db,organizationId,async tx=>{
+   const run=await tx.brainRun.findFirst({where:{id:runId,organizationId}});
+   if(!run)throw new NotFoundException('Brain run not found in tenant');
+   if(run.status==='CANCELLED')return {runId,status:'CANCELLED',replayed:true,automaticRetryAllowed:false,externalEffectsAuthorized:false};
+   if(run.status!=='PENDING')throw new ConflictException('Only an unclaimed PENDING brain run may be cancelled; inspect or quarantine active runs instead');
+   const changed=await tx.brainRun.updateMany({where:{id:runId,organizationId,status:'PENDING',updatedAt:run.updatedAt},
+    data:{status:'CANCELLED',currentAgentId:null,completedAt:new Date()}});
+   if(changed.count!==1)throw new ConflictException('Brain run was claimed or changed concurrently; refresh before acting');
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,action:'BRAIN_RUN_CANCELLED_BEFORE_START',
+    objectType:'BrainRun',objectId:runId,correlationId:run.correlationId,
+    before:{status:'PENDING'},after:{status:'CANCELLED',reason:rationale,automaticRetryAllowed:false,externalEffectsAuthorized:false}}});
+   return {runId,status:'CANCELLED',replayed:false,automaticRetryAllowed:false,externalEffectsAuthorized:false};
+  });
+ }
  async quarantineAbandoned(organizationId:string,runId:string,actorId:string,reason:string){
   const rationale=requiredQuarantineReason(reason);
   const staleBefore=new Date(Date.now()-15*60*1000);
@@ -163,6 +181,7 @@ export class BrainRunLedgerService {
     validCompleted.length===1&&candidateExecutions.length===1?'ONE_COMPLETED_UNCHECKPOINTED':
     candidateExecutions.length>1?'MULTIPLE_EXECUTION_ATTEMPTS':
     run.status==='RUNNING'&&!stale?'MAY_STILL_BE_ACTIVE':
+    run.status==='CANCELLED'&&candidateExecutions.length===0?'CANCELLED_BEFORE_START':
     'NO_COMPLETED_EXECUTION_PROOF';
   return {...base,nextStep:{agentId:next.agentId,ordinal:next.ordinal,status:next.status},
    staleByLastProgress:stale,evidenceStatus,candidateCountAtLeast:rows.length,
@@ -171,6 +190,7 @@ export class BrainRunLedgerService {
     reserved:usages.filter(u=>u.status==='RESERVED').length,
     unverifiedSettled:usages.filter(u=>u.status==='SETTLED'&&u.billingStatus!=='VERIFIED').length
    },
-   operatorAction:'Compare execution and provider billing records, then investigate; no agent replay, checkpoint repair or release is authorized by this report'};
+   operatorAction:evidenceStatus==='CANCELLED_BEFORE_START'?'Run was cancelled before dispatch; create a new separately authorized request if required.':
+    'Compare execution and provider billing records, then investigate; no agent replay, checkpoint repair or release is authorized by this report'};
  }
 }

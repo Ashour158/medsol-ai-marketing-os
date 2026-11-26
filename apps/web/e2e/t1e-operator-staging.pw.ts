@@ -77,6 +77,7 @@ test('T1E-003 signed viewer cannot bypass canonical permission checks from brows
   requestKey:randomUUID()
  });
  expect(denied.status).toBe(403);
+ expect((await bff(page,'brain/runs/no-fixture-run/cancel',{reason:'Viewer must not cancel runs'})).status).toBe(403);
 });
 test('T1E-004 actual browser signed org B user cannot read org A brands',async({page})=>{
  await login(page,'foreign');
@@ -142,4 +143,20 @@ test('T1E-007 signed staging operator drives real offline campaign workflow, no 
  const budget=await bff(page,'agents/budget');
  expect(budget.status).toBe(200);
  expect(budget.data.enabled).toBe(false);
+ const queued=await bff(page,'brain/runs',{commandKey:'alpha-cancel-'+randomUUID(),requestedOutcome:'Obsolete internal rehearsal; cancel before dispatch'});
+ expect(queued.status).toBe(201);
+ const runId=queued.data.id;
+ const brain=page.locator('#agent-brain');
+ await brain.getByRole('button',{name:'Load persisted brain runs'}).click();
+ await brain.getByRole('combobox',{name:'Select brain run'}).selectOption(runId);
+ await brain.getByRole('textbox',{name:'Cancel queued run rationale'}).fill('Obsolete internal rehearsal, never dispatched');
+ page.once('dialog',dialog=>dialog.accept());
+ await brain.getByRole('button',{name:'Cancel queued Brain run'}).click();
+ await expect(brain.getByRole('button',{name:'Cancel queued Brain run'})).toHaveCount(0);
+ const cancelled=await bff(page,'brain/runs/'+runId);
+ expect(cancelled.status).toBe(200);
+ expect(cancelled.data.status).toBe('CANCELLED');
+ expect(cancelled.data.steps.every((x:any)=>x.status==='PENDING')).toBe(true);
+ expect((await bff(page,'brain/runs/'+runId+'/execute',{})).status).toBe(409);
+ expect((await bff(page,'brain/runs/'+runId+'/recovery')).data).toMatchObject({evidenceStatus:'CANCELLED_BEFORE_START',automaticReplayAllowed:false});
 });

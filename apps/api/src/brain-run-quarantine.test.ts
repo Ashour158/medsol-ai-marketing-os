@@ -58,3 +58,35 @@ describe('brain run operator quarantine',()=>{
   expect(tx.auditEvent.create).not.toHaveBeenCalled();
  });
 });
+
+describe('queued Brain cancellation',()=>{
+ it('requires DECIDE_APPROVAL, not general workflow execution',()=>{
+  expect(permissionForMarketingRoute('POST','/marketing/brain/runs/run-1/cancel')).toBe('DECIDE_APPROVAL');
+  expect(hasMarketingPermission({userId:'u',organizationId:'tenant-a',email:'u@example.invalid',role:'VIEWER',subject:'oidc'},'DECIDE_APPROVAL')).toBe(false);
+ });
+ it('cancels only unclaimed runs and records exactly one audited reason',async()=>{
+  const {service,tx}=fixture({status:'PENDING'});
+  expect(await service.cancelPending('tenant-a','run-1','admin-1','Cancelled obsolete internal rehearsal')).toMatchObject({status:'CANCELLED',replayed:false,automaticRetryAllowed:false,externalEffectsAuthorized:false});
+  expect(tx.brainRun.updateMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({organizationId:'tenant-a',id:'run-1',status:'PENDING',updatedAt:expect.any(Date)}),data:expect.objectContaining({status:'CANCELLED',completedAt:expect.any(Date)})}));
+  expect(tx.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({actorId:'admin-1',action:'BRAIN_RUN_CANCELLED_BEFORE_START'})}));
+ });
+ it('rejects active, review-ready, malformed and foreign requests; repeated cancellation does not create an audit',async()=>{
+  for(const status of ['RUNNING','REVIEW_REQUIRED','NEEDS_INTERVENTION']){
+   const {service,tx}=fixture({status});
+   await expect(service.cancelPending('tenant-a','run-1','admin-1','Cancelled obsolete internal rehearsal')).rejects.toBeInstanceOf(ConflictException);
+   expect(tx.brainRun.updateMany).not.toHaveBeenCalled();
+  }
+  const foreign=fixture({missing:true});
+  await expect(foreign.service.cancelPending('tenant-b','run-1','admin-1','Cancelled obsolete internal rehearsal')).rejects.toBeInstanceOf(NotFoundException);
+  const invalid=fixture({status:'PENDING'});
+  await expect(invalid.service.cancelPending('tenant-a','run-1','admin-1','short')).rejects.toBeInstanceOf(BadRequestException);
+  const cancelled=fixture({status:'CANCELLED'});
+  expect(await cancelled.service.cancelPending('tenant-a','run-1','admin-1','Repeated cancellation request')).toMatchObject({replayed:true,status:'CANCELLED'});
+  expect(cancelled.tx.auditEvent.create).not.toHaveBeenCalled();
+ });
+ it('does not audit a failed CAS when a worker claims the queued run',async()=>{
+  const {service,tx}=fixture({status:'PENDING',changed:0});
+  await expect(service.cancelPending('tenant-a','run-1','admin-1','Cancelled obsolete internal rehearsal')).rejects.toBeInstanceOf(ConflictException);
+  expect(tx.auditEvent.create).not.toHaveBeenCalled();
+ });
+});

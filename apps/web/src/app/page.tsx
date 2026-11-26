@@ -68,6 +68,8 @@ export default function Home() {
   const [brainRunDetail, setBrainRunDetail] = useState<unknown>(null);
   const [brainRecovery, setBrainRecovery] = useState<unknown>(null);
   const [quarantineReason, setQuarantineReason] = useState("");
+  const [cancelBrainReason,setCancelBrainReason]=useState("");
+  const canManageBrain=!!identity&&["ADMIN","SUPER_ADMIN","CMO","MARKETING_DIRECTOR"].includes(identity.role.toUpperCase());
   const [learningSignals, setLearningSignals] = useState<unknown>(null);
   const [skillProposals, setSkillProposals] = useState<unknown>(null);
   const [agentHistory, setAgentHistory] = useState<Array<{id:string;agentId:string;status:string}>>([]);
@@ -276,7 +278,7 @@ export default function Home() {
         </div>
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRuns(await call("brain/runs") as typeof brainRuns))}>Load persisted brain runs</button>
         {brainRuns.length > 0 && <label style={{ display: "block", marginTop: 12 }}>Select brain run
-          <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);setBrainRecovery(null);}}>
+          <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);setBrainRecovery(null);setCancelBrainReason("");setQuarantineReason("");}}>
             <option value="">Select run</option>
             {brainRuns.map(r => <option value={r.id} key={r.id}>{r.id} · {r.status}</option>)}
           </select>
@@ -289,9 +291,21 @@ export default function Home() {
             setBrainRuns(await call("brain/runs") as typeof brainRuns);
           })}>Execute pending run (synchronous)</button>}
 
+          {canManageBrain&&brainRuns.find(r=>r.id===brainRunId)?.status==="PENDING"&&<div style={{marginTop:12}}>
+            <label style={{display:"block"}}>Cancel queued run rationale
+              <textarea style={fieldStyle} value={cancelBrainReason} maxLength={2000} onChange={e=>setCancelBrainReason(e.target.value)}/>
+            </label>
+            <button style={{...buttonStyle,background:"#9f3030"}} disabled={busy||cancelBrainReason.trim().length<12} onClick={()=>perform(async()=>{
+              if(!window.confirm("Cancel this unclaimed run? Already running work cannot be cancelled here."))return;
+              await call("brain/runs/"+encodeURIComponent(brainRunId)+"/cancel",{reason:cancelBrainReason.trim()});
+              setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(brainRunId)));
+              setBrainRuns(await call("brain/runs") as typeof brainRuns);
+              setBrainRecovery(null);setCancelBrainReason("");
+            })}>Cancel queued Brain run</button>
+          </div>}
           {brainRecovery !== null && <details open><summary>Recovery evidence — investigation only, no automatic replay</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{JSON.stringify(brainRecovery,null,2)}</pre></details>}
           {brainRunDetail !== null && <details open><summary>Run evidence</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(brainRunDetail,null,2)}</pre></details>}
-          {brainRuns.find(r => r.id === brainRunId)?.status === "RUNNING" && <>
+          {canManageBrain&&brainRuns.find(r => r.id === brainRunId)?.status === "RUNNING" && <>
             <label style={{ display: "block", marginTop: 12 }}>Quarantine rationale
               <textarea style={fieldStyle} value={quarantineReason} onChange={e => setQuarantineReason(e.target.value)} placeholder="Describe the stale execution, evidence checked, and operator decision"/>
             </label>
