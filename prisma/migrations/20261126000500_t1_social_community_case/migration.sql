@@ -49,7 +49,7 @@ CREATE POLICY "SocialCommunityCase_tenant_update" ON "SocialCommunityCase" FOR U
  USING ("organizationId" = nullif(current_setting('app.marketing_tenant_id',true),''))
  WITH CHECK ("organizationId" = nullif(current_setting('app.marketing_tenant_id',true),''));
 
-CREATE FUNCTION medsol_social_case_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION medsol_social_case_guard() RETURNS trigger LANGUAGE plpgsql AS $community_case$
 BEGIN
  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Community cases cannot be deleted'; END IF;
  IF TG_OP = 'INSERT' THEN
@@ -73,6 +73,6 @@ BEGIN
   OR (OLD."status" IN ('PENDING_REVIEW','RESOLVED_INTERNAL') AND NEW."status"='OPEN' AND NEW."assignedTo" IS NULL)
  ) THEN RAISE EXCEPTION 'Invalid community case transition'; END IF;
  RETURN NEW;
-END; $;
+END; $community_case$;
 CREATE TRIGGER "SocialCommunityCase_transition_guard" BEFORE INSERT OR UPDATE OR DELETE ON "SocialCommunityCase"
  FOR EACH ROW EXECUTE FUNCTION medsol_social_case_guard();
