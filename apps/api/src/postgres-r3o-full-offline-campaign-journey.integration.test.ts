@@ -303,6 +303,17 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     audienceRef:'internal:audience-snapshot/offline',policyVersion:'v1',scheduledAt:later(2),expiresAt:later(4)})).rejects.toThrow('separately verified release rendition');
    await expect(withMarketingTenant(db,org,tx=>tx.creativeAssetRevision.update({where:{id:layer.revisionId},
     data:{offlineLayeredSourceDigest:'sha256:'+'f'.repeat(64)}}))).rejects.toThrow();
+   const localInput={parentRevisionId:layer.revisionId,expectedVersion:layer.version,requestKey:randomUUID(),
+    rightsExpiresAt:later(60),spec:{format:'PORTRAIT',title:'البحث والابتكار',body:'مسودة عربية للمراجعة العلمية',accent:'#124d83',locale:'ar-EG'}};
+   const local=await creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,localInput);
+   expect(local).toMatchObject({version:layer.version+1,parentRevisionId:layer.revisionId,approvalInherited:false,releaseAuthorized:false});
+   const localPreview=await creatives.offlineLayeredPreview(org,local.revisionId);
+   expect(localPreview).toMatchObject({current:true,spec:localInput.spec,releaseAuthorized:false,rightsVerified:false});
+   expect(Buffer.from(localPreview.svgDataUrl.split(',')[1]!, 'base64').toString('utf8')).toContain('direction="rtl"');
+   expect(localPreview.sourceDigest).not.toBe(layerPreview.sourceDigest);
+   expect(await creatives.offlineLayeredPreview(org,layer.revisionId)).toMatchObject({current:false});
+   await expect(creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,{...localInput,spec:{...localInput.spec,locale:'ar-SA'}})).rejects.toThrow('different evidence');
+   await expect(creatives.offlineLayeredPreview(other,local.revisionId)).rejects.toThrow('not found');
 
    await expect(reads.offlineJourney(other,campaignId)).rejects.toThrow('not found');
   }finally{
