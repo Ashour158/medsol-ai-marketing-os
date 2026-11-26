@@ -15,23 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
     steps:
       - uses: actions/checkout@v4
-      - name: Recover reviewed lockfile if not yet committed
-        if: ${{ hashFiles('pnpm-lock.yaml') == '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: medsol-alpha-packaging-45901525897
-          run-id: 45901525897
-          github-token: ${{ github.token }}
-          path: .alpha-reviewed-lock
-      - name: Verify exact reviewed dependency resolution
+      - name: Require committed dependency lockfile
         run: |
-          if ! test -f pnpm-lock.yaml; then
-            cp .alpha-reviewed-lock/pnpm-lock.yaml pnpm-lock.yaml
-            printf '%s  %s\n' 'a7b6c375be4e2e73443db4edcb94c2eae227e3ce92fa62bcb9aa5f1014d2b445' pnpm-lock.yaml | sha256sum -c -
-          fi
+          git ls-files --error-unmatch pnpm-lock.yaml
+          test -s pnpm-lock.yaml
           sha256sum pnpm-lock.yaml > alpha-lockfile.sha256
       - uses: actions/upload-artifact@v4
         with:
