@@ -10,8 +10,40 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  alpha-lock:
+    name: Exact reviewed Alpha dependency candidate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover reviewed lockfile if not yet committed
+        if: ${{ hashFiles('pnpm-lock.yaml') == '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-packaging-45901525897
+          run-id: 45901525897
+          github-token: ${{ github.token }}
+          path: .alpha-reviewed-lock
+      - name: Verify exact reviewed dependency resolution
+        run: |
+          if ! test -f pnpm-lock.yaml; then
+            cp .alpha-reviewed-lock/pnpm-lock.yaml pnpm-lock.yaml
+            printf '%s  %s\n' 'a7b6c375be4e2e73443db4edcb94c2eae227e3ce92fa62bcb9aa5f1014d2b445' pnpm-lock.yaml | sha256sum -c -
+          fi
+          sha256sum pnpm-lock.yaml > alpha-lockfile.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: |
+            pnpm-lock.yaml
+            alpha-lockfile.sha256
+          if-no-files-found: error
+          retention-days: 30
   verify:
     name: verify
+    needs: alpha-lock
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -43,8 +75,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Load same-run reviewed lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: .
+      - name: Verify dependency candidate hash
+        run: sha256sum -c alpha-lockfile.sha256
       - name: Install
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Check free GitHub Codespaces offline port and manual CI policies
         run: node --test scripts/quality/t7c-free-github.nodecheck.mjs
       - name: Generate Prisma client
@@ -422,6 +461,7 @@ jobs:
 
   security-evidence:
     name: dependency audit and SBOM evidence
+    needs: alpha-lock
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -435,8 +475,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Load same-run reviewed lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: .
+      - name: Verify dependency candidate hash
+        run: sha256sum -c alpha-lockfile.sha256
       - name: Install dependencies for security inspection
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Generate SPDX software bill of materials
         id: sbom
         continue-on-error: true
@@ -477,6 +524,7 @@ jobs:
 
   alpha-packaging:
     name: Alpha offline image packaging rehearsal
+    needs: alpha-lock
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -490,18 +538,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Resolve and capture exact candidate lockfile
-        run: |
-          if test -f pnpm-lock.yaml; then
-            pnpm install --lockfile-only --frozen-lockfile
-          else
-            pnpm install --lockfile-only --no-frozen-lockfile
-          fi
-          sha256sum pnpm-lock.yaml > alpha-lockfile.sha256
+      - name: Load same-run reviewed lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: .
+      - name: Verify dependency candidate hash
+        run: sha256sum -c alpha-lockfile.sha256
       - name: Build local API and web images with immutable base
         run: |
-          docker pull node:22-bookworm-slim
-          base="$(docker image inspect node:22-bookworm-slim --format '{{index .RepoDigests 0}}')"
+          base='node@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb'
+          docker pull "$base"
           [[ "$base" =~ @sha256:[a-f0-9]{64}$ ]]
           printf '%s\n' "$base" > alpha-base-image.txt
           for target in api web; do
