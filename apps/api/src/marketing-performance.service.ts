@@ -55,7 +55,7 @@ export class MarketingPerformanceService{
    const a=plans[0]!,scope=readSyntheticExperiment(a);
    const approved=a.decision==='APPROVED'&&!!a.decidedAt&&!!a.decidedBy&&a.decidedBy!==a.requestedBy;
    const ended=Date.parse(scope.input.endsAt)<=Date.now();
-   const reportBase={experimentKey,approvalId:a.id,scopeDigest:a.scopeDigest,decision:a.decision,approvedAt:a.decidedAt?.toISOString()??null,
+   const reportBase={experimentKey,approvalId:a.id,scopeDigest:a.scopeDigest,decision:a.decision,approvedAt:approved?a.decidedAt!.toISOString():null,
     campaignId:scope.input.campaignId,formAId:scope.input.formAId,formBId:scope.input.formBId,endsAt:scope.input.endsAt,
     assignments:scope.assignments.map(({contactId,arm})=>({contactId,arm})),windowEnded:ended,syntheticOnly:true,
     actualExposureVerified:false,causalLiftValidated:false,realLeadsVerified:false,externalEffectsAuthorized:false};
