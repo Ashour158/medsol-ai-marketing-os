@@ -1,6 +1,6 @@
 "use client";
 import {useState} from "react";
-type Revision={id:string;version:number;offlinePreviewAvailable:boolean;layeredPreviewAvailable:boolean};
+type Revision={id:string;version:number;offlinePreviewAvailable:boolean;layeredPreviewAvailable:boolean;motionVideo?:boolean};
 type Asset={id:string;title:string;version:number;brandId:string;revisions:Revision[]};
 const locales=["en-EG","en-GB","en-US","ar-EG","ar-SA","ar-AE","fr-FR","fr-MA"] as const;
 type Locale=typeof locales[number];
@@ -20,6 +20,8 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
  const [key,setKey]=useState("");
  const [expiry,setExpiry]=useState("");
  const [playMotion,setPlayMotion]=useState(false),[frameIndex,setFrameIndex]=useState(0);
+ const [encoded,setEncoded]=useState<{revisionId:string;sourceDigest:string;blob:Blob;key:string;expiry:string}|null>(null);
+ const [storedVideo,setStoredVideo]=useState<{revisionId:string;renditionDigest:string;videoDataUrl:string}|null>(null);
  const parent=asset?.revisions.find(x=>x.version===asset.version);
  async function call(path:string,body?:unknown){
   const r=await fetch("/api/marketing/"+path,{method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",
@@ -41,9 +43,10 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
  async function load(){
   const a=await call("assets/"+encodeURIComponent(assetId)) as Asset;
   if(a.id!==assetId||!Array.isArray(a.revisions))throw Error("Unexpected DAM scope");
-  setAsset(a);setPreview(null);setKey("");setExpiry("");
+  setAsset(a);setPreview(null);setKey("");setExpiry("");setEncoded(null);setStoredVideo(null);
   const current=a.revisions.find(x=>x.version===a.version);
   if(current?.layeredPreviewAvailable){const v=await loadPreview(current.id);setSpec(v.spec);}
+  if(current?.motionVideo){const v=await call('assets/revisions/'+encodeURIComponent(current.id)+'/motion-video-preview');if(v.releaseAuthorized!==false||v.videoEncodingVerified!==false||!/^data:video\/webm;base64,[A-Za-z0-9+/]+=*$/.test(v.videoDataUrl))throw Error('Unexpected video provenance');setStoredVideo(v);}
  }
  async function run(task:()=>Promise<void>){
   setBusy(true);setError("");setNotice("");
@@ -114,7 +117,7 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
     const ctx=canvas.getContext("2d");if(!ctx||!canvas.captureStream)throw Error("Browser canvas capture unavailable");
     const stream=canvas.captureStream(15),chunks:Blob[]=[];let recorder:MediaRecorder|undefined;
     try{
-     recorder=new MediaRecorder(stream,{mimeType:"video/webm",videoBitsPerSecond:600000});
+     recorder=new MediaRecorder(stream,{mimeType:"video/webm",videoBitsPerSecond:240000});
      const done=new Promise<Blob>((resolve,reject)=>{recorder!.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};recorder!.onstop=()=>resolve(new Blob(chunks,{type:"video/webm"}));recorder!.onerror=()=>reject(Error("Local video encoding failed"));});
      ctx.drawImage(images[0]!,0,0,canvas.width,canvas.height);recorder.start(250);
      for(let i=0;i<images.length;i++){
@@ -123,9 +126,16 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
      }
      recorder.stop();const blob=await done;if(!blob.size)throw Error("No video produced");
      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="medsol-unverified-motion-"+fresh.revisionId+".webm";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+     setEncoded({revisionId:fresh.revisionId,sourceDigest:fresh.sourceDigest,blob,key:crypto.randomUUID(),expiry:new Date(Date.now()+60*86400000).toISOString()});
      setNotice("Local silent WebM draft exported; not stored, byte-verified, independently reviewed or approved for release.");
     }finally{if(recorder&&recorder.state!=="inactive")recorder.stop();stream.getTracks().forEach(t=>t.stop());}
    })}>Export local unverified silent WebM</button>}
+   {encoded?.revisionId===preview.revisionId&&preview.current&&<button type="button" style={{...button,marginLeft:8}} disabled={busy||!enabled} onClick={()=>void run(async()=>{
+    if(encoded.blob.size>1048576)throw Error('Video exceeds one MiB local storage limit; use a shorter storyboard');
+    const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error('Local bytes unavailable'));reader.readAsDataURL(encoded.blob);});
+    const r=await call('assets/'+encodeURIComponent(preview.assetId)+'/offline-motion-video',{expectedVersion:preview.version,parentRevisionId:encoded.revisionId,sourceDigest:encoded.sourceDigest,requestKey:encoded.key,rightsExpiresAt:encoded.expiry,videoBase64:dataUrl.split(',')[1]});
+    if(r.releaseAuthorized!==false||r.videoEncodingVerified!==false)throw Error('Unexpected motion video authority');onSaved(preview.assetId);await load();setNotice('Immutable offline video saved. Byte readback and independent comparison are required; no release.');
+   })}>Save encoded video as unapproved revision</button>}
    {!preview.motionFrames&&<button type="button" style={{...button,marginLeft:8}} disabled={!enabled||busy||!preview.current} onClick={()=>void run(async()=>{
     const fresh=await loadPreview(preview.revisionId);
     if(!fresh.current||fresh.sourceDigest!==preview.sourceDigest||fresh.renditionDigest!==preview.renditionDigest)throw Error("Stored design changed");
@@ -138,6 +148,7 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
     onSaved(fresh.assetId);await load();setNotice("Offline PNG candidate saved. Independent visual comparison, byte readback and exact approval remain required.");
    })}>Render offline PNG candidate</button>}
   </div>}
+  {storedVideo&&<div><video controls preload="metadata" src={storedVideo.videoDataUrl} style={{maxWidth:'100%',width:360}}/><p>Stored offline video SHA-256: {storedVideo.renditionDigest}. No release or independent decoding certified.</p><button type="button" style={button} disabled={busy||!enabled} onClick={()=>void run(async()=>{const v=await call('media/evidence/'+encodeURIComponent(storedVideo.revisionId)+'/verify-motion-video',{});const proof=await call('media/evidence/'+encodeURIComponent(storedVideo.revisionId));if(v.externalEffectsAuthorized!==false||proof.sha256Digest!==storedVideo.renditionDigest||proof.evidenceOrigin!=='OFFLINE_DB_VIDEO'||proof.remotePlatformMediaEligible!==false)throw Error('Unexpected video readback evidence');setNotice('Exact offline video bytes verified; no independent decoding or release.');})}>Verify stored video bytes</button></div>}
   {notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}
  </section>;
 }

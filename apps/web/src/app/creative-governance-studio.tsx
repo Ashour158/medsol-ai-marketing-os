@@ -4,7 +4,7 @@ import {useEffect,useState} from "react";
 type Identity={userId:string;organizationId:string;email:string;role:string};
 type Asset={id:string;brandId:string;title:string;version:number;status:string};
 type Revision={id:string;version:number;sourceKind:string;renditionDigest:string;
- rightsExpiresAt:string;rightsReviewedAt:string|null;rightsReviewedBy:string|null;offlineRenditionParentRevisionId?:string|null;offlineRenditionSourceDigest?:string|null;motionDraft?:boolean;offlineLayeredSourceDigest?:string|null};
+ rightsExpiresAt:string;rightsReviewedAt:string|null;rightsReviewedBy:string|null;offlineRenditionParentRevisionId?:string|null;offlineRenditionSourceDigest?:string|null;motionDraft?:boolean;motionVideo?:boolean;offlineLayeredSourceDigest?:string|null};
 type Detail=Asset&{revisions:Revision[]};
 type Decision={approvalId:string;decision:string;scopeCurrent:boolean;
  humanDecisionValid:boolean;externallyExecutable:false};
@@ -38,7 +38,7 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
  const [rightsReason,setRightsReason]=useState("");
  const [comparison,setComparison]=useState<{revisionId:string;parentRevisionId:string;sourceDigest:string;renditionDigest:string;svg:string;png:string}|null>(null);
  const [compared,setCompared]=useState(false);
- const [motionReview,setMotionReview]=useState<{revisionId:string;sourceDigest:string;renditionDigest:string;frames:{digest:string;seconds:number;svgDataUrl:string}[]}|null>(null),[motionCompared,setMotionCompared]=useState(false);
+ const [motionReview,setMotionReview]=useState<{revisionId:string;sourceDigest:string;renditionDigest:string;frames:{digest:string;seconds:number;svgDataUrl:string}[];parentRevisionId?:string;videoDataUrl?:string}|null>(null),[motionCompared,setMotionCompared]=useState(false);
  const [selectedRevision,setSelectedRevision]=useState("");
  const [channel,setChannel]=useState("SOCIAL");
  const [destinationRef,setDestinationRef]=useState("internal:connected-destination/");
@@ -166,7 +166,7 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
      {chosen&&<p style={{color:"#475569",fontSize:12}}>
       Media hash {chosen.renditionDigest} · Rights expire {new Date(chosen.rightsExpiresAt).toLocaleString()}
      </p>}
-     {chosen?.offlineRenditionParentRevisionId&&<div style={{border:"1px solid #cbd5e1",padding:12,marginTop:10}}>
+     {chosen?.offlineRenditionParentRevisionId&&!chosen.motionVideo&&<div style={{border:"1px solid #cbd5e1",padding:12,marginTop:10}}>
       <p>Derived offline rendition: compare the stored editable source with the exact PNG bytes before recording rights review. This is human attestation, not automated fidelity or legal verification.</p>
       <button type="button" style={button} disabled={busy||!canEdit} onClick={()=>void run(async()=>{
        setComparison(null);setCompared(false);
@@ -178,22 +178,24 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
       })}>Load exact source and verified PNG</button>
       {comparison?.revisionId===chosen.id&&<><div style={group}><img src={comparison.svg} alt="Stored layered source" style={{maxWidth:"100%"}}/><img src={comparison.png} alt="Stored flattened rendition" style={{maxWidth:"100%"}}/></div><label><input type="checkbox" checked={compared} onChange={e=>setCompared(e.target.checked)}/> I independently compared these exact versions and found the visual rendition suitable for offline rehearsal.</label></>}
      </div>}
-     {chosen?.motionDraft&&<div style={{border:"1px solid #cbd5e1",padding:12,marginTop:10}}>
+     {(chosen?.motionDraft||chosen?.motionVideo)&&<div style={{border:"1px solid #cbd5e1",padding:12,marginTop:10}}>
       <p>Inspect every exact stored scene. This is an internal human comparison, not independent video decoding, legal verification or release.</p>
       <button type="button" style={button} disabled={busy||!canEdit} onClick={()=>void run(async()=>{
        setMotionReview(null);setMotionCompared(false);
-       const p=await call("assets/revisions/"+encodeURIComponent(chosen.id)+"/layered-preview");
-       if(!p.current||p.releaseAuthorized!==false||p.sourceDigest!==chosen.offlineLayeredSourceDigest||p.renditionDigest!==chosen.renditionDigest||!Array.isArray(p.motionFrames)||p.motionFrames.length<2||p.motionFrames.length>4||p.motionFrames.some((f:any)=>!/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/.test(f.svgDataUrl)||!/^sha256:[a-f0-9]{64}$/.test(f.digest)))throw Error("Exact motion comparison unavailable");
-       setMotionReview({revisionId:chosen.id,sourceDigest:p.sourceDigest,renditionDigest:p.renditionDigest,frames:p.motionFrames});
+       const video=chosen.motionVideo?await call("assets/revisions/"+encodeURIComponent(chosen.id)+"/motion-video-preview"):null;
+       const p=await call("assets/revisions/"+encodeURIComponent(video?video.parentRevisionId:chosen.id)+"/layered-preview");
+       if(video){if(!video.current||video.sourceDigest!==p.sourceDigest||video.renditionDigest!==chosen.renditionDigest||video.releaseAuthorized!==false||!/^data:video\/webm;base64,[A-Za-z0-9+/]+=*$/.test(video.videoDataUrl))throw Error('Exact offline video unavailable');await call('media/evidence/'+encodeURIComponent(chosen.id)+'/verify-motion-video',{});}
+       if((!video&&(!p.current||p.sourceDigest!==chosen.offlineLayeredSourceDigest||p.renditionDigest!==chosen.renditionDigest))||p.releaseAuthorized!==false||!Array.isArray(p.motionFrames)||p.motionFrames.length<2||p.motionFrames.length>4||p.motionFrames.some((f:any)=>!/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/.test(f.svgDataUrl)||!/^sha256:[a-f0-9]{64}$/.test(f.digest)))throw Error("Exact motion comparison unavailable");
+       setMotionReview({revisionId:chosen.id,sourceDigest:p.sourceDigest,renditionDigest:video?video.renditionDigest:p.renditionDigest,frames:p.motionFrames,...(video?{parentRevisionId:video.parentRevisionId,videoDataUrl:video.videoDataUrl}:{})});
       })}>Load exact motion scenes</button>
-      {motionReview?.revisionId===chosen.id&&<><div style={group}>{motionReview.frames.map((f,i)=><figure key={i}><img src={f.svgDataUrl} alt={"Stored motion scene "+(i+1)} style={{maxWidth:"100%"}}/><figcaption>{f.seconds}s · {f.digest}</figcaption></figure>)}</div><label><input type="checkbox" checked={motionCompared} onChange={e=>setMotionCompared(e.target.checked)}/> I independently reviewed every exact scene and timing for internal rehearsal.</label></>}
+      {motionReview?.revisionId===chosen.id&&<>{motionReview.videoDataUrl&&<video controls preload="metadata" src={motionReview.videoDataUrl} style={{maxWidth:'100%'}}/>}<div style={group}>{motionReview.frames.map((f,i)=><figure key={i}><img src={f.svgDataUrl} alt={"Stored motion scene "+(i+1)} style={{maxWidth:"100%"}}/><figcaption>{f.seconds}s · {f.digest}</figcaption></figure>)}</div><label><input type="checkbox" checked={motionCompared} onChange={e=>setMotionCompared(e.target.checked)}/> I independently reviewed every exact scene and timing for internal rehearsal.</label></>}
      </div>}
      <label style={{display:"block"}}>Independent rights reviewer rationale
       <textarea style={{...field,minHeight:60}} maxLength={500} value={rightsReason}
        onChange={e=>setRightsReason(e.target.value)}/></label>
-     <button style={{...button,marginTop:9}} disabled={!canEdit||busy||!selectedRevision||rightsReason.trim().length<12||!!chosen?.offlineRenditionParentRevisionId&&(!compared||comparison?.revisionId!==selectedRevision)||!!chosen?.motionDraft&&(!motionCompared||motionReview?.revisionId!==selectedRevision)}
+     <button style={{...button,marginTop:9}} disabled={!canEdit||busy||!selectedRevision||rightsReason.trim().length<12||!!chosen?.offlineRenditionParentRevisionId&&!chosen.motionVideo&&(!compared||comparison?.revisionId!==selectedRevision)||!!(chosen?.motionDraft||chosen?.motionVideo)&&(!motionCompared||motionReview?.revisionId!==selectedRevision)}
       onClick={()=>void run(async()=>{
-       await call("assets/revisions/"+encodeURIComponent(selectedRevision)+"/rights-review",{reason:rightsReason.trim(),...(chosen?.offlineRenditionParentRevisionId&&comparison&&compared?{comparison:{parentRevisionId:comparison.parentRevisionId,sourceDigest:comparison.sourceDigest,renditionDigest:comparison.renditionDigest,visuallyCompared:true}}:{}),...(chosen?.motionDraft&&motionReview&&motionCompared?{comparison:{motionReviewed:true,sourceDigest:motionReview.sourceDigest,renditionDigest:motionReview.renditionDigest,frameDigests:motionReview.frames.map(f=>f.digest)}}:{})});
+       await call("assets/revisions/"+encodeURIComponent(selectedRevision)+"/rights-review",{reason:rightsReason.trim(),...(chosen?.offlineRenditionParentRevisionId&&comparison&&compared?{comparison:{parentRevisionId:comparison.parentRevisionId,sourceDigest:comparison.sourceDigest,renditionDigest:comparison.renditionDigest,visuallyCompared:true}}:{}),...((chosen?.motionDraft||chosen?.motionVideo)&&motionReview&&motionCompared?{comparison:{...(chosen.motionVideo?{motionVideoReviewed:true,parentRevisionId:motionReview.parentRevisionId}:{motionReviewed:true}),sourceDigest:motionReview.sourceDigest,renditionDigest:motionReview.renditionDigest,frameDigests:motionReview.frames.map(f=>f.digest)}}:{})});
        await loadDetail(detail.id);setRightsReason("");setComparison(null);setCompared(false);setMotionReview(null);setMotionCompared(false);
        setNotice("Rights review recorded. This does not authorize distribution.");
       })}>Record independent rights review</button>
@@ -223,7 +225,7 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
      least five minutes afterwards. Existing approvals with an earlier expiry
      must be reviewed again under a new immutable scope.
     </p>
-    <button style={{...button,marginTop:12}} disabled={!canEdit||busy||!selectedRevision||!chosen?.rightsReviewedAt||chosen?.motionDraft||
+    <button style={{...button,marginTop:12}} disabled={!canEdit||busy||!selectedRevision||!chosen?.rightsReviewedAt||chosen?.motionDraft||chosen?.motionVideo||
      !approvalWindowValid}
      onClick={()=>void run(async()=>{
       const r=await call("assets/revisions/"+encodeURIComponent(selectedRevision)+"/submit-approval",{
