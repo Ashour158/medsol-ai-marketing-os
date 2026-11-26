@@ -1,5 +1,6 @@
 import type {MarketingResearchWatch} from '@prisma/client';
 import {governedSourceImport} from './governed-source-import.js';
+import {BUSINESS_PROFILE_PREFIX,BUSINESS_PROFILE_AGENTS,parseBusinessProfile,serializeBusinessProfile,decodeBusinessProfile} from './business-profile.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 function sameGovernedEvidence(a:unknown,b:unknown){
  if(a===null||a===undefined||b===null||b===undefined)return (a??null)===(b??null);
@@ -147,11 +148,19 @@ export class MarketingLearningService {
  async ingestKnowledge(org:string,identity:VerifiedIdentity,raw:{
    sourceKey?:unknown;title?:unknown;text?:unknown;sourceUrl?:unknown;
    publishedAt?:unknown;expiresAt?:unknown;accessMode?:unknown;
-   agentScope?:unknown;governedImport?:unknown
+   agentScope?:unknown;governedImport?:unknown;businessProfile?:unknown
  }){
   const sourceKey=this.knowledgeId(raw?.sourceKey,'source key');
   if(sourceKey.length<12)throw new BadRequestException('Source key must have at least 12 characters');
-  const title=required(raw?.title,'knowledge title',300);
+  const profileMode=raw?.businessProfile!==undefined;
+  if(profileMode!==sourceKey.startsWith(BUSINESS_PROFILE_PREFIX))throw new BadRequestException('Reserved business profile source key requires structured intake');
+  let profile:ReturnType<typeof parseBusinessProfile>|null=null,sourceText=raw?.text;
+  if(profileMode){
+   if(!/^business-profile-[a-f0-9-]{36}$/.test(sourceKey)||raw?.title!==undefined||raw?.text!==undefined||raw?.governedImport!==undefined)
+    throw new BadRequestException('Business profile requires its own immutable fixture key and structured fields only');
+   try{profile=parseBusinessProfile(raw.businessProfile);sourceText=serializeBusinessProfile(profile);}catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid business profile');}
+  }
+  const title=profile?'Business profile · '+profile.name:required(raw?.title,'knowledge title',300);
   const sourceUrl=this.knowledgeUrl(raw?.sourceUrl);
   const publishedAt=this.knowledgeDate(raw?.publishedAt,'publishedAt');
   const expiresAt=this.knowledgeDate(raw?.expiresAt,'expiresAt');
@@ -161,6 +170,8 @@ export class MarketingLearningService {
   if(!['REVIEWERS_ONLY','AGENT_SCOPED'].includes(accessMode as string))
    throw new BadRequestException('Unknown knowledge access scope');
   const agents=raw?.agentScope??[];
+  if(profile&&(!sourceUrl||!expiresAt||expiresAt.getTime()>Date.now()+365*86400000||!Array.isArray(agents)||agents.some(a=>!BUSINESS_PROFILE_AGENTS.includes(a as typeof BUSINESS_PROFILE_AGENTS[number]))))
+   throw new BadRequestException('Business profile needs HTTPS provenance, expiry within one year and only designated canonical agents');
   if(!Array.isArray(agents)||agents.length>13||
    agents.some(x=>typeof x!=='string'||!AGENT_ROSTER.some(a=>a.id===x))||
    new Set(agents).size!==agents.length||
@@ -173,7 +184,8 @@ export class MarketingLearningService {
    catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid governed source import');}
   }
   const sourceType=governed?'GOVERNED_IMPORT':'MANUAL';
-  const chunks=chunkKnowledge(raw?.text);
+  const chunks=chunkKnowledge(sourceText);
+  if(profile&&chunks.length!==1)throw new BadRequestException('Business profile must occupy exactly one immutable chunk');
   const contentDigest=knowledgeSourceDigest(
    chunks.map(c=>c.content).join('\n[chunk-boundary]\n'));
   return this.knowledgeTx(org,async tx=>{
@@ -215,7 +227,15 @@ export class MarketingLearningService {
    await this.knowledgeActor(tx,org,identity,'READ_AUDIT');
    const rows=await tx.knowledgeDocument.findMany({
     where:{organizationId:org},orderBy:{createdAt:'desc'},take:100});
-   return rows.map(x=>this.knowledgeMeta(x));
+   const now=new Date();
+   const profiles=rows.filter(d=>d.sourceKey.startsWith(BUSINESS_PROFILE_PREFIX)&&['QUARANTINED','REVIEWED'].includes(d.status)&&d.sourceUrl&&d.expiresAt&&d.expiresAt>now);
+   const chunks=profiles.length?await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:{in:profiles.map(d=>d.id)}},select:{documentId:true,ordinal:true,content:true,digest:true},take:201}):[];
+   return rows.map(d=>{
+    const list=chunks.filter(c=>c.documentId===d.id),chunk=list[0];
+    const profile=profiles.some(x=>x.id===d.id)&&list.length===1&&chunk?.ordinal===0&&
+     knowledgeSourceDigest(chunk.content)===d.contentDigest&&knowledgeSourceDigest(chunk.content)===chunk.digest?decodeBusinessProfile(chunk.content):null;
+    return {...this.knowledgeMeta(d),...(profile&&d.title==='Business profile · '+profile.name?{businessProfile:profile,profileReviewStatus:d.status,profileAuthoritative:false}: {})};
+   });
   });
  }
  async reviewKnowledge(org:string,identity:VerifiedIdentity,
@@ -236,6 +256,12 @@ export class MarketingLearningService {
     throw new ForbiddenException('Independent evidence reviewer required');
    if(decisionInput==='REVIEW'&&doc.expiresAt&&doc.expiresAt<=new Date())
     throw new ConflictException('Expired source cannot enter retrieval');
+   if(decisionInput==='REVIEW'&&doc.sourceKey.startsWith(BUSINESS_PROFILE_PREFIX)){
+    const chunks=await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:id},select:{ordinal:true,content:true,digest:true},take:2});
+    const c=chunks[0],profile=c&&decodeBusinessProfile(c.content);
+    if(!profile||chunks.length!==1||c?.ordinal!==0||knowledgeSourceDigest(c.content)!==doc.contentDigest||c.digest!==doc.contentDigest||doc.title!=='Business profile · '+profile.name||!doc.sourceUrl||!doc.expiresAt||doc.expiresAt<=new Date()||doc.agentScope.some(a=>!BUSINESS_PROFILE_AGENTS.includes(a as typeof BUSINESS_PROFILE_AGENTS[number])))
+     throw new ConflictException('Invalid or expired immutable business profile evidence');
+   }
    if(decisionInput==='REVIEW'&&doc.accessMode==='AGENT_SCOPED'){
     // Never upgrade known instruction-attack data into agent-visible evidence.
     const chunks=await tx.knowledgeChunk.findMany({

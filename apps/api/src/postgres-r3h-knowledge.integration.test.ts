@@ -158,6 +158,25 @@ describe('R3-H authoritative knowledge fabric integration',()=>{
    expect(await db.modelUsage.count({where:{organizationId:org}})).toBe(0);
    expect(await db.outboxEvent.count({where:{
     organizationId:org,eventType:'KnowledgeSourceRevokedInternal'}})).toBe(1);
+   const businessProfile={name:'Synthetic Med Research',industry:'Life sciences',offerings:'Proteomics reagents and instruments',audience:'Research laboratories',territories:'Egypt',differentiators:'Technical support and training'};
+   const profileInput={sourceKey:'business-profile-'+randomUUID(),businessProfile,sourceUrl:'https://example.invalid/business-profile',expiresAt:new Date(Date.now()+60*86400000).toISOString(),accessMode:'AGENT_SCOPED',agentScope:['MKT-BRAND-001']};
+   const profile=await service.ingestKnowledge(org,author,profileInput);
+   expect(profile).toMatchObject({status:'QUARANTINED',chunkCount:1});
+   expect(await service.ingestKnowledge(org,author,profileInput)).toMatchObject({id:profile.id,replayed:true});
+   await expect(service.ingestKnowledge(org,author,{...profileInput,businessProfile:{...businessProfile,territories:'Other'}})).rejects.toThrow('Immutable source key');
+   await expect(service.ingestKnowledge(org,author,{...profileInput,sourceKey:'business-profile-'+randomUUID(),businessProfile:undefined,title:'Spoofed profile',text:content})).rejects.toThrow('Reserved');
+   expect((await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===profile.id)).toMatchObject({businessProfile,profileReviewStatus:'QUARANTINED',profileAuthoritative:false});
+   expect((await service.contextForAgent(org,'MKT-BRAND-001','proteomics reagents')).results).toHaveLength(0);
+   await expect(service.reviewKnowledge(org,author,profile.id,'REVIEW','Do not permit self-review of structured profile')).rejects.toThrow('Independent');
+   await service.reviewKnowledge(org,reviewer,profile.id,'REVIEW','Independent review of the synthetic business profile source');
+   expect((await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===profile.id)).toMatchObject({businessProfile,profileReviewStatus:'REVIEWED',profileAuthoritative:false});
+   expect((await service.contextForAgent(org,'MKT-BRAND-001','proteomics reagents')).results.some(x=>x.documentId===profile.id)).toBe(true);
+   expect((await service.contextForAgent(org,'MKT-CRM-001','proteomics reagents')).results).toHaveLength(0);
+   await expect(service.knowledgeDocuments(other,reviewer)).rejects.toThrow('tenant knowledge authority');
+   await service.revokeKnowledge(org,reviewer,profile.id,'Synthetic profile withdrawn and no longer available');
+   const revoked=(await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===profile.id);
+   expect(revoked).toMatchObject({status:'REVOKED'});expect(revoked).not.toHaveProperty('businessProfile');
+   expect((await service.contextForAgent(org,'MKT-BRAND-001','proteomics reagents')).results).toHaveLength(0);
   }finally{await db.$disconnect();}
  },90000);
  it('centralizes OIDC authority for evidence, learning and zero-network search',()=>{
