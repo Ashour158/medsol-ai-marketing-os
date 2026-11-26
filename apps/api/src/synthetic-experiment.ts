@@ -55,8 +55,8 @@ async function target(tx:Tx,org:string,input:Input){
   throw new ConflictException('Two exact independently approved current form revisions required');
  if(a.contentDigest===b.contentDigest)throw new ConflictException('Experiment arms require different immutable content');
  const contacts=await tx.marketingSyntheticContact.findMany({where:{organizationId:org,brandId:brand.id,id:{in:input.contactIds}},
-  include:{consentEvents:{orderBy:{sequence:'desc'},take:1}}});
- const suppressed=await tx.marketingSyntheticConsent.findMany({where:{organizationId:org,contactId:{in:input.contactIds},
+  include:{consentEvents:{where:{channel:'EMAIL'},orderBy:{sequence:'desc'},take:1}}});
+ const suppressed=await tx.marketingSyntheticConsent.findMany({where:{organizationId:org,contactId:{in:input.contactIds},channel:'EMAIL',
   action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}},select:{contactId:true},distinct:['contactId']});
  if(contacts.length!==input.contactIds.length||suppressed.length||contacts.some(c=>c.consentEvents[0]?.action!=='SIMULATED_OPT_IN'))
   throw new ConflictException('Every selected contact must be a currently eligible same-brand synthetic contact');

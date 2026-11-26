@@ -36,6 +36,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
   steps:[{key:"welcome",delayMinutes:0,scenario:"ACCEPTED"},
    {key:"follow_up",delayMinutes:1440,scenario:"DELAYED_WEBHOOK"}]
  },null,2));
+ const [channel,setChannel]=useState("EMAIL"),[purpose,setPurpose]=useState("CAMPAIGN"),[messageScenario,setMessageScenario]=useState("MOCK_ACCEPTED"),[messageResult,setMessageResult]=useState<{status:string;syntheticEligible:number;virtualAccepted:number;virtualOutcomeUnknown:number;actualMessagesSent:number}|null>(null);
  const [result,setResult]=useState<EmailResult|null>(null);
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
@@ -60,7 +61,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
   finally{setBusy(false);}
  }
  async function refresh(){
-  const value=await call("audience/synthetic-contacts?brandId="+encodeURIComponent(brandId));
+  const value=await call("audience/synthetic-contacts?brandId="+encodeURIComponent(brandId)+"&channel="+encodeURIComponent(channel));
   setContacts(value as Contact[]);
  }
  const enabled=safeRole(identity);
@@ -91,6 +92,8 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
      setCampaignId(e.target.value);setResult(null);setMailKey("");
     }} style={field} placeholder="Existing approved campaign ID"/></label>
   </div>
+  <label style={{fontSize:13}}>Consent and rehearsal channel<select style={field} disabled={busy} value={channel} onChange={e=>{setChannel(e.target.value);setSelected([]);setContacts([]);setSelectedContact("");setConsentKey("");setMailKey("");setResult(null);setMessageResult(null);}}>{["EMAIL","WHATSAPP","SMS"].map(x=><option key={x}>{x}</option>)}</select></label>
+  <p style={{fontSize:12}}>Channel-specific synthetic consent only; refresh the audience after changing channel. No phone numbers or provider accounts.</p>
   <div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap"}}>
    <button style={btn} disabled={busy||!brandId.trim()} onClick={()=>void run(async()=>{
     await call("audience/synthetic-contacts",{brandId});
@@ -128,10 +131,11 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
      const requestKey=consentKey||crypto.randomUUID();
      if(!consentKey)setConsentKey(requestKey);
      await call("audience/synthetic-contacts/"+
-      encodeURIComponent(selectedContact)+"/consent",{action,requestKey});
+      encodeURIComponent(selectedContact)+"/consent",{action,requestKey,channel});
+     setMailKey("");setResult(null);setMessageResult(null);
      await refresh();
     })}>Record mock consent event · No real opt-in</button>
-   <fieldset style={{marginTop:14,border:"1px solid #e2e8f0",borderRadius:8}}>
+   {channel==="EMAIL"&&<fieldset style={{marginTop:14,border:"1px solid #e2e8f0",borderRadius:8}}>
     <legend style={{fontSize:13,fontWeight:650}}>Synthetic provider feedback · no webhook connection</legend>
     <p style={{fontSize:12}}>Select a fixture event for the chosen synthetic contact. No real provider data or delivery receipt is accepted.</p>
     <label style={{fontSize:13}}>Provider suppression fixture
@@ -164,7 +168,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     <button type="button" style={{...btn,background:"#475569",marginLeft:8}} disabled={busy||!fixtureEventId}
      onClick={()=>{setFixtureEventId("");setFeedbackNotice("");}}>Prepare new fixture</button>
     {feedbackNotice&&<p role="status" style={{fontSize:12}}>{feedbackNotice}</p>}
-   </fieldset>
+   </fieldset>}
    <fieldset style={{marginTop:14,border:"1px solid #e2e8f0",borderRadius:8}}>
     <legend style={{fontSize:13,fontWeight:650}}>Synthetic campaign audience</legend>
     {contacts.map(c=><label key={c.contactId} style={{display:"block",
@@ -180,11 +184,12 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
    </fieldset>
   </>}
   <label style={{display:"block",marginTop:12,fontSize:13}}>
-   Draft email text (simulation only)
+   Draft message text (simulation only)
    <textarea value={content} onChange={e=>{
     setContent(e.target.value);setMailKey("");setResult(null);
    }} style={{...field,minHeight:86}}/>
   </label>
+  {channel==="EMAIL"?<>
   <div style={{marginTop:12,display:"grid",gap:10}}>
    <label style={{fontSize:13}}>Synthetic sender-domain authentication
     <select style={field} value={domainScenario} onChange={e=>{setDomainScenario(e.target.value);setMailKey("");setResult(null);}}>
@@ -260,6 +265,19 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
    </details>}
    <p style={{fontSize:11,color:"#475569"}}>Immutable synthetic snapshot:
     {" "}{result.audienceDigest}</p>
+  </section>}
+  </>:<section style={{marginTop:14,border:"1px solid #dbe4ed",padding:12,borderRadius:8}}>
+   <h4>WhatsApp / SMS and retention rehearsal</h4>
+   <label>Purpose<select style={field} disabled={busy} value={purpose} onChange={e=>{setPurpose(e.target.value);setMailKey("");setMessageResult(null);}}>{["CAMPAIGN","RETENTION_CHECK_IN","RENEWAL_REMINDER","WIN_BACK"].map(x=><option key={x}>{x}</option>)}</select></label>
+   <label>Mock outcome<select style={field} disabled={busy} value={messageScenario} onChange={e=>{setMessageScenario(e.target.value);setMailKey("");setMessageResult(null);}}>{["MOCK_ACCEPTED","MOCK_REJECTED","OUTCOME_UNKNOWN","TEMPLATE_REJECTED"].map(x=><option key={x}>{x}</option>)}</select></label>
+   <p>No actual messages, points, rewards or financial liability. Consent and suppression remain channel-specific.</p>
+   <button style={btn} disabled={busy||!campaignId||!brandId||!selected.length||!content.trim()} onClick={()=>void run(async()=>{
+    const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(content)),contentDigest="sha256:"+Array.from(new Uint8Array(bytes)).map(v=>v.toString(16).padStart(2,"0")).join("");
+    const requestKey=mailKey||crypto.randomUUID();setMailKey(requestKey);
+    const data=await call("audience/message-rehearsals",{campaignId,brandId,contactIds:selected,contentDigest,requestKey,channel,purpose,scenario:messageScenario,fixtureOnly:true});
+    setMessageResult(data as NonNullable<typeof messageResult>);
+   })}>Record channel rehearsal — no send</button>
+   {messageResult&&<p role="status">{messageResult.status} · eligible {messageResult.syntheticEligible} · virtual accepted {messageResult.virtualAccepted} · unknown {messageResult.virtualOutcomeUnknown} · actual sent {messageResult.actualMessagesSent}</p>}
   </section>}
   </>}
  </details>;

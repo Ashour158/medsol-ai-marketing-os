@@ -710,6 +710,7 @@ model MarketingSyntheticConsent {
   id String @id @default(cuid())
   organizationId String
   contactId String
+  channel String @default("EMAIL")
   action String
   sequence Int
   evidenceRef String
@@ -721,6 +722,7 @@ model MarketingSyntheticConsent {
   @@unique([organizationId,id])
   @@unique([organizationId,contactId,evidenceRef],map:"SyntheticConsent_tenant_contact_ref_uq")
   @@unique([organizationId,contactId,sequence])
+  @@index([organizationId,contactId,channel,sequence],map:"SyntheticConsent_channel_sequence_idx")
   @@index([organizationId,contactId,createdAt],map:"SyntheticConsent_org_contact_time_idx")
 }
 
