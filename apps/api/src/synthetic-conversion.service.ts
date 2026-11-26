@@ -102,7 +102,7 @@ export class SyntheticConversionService{
       a.decidedBy!==a.requestedBy&&a.decidedBy!==s.createdBy,syntheticOnly:true,
      realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false}];
    });
-   return{qualifications,forms:rows.slice(0,50).map(x=>formView(x,x.approval.decision)),
+   return{organizationId:org,campaignId,qualifications,forms:rows.slice(0,50).map(x=>formView(x,x.approval.decision)),
     submissions:submissions.slice(0,100).map(submissionView),windowCapped:rows.length>50||submissions.length>100,
     syntheticOnly:true,externalEffectsAuthorized:false};
   });
