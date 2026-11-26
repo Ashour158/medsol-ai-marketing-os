@@ -32,6 +32,13 @@ const market=()=>({
   distinctSourceHosts:2,priority:'RESEARCH_PRIORITY',freshness:'OBSERVED_WITHIN_90_DAYS'}],
  processed:3,independentVerification:false,marketSizeVerified:false
 });
+const conversion=()=>({organizationId:'tenant-1',campaignId:'campaign-1',windowCapped:false,syntheticOnly:true,externalEffectsAuthorized:false,
+ forms:[{formId:'form-1',campaignId:'campaign-1',brandId:'brand-1',approvalDecision:'APPROVED',syntheticOnly:true,publicFormHosted:false,externalEffectsAuthorized:false}],
+ submissions:[{submissionId:'submission-1',formId:'form-1',contactId:'private-fixture-id',outcome:'OUTCOME_UNKNOWN',syntheticOnly:true,
+  realConsentVerified:false,actualLeadsCreated:0,crmHandoffsExecuted:0,automaticRetryAuthorized:false,externalEffectsAuthorized:false,
+  protocolEvidence:{fixtureOnly:true,actualCrmRequests:0,verifiedRemoteReceipts:0,automaticRetryAuthorized:false,externalEffectsAuthorized:false}}],
+ qualifications:[{submissionId:'submission-1',decision:'APPROVED',independentInternalReviewRecorded:true,syntheticOnly:true,
+  realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false}]});
 describe('T8A six-engine read-only customer dossier',()=>{
  it('projects linked creative, virtual social/email, tenant-wide intelligence and reviewed KPIs without PII',()=>{
   const d=buildCustomerDeliveryDossier('tenant-1',journey(),performance(),market(),now);
@@ -55,6 +62,22 @@ describe('T8A six-engine read-only customer dossier',()=>{
   expect(json).not.toContain('private-contact-reference');
   expect(json).not.toContain('secret-provider-token');
   expect(json).not.toContain('recipientEmail');
+ });
+ it('projects bounded historical conversion and qualification counts without identifiers',()=>{
+  const d=buildCustomerDeliveryDossier('tenant-1',journey(),performance(),market(),now,conversion());
+  expect(d.pillars.conversion.syntheticLedger).toMatchObject({status:'BOUNDED_HISTORICAL_SYNTHETIC_LEDGER',
+   counts:{forms:1,approvedFormDecisions:1,submissions:1,mockAccepted:0,mockRejected:0,outcomeUnknown:1,protocolRecorded:1,
+    qualificationReviews:1,independentInternalQualificationApprovals:1},actualLeadsCreated:0,actualCrmWrites:0,realConsentVerified:false});
+  expect(JSON.stringify(d)).not.toContain('private-fixture-id');expect(JSON.stringify(d)).not.toContain('submission-1');
+  expect(buildCustomerDeliveryDossier('tenant-1',journey(),performance(),market(),now,{...conversion(),windowCapped:true}).pillars.conversion.syntheticLedger)
+   .toMatchObject({status:'WINDOW_CAPPED',counts:null});
+ });
+ it('refuses foreign, forged and disconnected conversion evidence',()=>{
+  for(const x of [{...conversion(),organizationId:'foreign'},{...conversion(),campaignId:'other'},
+   {...conversion(),externalEffectsAuthorized:true},{...conversion(),submissions:conversion().submissions.map(s=>({...s,formId:'unknown'}))},
+   {...conversion(),submissions:conversion().submissions.map(s=>({...s,crmHandoffsExecuted:1}))},
+   {...conversion(),qualifications:conversion().qualifications.map(q=>({...q,decision:'PENDING'}))}])
+   expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),performance(),market(),now,x)).toThrow('CUSTOMER_DOSSIER_BLOCKED');
  });
  it('rejects cross-campaign source mixing and falsified certification or attribution',()=>{
   expect(()=>buildCustomerDeliveryDossier('tenant-1',journey(),{
