@@ -159,8 +159,8 @@ export class SyntheticConversionService{
    if(!contact)throw new NotFoundException('Same-brand synthetic contact required');
    const duplicate=await tx.marketingConversionSubmission.findUnique({where:{organizationId_formId_contactId:{organizationId:org,formId,contactId}}});
    if(duplicate)throw new ConflictException('Synthetic contact already submitted; no automatic retry');
-   const latest=await tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId},orderBy:{sequence:'desc'}});
-   const suppressed=await tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId,action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}}});
+   const latest=await tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId,channel:'EMAIL'},orderBy:{sequence:'desc'}});
+   const suppressed=await tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId,channel:'EMAIL',action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}}});
    if(latest?.action!=='SIMULATED_OPT_IN'||suppressed)throw new ConflictException('Current synthetic opt-in and no suppression required');
    const protocolEvidence=rehearseSyntheticCrmProtocol({organizationId:org,brandId:form.brandId,campaignId:form.campaignId,
     formId,contactId,consentEventId:latest.id,payloadDigest,scenario});

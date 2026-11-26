@@ -39,8 +39,8 @@ export async function currentSyntheticLeadTarget(tx:Prisma.TransactionClient,org
   tx.campaign.findFirst({where:{organizationId:org,id:form.campaignId,brandId:form.brandId,version:form.campaignVersion,status:'APPROVED'}}),
   tx.brand.findFirst({where:{organizationId:org,id:form.brandId,status:'ACTIVE'}}),
   tx.marketingSyntheticContact.findFirst({where:{organizationId:org,id:submission.contactId,brandId:form.brandId}}),
-  tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId:submission.contactId},orderBy:{sequence:'desc'}}),
-  tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId:submission.contactId,action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}}})
+  tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId:submission.contactId,channel:'EMAIL'},orderBy:{sequence:'desc'}}),
+  tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId:submission.contactId,channel:'EMAIL',action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}}})
  ]);
  const a=form.approval;
  if(!campaign||!brand||!contact||a.objectType!=='MarketingConversionForm'||a.objectId!==form.id||
