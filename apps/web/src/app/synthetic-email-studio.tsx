@@ -36,6 +36,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
   steps:[{key:"welcome",delayMinutes:0,scenario:"ACCEPTED"},
    {key:"follow_up",delayMinutes:1440,scenario:"DELAYED_WEBHOOK"}]
  },null,2));
+ const [rewardKind,setRewardKind]=useState("EARN"),[rewardPoints,setRewardPoints]=useState("100"),[rewardEvent,setRewardEvent]=useState(""),[rewardExpiry,setRewardExpiry]=useState(""),[rewardConfirmed,setRewardConfirmed]=useState(false),[rewardResult,setRewardResult]=useState<{contactId:string;balance:number;entries:{approvalId:string;kind:string;points:number;sourceEventKey:string}[];pending:{approvalId:string;input:{kind:string;points:number};expired:boolean}[]}|null>(null);
  const [channel,setChannel]=useState("EMAIL"),[purpose,setPurpose]=useState("CAMPAIGN"),[messageScenario,setMessageScenario]=useState("MOCK_ACCEPTED"),[messageResult,setMessageResult]=useState<{status:string;syntheticEligible:number;virtualAccepted:number;virtualOutcomeUnknown:number;actualMessagesSent:number}|null>(null);
  const [result,setResult]=useState<EmailResult|null>(null);
  const [error,setError]=useState("");
@@ -280,5 +281,19 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
    {messageResult&&<p role="status">{messageResult.status} · eligible {messageResult.syntheticEligible} · virtual accepted {messageResult.virtualAccepted} · unknown {messageResult.virtualOutcomeUnknown} · actual sent {messageResult.actualMessagesSent}</p>}
   </section>}
   </>}
+  <section style={{marginTop:16,border:"1px solid #dbe4ed",padding:12,borderRadius:8}}>
+   <h4>Fictional loyalty account — independently approved points</h4>
+   <p>Choose an anonymous synthetic contact in the audience above. No cash value, real points, discounts or customer rewards.</p>
+   <label>Entry type<select style={field} value={rewardKind} disabled={busy} onChange={e=>setRewardKind(e.target.value)}><option>EARN</option><option>REDEEM</option></select></label>
+   <label>Fictional points<input type="number" min={1} max={100000} style={field} value={rewardPoints} onChange={e=>setRewardPoints(e.target.value)}/></label>
+   <label>Unique fictional source event key<input style={field} value={rewardEvent} placeholder="fixture-event-unique-key" onChange={e=>setRewardEvent(e.target.value)}/></label>
+   <label>Request expiry<input type="date" style={field} value={rewardExpiry} onChange={e=>setRewardExpiry(e.target.value)}/></label>
+   <label><input type="checkbox" checked={rewardConfirmed} onChange={e=>setRewardConfirmed(e.target.checked)}/> Fictional only; no monetary entitlement.</label>
+   <p><button style={btn} disabled={busy||!selectedContact||!rewardConfirmed||!rewardEvent||!rewardExpiry||!campaignId||!brandId} onClick={()=>void run(async()=>{
+    await call("audience/loyalty",{contactId:selectedContact,brandId,campaignId,sourceEventKey:rewardEvent,kind:rewardKind,points:Number(rewardPoints),expiresAt:new Date(rewardExpiry+"T23:59:59Z").toISOString(),fixtureOnly:true});
+    setRewardResult(await call("audience/loyalty/"+encodeURIComponent(selectedContact)) as NonNullable<typeof rewardResult>);
+   })}>Request independent reward review</button>{" "}<button style={btn} disabled={busy||!selectedContact} onClick={()=>void run(async()=>setRewardResult(await call("audience/loyalty/"+encodeURIComponent(selectedContact)) as NonNullable<typeof rewardResult>))}>Read fictional balance</button></p>
+   {rewardResult?.contactId===selectedContact&&<><p role="status">Approved fictional balance: {rewardResult.balance} points.</p><ul>{rewardResult.entries.map(e=><li key={e.approvalId}>{e.kind} {e.points} · {e.sourceEventKey}</li>)}</ul><p>Pending reviews</p><ul>{rewardResult.pending.map(e=><li key={e.approvalId}>{e.input.kind} {e.input.points} · {e.expired?"expired":"pending"} · {e.approvalId}</li>)}</ul></>}
+  </section>
  </details>;
 }

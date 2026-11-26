@@ -1,0 +1,3 @@
+# T1 WF26 — fictional points ledger
+
+Existing synthetic contact and canonical ApprovalService own the ledger. An exact independently approved synthetic earn/redeem entry is immutable by fixture key; approved rows are the authoritative ledger, not a second balance table. Decision-time contact locking and current campaign scope enforce nonnegative bounded balances and reject concurrent over-redemption. No real points, cash, discounts, actual reward entitlement, communication or liability. No extra tenant table. Unit and real PostgreSQL concurrent approval, replay, and cross-tenant cases plus audience UI. Full CI required; production rewards and independent acceptance remain separate.

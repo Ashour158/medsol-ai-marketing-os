@@ -8,6 +8,7 @@ import {assertSyntheticEmailScenario,simulateSyntheticEmailTransport} from './sy
 import {parseSyntheticJourney,syntheticJourneyDigest,simulateSyntheticJourney} from './synthetic-email-journey.js';
 import {normalizeSyntheticProviderFeedback,type SyntheticProviderFeedback} from './synthetic-provider-feedback.js';
 import {senderDomainFixture} from './synthetic-sender-domain.js';
+import {LOYALTY,normalizeLoyalty,loyaltyId,readLoyalty,buildLoyalty,loyaltyBalance} from './synthetic-loyalty.js';
 
 /** R2H: first bounded synthetic-only Audience/Consent & Email simulation
  * authority. It stores NO actual email addresses, legal consent, send tokens,
@@ -336,6 +337,33 @@ export class SyntheticAudienceEmailService{
    await tx.commandReceipt.create({data:{organizationId,commandId,commandType:'SyntheticMessageRehearsal',correlationId:commandId,status:'COMPLETED',response:result}});
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:identity.userId,action:'SYNTHETIC_MESSAGE_REHEARSAL_RECORDED',objectType:'Campaign',objectId:campaignId,correlationId:commandId,after:result}});
    return{...result,rehearsalId:commandId,replayed:false};
+  });
+ }
+ async proposeLoyalty(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  const input=normalizeLoyalty(raw),approvalId=loyaltyId(organizationId,input.sourceEventKey);
+  return this.scoped(organizationId,async tx=>{
+   await this.administrator(tx,organizationId,identity);
+   const prior=await tx.approval.findFirst({where:{organizationId,id:approvalId}});
+   if(prior){
+    const s=readLoyalty(prior);
+    if(s.requestedBy!==identity.userId||JSON.stringify(s.input)!==JSON.stringify(input))throw new ConflictException('Duplicate reward fixture with changed scope');
+    return{approvalId,decision:prior.decision,...s,replayed:true};
+   }
+   const {scope,scopeDigest}=await buildLoyalty(tx,organizationId,identity.userId,input,new Date());
+   await tx.approval.create({data:{id:approvalId,organizationId,objectType:LOYALTY,objectId:input.contactId,requestedBy:identity.userId,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',scope,scopeDigest,scopeExpiresAt:new Date(input.expiresAt)}});
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:identity.userId,action:'SYNTHETIC_LOYALTY_PROPOSED',objectType:LOYALTY,objectId:input.contactId,correlationId:approvalId,after:{scopeDigest,externalEffectsAuthorized:false}}});
+   return{approvalId,decision:'PENDING',...scope,replayed:false};
+  });
+ }
+ async readLoyaltyAccount(organizationId:string,identity:VerifiedIdentity,contactIdInput:unknown){
+  const contactId=refId(contactIdInput,'contact');
+  return this.scoped(organizationId,async tx=>{
+   await this.administrator(tx,organizationId,identity);
+   const contact=await tx.marketingSyntheticContact.findFirst({where:{organizationId,id:contactId}});
+   if(!contact)throw new NotFoundException('Synthetic contact not found');
+   const ledger=await loyaltyBalance(tx,organizationId,contactId);
+   const pending=await tx.approval.findMany({where:{organizationId,objectType:LOYALTY,objectId:contactId,decision:'PENDING'},orderBy:{createdAt:'desc'},take:101});
+   return{contactId,brandId:contact.brandId,...ledger,pending:pending.slice(0,100).map(a=>({approvalId:a.id,...readLoyalty(a),expired:!!a.scopeExpiresAt&&a.scopeExpiresAt<=new Date()})),pendingWindowCapped:pending.length>100,syntheticOnly:true,realPointsIssued:0,financialLiabilityCreated:false,externalEffectsAuthorized:false};
   });
  }
  async listMessageRehearsals(organizationId:string,identity:VerifiedIdentity){
