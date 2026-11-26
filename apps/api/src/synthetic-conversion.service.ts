@@ -6,7 +6,7 @@ import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.ser
 import type {VerifiedIdentity} from './oidc-identity.js';
 import {SYNTHETIC_LEAD_REVIEW,currentSyntheticLeadTarget,syntheticQualificationScope,matchSyntheticQualification} from './synthetic-lead-qualification.js';
 import {parseCrmFixtureScenario,rehearseSyntheticCrmProtocol} from './synthetic-crm-protocol.js';
-import {retryAbortedSyntheticSubmission} from './synthetic-submission-transaction.js';
+import {retryAbortedSyntheticConversion} from './synthetic-submission-transaction.js';
 const digest=(v:unknown[])=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 function object(v:unknown,keys:readonly string[]){
  if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k)))
@@ -43,10 +43,10 @@ export class SyntheticConversionService{
  constructor(private readonly db:PrismaService){}
  private transaction<T>(org:string,identity:VerifiedIdentity,permission:'READ_AUDIT'|'MANAGE_CAMPAIGN'|'SUBMIT_EVIDENCE',work:(tx:Tx)=>Promise<T>){
   if(!identity||identity.organizationId!==org)throw new ForbiddenException('Verified conversion actor required');
-  return withMarketingTenant(this.db,org,async tx=>{
+  return retryAbortedSyntheticConversion(()=>withMarketingTenant(this.db,org,async tx=>{
    await assertActorPermissionInTenantTransaction(tx,identity,permission);
    return work(tx);
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable}));
  }
  private async campaign(tx:Tx,org:string,campaignId:string,brandId:string,version?:number){
   const c=await tx.campaign.findFirst({where:{organizationId:org,id:campaignId,brandId,status:'APPROVED',
@@ -141,7 +141,7 @@ export class SyntheticConversionService{
    throw new BadRequestException('Exact form digest, explicit mock CRM purpose and known mock transport required');
   let scenario;try{scenario=parseCrmFixtureScenario(r.mockTransport);}catch{throw new BadRequestException('Known mock CRM transport required');}
   const payloadDigest=digest(['medsol-synthetic-submission-v1',org,formId,contactId,r.formDigest,scenario]);
-  try{return await retryAbortedSyntheticSubmission(()=>this.transaction(org,identity,'SUBMIT_EVIDENCE',async tx=>{
+  try{return await this.transaction(org,identity,'SUBMIT_EVIDENCE',async tx=>{
    const prior=await tx.marketingConversionSubmission.findUnique({where:{organizationId_requestKey:{organizationId:org,requestKey}}});
    if(prior){
     if(prior.payloadDigest!==payloadDigest)throw new ConflictException('Submission key reused with changed evidence');
@@ -171,7 +171,7 @@ export class SyntheticConversionService{
     action:'SYNTHETIC_CONVERSION_RECORDED',objectType:'MarketingConversionSubmission',objectId:row.id,
     correlationId:row.id,after:{formId,outcome,protocolEvidence,syntheticOnly:true,externalEffectsAuthorized:false,automaticRetryAuthorized:false}}});
    return{...submissionView(row),replayed:false};
-  }));}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
+  });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
    throw new ConflictException('Concurrent submission; refresh before retry');throw e;}
  }
 }
