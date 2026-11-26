@@ -10,8 +10,29 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  alpha-lock:
+    name: Exact reviewed Alpha dependency candidate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require committed dependency lockfile
+        run: |
+          git ls-files --error-unmatch pnpm-lock.yaml
+          test -s pnpm-lock.yaml
+          sha256sum pnpm-lock.yaml > alpha-lockfile.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: |
+            pnpm-lock.yaml
+            alpha-lockfile.sha256
+          if-no-files-found: error
+          retention-days: 30
   verify:
     name: verify
+    needs: alpha-lock
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -43,8 +64,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Load same-run reviewed lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: .
+      - name: Verify dependency candidate hash
+        run: sha256sum -c alpha-lockfile.sha256
       - name: Install
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Check free GitHub Codespaces offline port and manual CI policies
         run: node --test scripts/quality/t7c-free-github.nodecheck.mjs
       - name: Generate Prisma client
@@ -422,6 +450,7 @@ jobs:
 
   security-evidence:
     name: dependency audit and SBOM evidence
+    needs: alpha-lock
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -435,8 +464,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Load same-run reviewed lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: .
+      - name: Verify dependency candidate hash
+        run: sha256sum -c alpha-lockfile.sha256
       - name: Install dependencies for security inspection
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Generate SPDX software bill of materials
         id: sbom
         continue-on-error: true
@@ -468,3 +504,68 @@ jobs:
             dependency-audit.json
             dependency-audit.stderr
             dependency-audit.exitcode
+
+      - name: Block Alpha candidate on high or critical audit findings or missing scanner evidence
+        if: always()
+        run: |
+          node --test scripts/quality/alpha-dependency-gate.test.mjs
+          node --test scripts/quality/alpha-release-decision.test.mjs
+          node scripts/quality/alpha-dependency-gate.mjs
+
+  alpha-packaging:
+    name: Alpha offline image packaging rehearsal
+    needs: alpha-lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Load same-run reviewed lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: medsol-alpha-reviewed-lock-${{ github.run_id }}
+          path: .
+      - name: Verify dependency candidate hash
+        run: sha256sum -c alpha-lockfile.sha256
+      - name: Build local API and web images with immutable base
+        run: |
+          base='node@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb'
+          docker pull "$base"
+          [[ "$base" =~ @sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$base" > alpha-base-image.txt
+          for target in api web; do
+            docker build --file infra/staging/Dockerfile --build-arg "NODE_IMAGE=$base" --target "$target" --tag "medsol-alpha-$target:ci" .
+            docker image inspect "medsol-alpha-$target:ci" --format '{{.Id}} {{.Config.User}}' > "alpha-$target-image.txt"
+            test "$(docker image inspect "medsol-alpha-$target:ci" --format '{{.Config.User}}')" = node
+          done
+      - name: Verify compiled artifacts with zero container network
+        run: |
+          docker run --rm --network none --read-only --entrypoint node medsol-alpha-api:ci -e "const fs=require('node:fs'); if(process.getuid()===0||!fs.existsSync('dist/main.js')||!require.resolve('@prisma/client')||process.env.MARKETING_EXTERNAL_EFFECTS_ENABLED!=='false')process.exit(1)"
+          docker run --rm --network none --read-only --entrypoint node medsol-alpha-web:ci -e "const fs=require('node:fs'); if(process.getuid()===0||!fs.existsSync('.next/BUILD_ID')||!require.resolve('next')||process.env.MARKETING_REAL_EMAIL_ENABLED!=='false')process.exit(1)"
+          printf '%s\n' 'PACKAGING_ONLY_NOT_DEPLOYED_NOT_CERTIFIED' > alpha-packaging-status.txt
+      - name: Rehearse actual packaged application startup and durable volume replacement
+        run: bash infra/staging/alpha-container-rehearsal.sh
+      - name: Preserve local build provenance and candidate lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-alpha-packaging-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            pnpm-lock.yaml
+            alpha-lockfile.sha256
+            alpha-base-image.txt
+            alpha-api-image.txt
+            alpha-web-image.txt
+            alpha-packaging-status.txt
+            alpha-container-rehearsal-status.txt
+            alpha-postgres-image.txt
