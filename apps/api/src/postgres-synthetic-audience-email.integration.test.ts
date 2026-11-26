@@ -127,6 +127,24 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
    expect((await synthetic.listSyntheticContacts(org,identity,brandId,'WHATSAPP')).find(x=>x.contactId===eligible)).toMatchObject({effectiveSyntheticEligibility:'COMPLAINT_SUPPRESSED'});
    expect((await synthetic.listMessageRehearsals(org,identity)).rehearsals).toHaveLength(3);
    await expect(synthetic.rehearseMessage(foreign,identity,message)).rejects.toThrow('Verified tenant');
+   const loyaltyReviewer='r2h-loyalty-'+randomUUID();
+   await db.user.create({data:{id:loyaltyReviewer,organizationId:org,email:loyaltyReviewer+'@example.invalid',name:'Independent Loyalty Reviewer',role:'ADMIN',oidcSubject:'oidc-'+loyaltyReviewer}});
+   const reward={brandId,campaignId:campaign.campaignId,contactId:eligible!,sourceEventKey:'fixture-'+randomUUID(),kind:'EARN',points:100,expiresAt:new Date(Date.now()+86400000).toISOString(),fixtureOnly:true};
+   const decideReward=(approvalId:string,approverUserId=loyaltyReviewer)=>approvals.approve({organizationId:org,approvalId,approverUserId,decision:'APPROVED',commandId:randomUUID(),correlationId:randomUUID(),rationale:'Independent fictional reward approval'});
+   const earn=await synthetic.proposeLoyalty(org,identity,reward);
+   expect(earn).toMatchObject({decision:'PENDING',realPointsIssued:0,financialLiabilityCreated:false});
+   expect((await synthetic.readLoyaltyAccount(org,identity,eligible!)).balance).toBe(0);
+   await expect(decideReward(earn.approvalId,reviewer)).rejects.toThrow('Independent OIDC loyalty');
+   await decideReward(earn.approvalId);
+   expect(await synthetic.proposeLoyalty(org,identity,reward)).toMatchObject({approvalId:earn.approvalId,replayed:true,decision:'APPROVED'});
+   await expect(synthetic.proposeLoyalty(org,identity,{...reward,points:200})).rejects.toThrow('Duplicate reward fixture');
+   const redeem=await synthetic.proposeLoyalty(org,identity,{...reward,sourceEventKey:'fixture-'+randomUUID(),kind:'REDEEM',points:60});
+   const concurrent=await synthetic.proposeLoyalty(org,identity,{...reward,sourceEventKey:'fixture-'+randomUUID(),kind:'REDEEM',points:60});
+   const attempts=await Promise.allSettled([decideReward(redeem.approvalId),decideReward(concurrent.approvalId)]);
+   expect(attempts.filter(x=>x.status==='fulfilled')).toHaveLength(1);
+   expect(await synthetic.readLoyaltyAccount(org,identity,eligible!)).toMatchObject({balance:40,realPointsIssued:0,financialLiabilityCreated:false,externalEffectsAuthorized:false});
+   await expect(synthetic.readLoyaltyAccount(foreign,identity,eligible!)).rejects.toThrow('audience administrator');
+   await expect(synthetic.proposeLoyalty(org,identity,{...reward,sourceEventKey:'fixture-'+randomUUID(),contactId:'foreign'})).rejects.toThrow('same-brand synthetic contact');
    const replay=await synthetic.simulateEmailJourney(org,identity,audience);
    expect(replay).toMatchObject({simulationId:simulated.simulationId,replayed:true});
    const ambiguous=await synthetic.simulateEmailJourney(org,identity,{
