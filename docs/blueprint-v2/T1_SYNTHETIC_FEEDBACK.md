@@ -1,0 +1,3 @@
+# Tranche 1 WF38 — synthetic customer feedback rehearsal
+
+Reuses canonical E35 cohort screening and MarketingLearningService's existing immutable, tenant-isolated knowledge documents, maker-checker review, expiry, and scrub/revoke. Input is a bounded taxonomy of 1–100 synthetic fixture counts for an active tenant brand, never raw customer records. The stored artifact contains only suppressed aggregate theme counts, cohort size and an immutable synthetic input fingerprint. No agent access, legal consent or real collection asserted; no external effects. Studio and real PostgreSQL test exercise creation, replay, changed-input rejection, review and revocation. No survey or CRM connection and no real customer research acceptance. Remains a candidate until full CI/merge.

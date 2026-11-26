@@ -180,6 +180,23 @@ describe('R3-H authoritative knowledge fabric integration',()=>{
    const revoked=(await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===profile.id);
    expect(revoked).toMatchObject({status:'REVOKED'});expect(revoked).not.toHaveProperty('businessProfile');
    expect((await service.contextForAgent(org,'MKT-BRAND-001','proteomics reagents')).results).toHaveLength(0);
+   const brandId='feedback-'+randomUUID();
+   await db.brand.create({data:{id:brandId,organizationId:org,name:'Synthetic feedback brand',slug:'synthetic-feedback',createdBy:creator,status:'ACTIVE'}});
+   const counts={PRODUCT_QUALITY:0,ONBOARDING:0,PRICE_VALUE:0,SUPPORT:5,USABILITY:2,TRUST:0,FEATURE_REQUEST:0,DELIVERY:0,OTHER:0};
+   const fixture={sourceKey:'synthetic-feedback-'+randomUUID(),syntheticFeedback:{brandId,fixtureOnly:true,counts},
+    expiresAt:new Date(Date.now()+30*86400000).toISOString(),accessMode:'REVIEWERS_ONLY'};
+   const feedback=await service.ingestKnowledge(org,author,fixture);
+   expect(feedback).toMatchObject({status:'QUARANTINED',chunkCount:1});
+   expect(await service.ingestKnowledge(org,author,fixture)).toMatchObject({id:feedback.id,replayed:true});
+   await expect(service.ingestKnowledge(org,author,{...fixture,syntheticFeedback:{...fixture.syntheticFeedback,counts:{...counts,USABILITY:3}}})).rejects.toThrow('Immutable source key');
+   await expect(service.ingestKnowledge(org,author,{...fixture,sourceKey:'synthetic-feedback-'+randomUUID(),syntheticFeedback:{...fixture.syntheticFeedback,brandId:'foreign'}})).rejects.toThrow('Active tenant brand');
+   await expect(service.reviewKnowledge(org,author,feedback.id,'REVIEW','Do not allow synthetic cohort self review')).rejects.toThrow('Independent');
+   await service.reviewKnowledge(org,reviewer,feedback.id,'REVIEW','Independent synthetic fixture cohort review');
+   expect((await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===feedback.id)).toMatchObject({feedbackReviewStatus:'REVIEWED',syntheticFeedback:{fixtureOnly:true,realCustomerData:false,themeCounts:{SUPPORT:5},cohortSize:7}});
+   expect((await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===feedback.id)?.syntheticFeedback?.themeCounts).not.toHaveProperty('USABILITY');
+   expect((await service.contextForAgent(org,'MKT-SOC-001','synthetic feedback support')).results).toHaveLength(0);
+   await service.revokeKnowledge(org,reviewer,feedback.id,'Withdraw synthetic cohort from all retrieval');
+   expect((await service.knowledgeDocuments(org,reviewer)).find(d=>d.id===feedback.id)).not.toHaveProperty('syntheticFeedback');
   }finally{await db.$disconnect();}
  },90000);
  it('centralizes OIDC authority for evidence, learning and zero-network search',()=>{

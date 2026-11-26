@@ -5,7 +5,10 @@ type Identity={userId:string;organizationId:string;role:string};
 type BusinessProfile={name:string;industry:string;offerings:string;audience:string;territories:string;differentiators:string};
 const emptyProfile:BusinessProfile={name:'',industry:'',offerings:'',audience:'',territories:'',differentiators:''};
 const profileFields=[['name','Business name',60],['industry','Industry',60],['offerings','Offerings',100],['audience','Audience',100],['territories','Territories',80],['differentiators','Differentiators',120]] as const;
-type Document={id:string;sourceKey:string;title:string;status:string;
+const feedbackThemes=['PRODUCT_QUALITY','ONBOARDING','PRICE_VALUE','SUPPORT','USABILITY','TRUST','FEATURE_REQUEST','DELIVERY','OTHER'] as const;
+type FeedbackCounts=Record<typeof feedbackThemes[number],number>;
+const initialFeedback=Object.fromEntries(feedbackThemes.map(t=>[t,0])) as FeedbackCounts;
+type Document={syntheticFeedback?:{brandId:string;cohortSize:number;themeCounts:Partial<FeedbackCounts>};feedbackReviewStatus?:string;id:string;sourceKey:string;title:string;status:string;
  accessMode:string;agentScope:string[];contentDigest:string;
  sourceUrl:string|null;reviewedBy:string|null;businessProfile?:BusinessProfile;profileReviewStatus?:string;profileAuthoritative?:false;sourceType?:string;governedSourceEvidence?:null|{rightsBasis:string;scope:string;permissionExpiresAt:string;permissionReference:string;legalRightsVerified:false}};
 type Result={results:Array<{citationRef:string;snippet:string;
@@ -18,6 +21,8 @@ const button={background:"#124d83",color:"#fff",border:0,
 export default function KnowledgeFabricStudio({identity}:{identity:Identity|null}){
  const [docs,setDocs]=useState<Document[]>([]);
  const [profile,setProfile]=useState<BusinessProfile>(emptyProfile),[profileUrl,setProfileUrl]=useState(''),[profileExpiry,setProfileExpiry]=useState(''),[profileKey,setProfileKey]=useState(''),[profileAgents,setProfileAgents]=useState(false),[profileAttested,setProfileAttested]=useState(false);
+ const [feedbackCounts,setFeedbackCounts]=useState<FeedbackCounts>(initialFeedback),[feedbackBrand,setFeedbackBrand]=useState(''),[feedbackKey,setFeedbackKey]=useState(''),[feedbackExpiry,setFeedbackExpiry]=useState(''),[feedbackConfirmed,setFeedbackConfirmed]=useState(false);
+ const feedbackTotal=Object.values(feedbackCounts).reduce((a,b)=>a+b,0);
  const [sourceKey,setSourceKey]=useState("");
  const [title,setTitle]=useState("");
  const [content,setContent]=useState("");
@@ -87,6 +92,21 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
     setLast(await call('',{sourceKey:key,businessProfile:profile,businessProfileAttested:profileAttested,sourceUrl:profileUrl,expiresAt:new Date(profileExpiry+'T23:59:59Z').toISOString(),accessMode:profileAgents?'AGENT_SCOPED':'REVIEWERS_ONLY',agentScope:profileAgents?['MKT-BRAND-001','MKT-STR-001','MKT-CMO-001']:[]}));
     await refresh();
    })}>Submit business profile to quarantine</button>
+  </fieldset>}
+  {isAdmin&&<fieldset style={{border:'1px solid #cbd5e1',padding:12,marginBottom:15}}>
+   <legend>Customer feedback · synthetic research rehearsal</legend>
+   <p>Fixture counts only. Do not enter real customer information. Small theme counts are suppressed and no agent or external channel can access this cohort.</p>
+   <label>Active tenant brand ID<input style={field} value={feedbackBrand} disabled={busy} onChange={e=>{setFeedbackBrand(e.target.value);setFeedbackKey('');}}/></label>
+   <label>Expiry within 90 days<input type="date" style={field} value={feedbackExpiry} disabled={busy} onChange={e=>{setFeedbackExpiry(e.target.value);setFeedbackKey('');}}/></label>
+   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8}}>
+    {feedbackThemes.map(t=><label key={t}>{t.replaceAll('_',' ')}<input type="number" min={0} max={100} step={1} style={field} value={feedbackCounts[t]} disabled={busy} onChange={e=>{setFeedbackCounts(p=>({...p,[t]:Number(e.target.value)}));setFeedbackKey('');}}/></label>)}
+   </div>
+   <p>Fixture cohort size: {feedbackTotal} / 100</p>
+   <label><input type="checkbox" checked={feedbackConfirmed} disabled={busy} onChange={e=>setFeedbackConfirmed(e.target.checked)}/> Only synthetic fixture counts, no real survey or customer evidence.</label>
+   <button style={button} disabled={busy||!feedbackConfirmed||!feedbackBrand||!feedbackExpiry||feedbackTotal<1||feedbackTotal>100||Object.values(feedbackCounts).some(n=>!Number.isInteger(n)||n<0||n>100)} onClick={()=>void task(async()=>{
+    const key=feedbackKey||'synthetic-feedback-'+crypto.randomUUID();setFeedbackKey(key);
+    setLast(await call('',{sourceKey:key,syntheticFeedback:{brandId:feedbackBrand,fixtureOnly:true,counts:feedbackCounts},expiresAt:new Date(feedbackExpiry+'T23:59:59Z').toISOString(),accessMode:'REVIEWERS_ONLY'}));await refresh();
+   })}>Quarantine synthetic feedback cohort</button>
   </fieldset>}
   {isAdmin&&<div>
    <h4>Quarantine a new source</h4>
@@ -180,7 +200,7 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
      <th align="left">Agent scope</th><th align="left">Governance</th></tr></thead>
     <tbody>{docs.map(doc=><tr key={doc.id}>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
-      <strong>{doc.title}</strong><div>{doc.sourceKey}</div>{doc.businessProfile&&<details><summary>Business profile · {doc.profileReviewStatus} · not authoritative</summary><dl>{profileFields.map(([key,label])=><div key={key}><dt>{label}</dt><dd>{doc.businessProfile?.[key]}</dd></div>)}</dl></details>}{doc.governedSourceEvidence&&<small>Declared {doc.governedSourceEvidence.rightsBasis} · {doc.governedSourceEvidence.scope} · expiry {doc.governedSourceEvidence.permissionExpiresAt} · rights reference {doc.governedSourceEvidence.permissionReference} · not legally verified</small>}</td>
+      <strong>{doc.title}</strong><div>{doc.sourceKey}</div>{doc.businessProfile&&<details><summary>Business profile · {doc.profileReviewStatus} · not authoritative</summary><dl>{profileFields.map(([key,label])=><div key={key}><dt>{label}</dt><dd>{doc.businessProfile?.[key]}</dd></div>)}</dl></details>}{doc.syntheticFeedback&&<details><summary>Synthetic feedback · {doc.feedbackReviewStatus} · {doc.syntheticFeedback.cohortSize} fixtures</summary><p>Brand {doc.syntheticFeedback.brandId}; no real customer evidence.</p>{Object.entries(doc.syntheticFeedback.themeCounts).map(([theme,count])=><p key={theme}>{theme}: {count}</p>)}<small>Theme counts below five are suppressed.</small></details>}{doc.governedSourceEvidence&&<small>Declared {doc.governedSourceEvidence.rightsBasis} · {doc.governedSourceEvidence.scope} · expiry {doc.governedSourceEvidence.permissionExpiresAt} · rights reference {doc.governedSourceEvidence.permissionReference} · not legally verified</small>}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>{doc.status}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
       {doc.accessMode==="REVIEWERS_ONLY"?"Reviewers only":doc.agentScope.join(", ")}</td>

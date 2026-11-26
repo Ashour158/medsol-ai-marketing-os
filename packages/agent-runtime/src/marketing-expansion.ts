@@ -90,7 +90,7 @@ export function reviewSearchDiscovery(organizationId:string,raw:unknown,asOf=new
   ...(structuredDataDraft?{structuredDataDraft}:{})};
 }
 
-const FEEDBACK_THEMES=['PRODUCT_QUALITY','ONBOARDING','PRICE_VALUE','SUPPORT','USABILITY',
+export const FEEDBACK_THEMES=['PRODUCT_QUALITY','ONBOARDING','PRICE_VALUE','SUPPORT','USABILITY',
  'TRUST','FEATURE_REQUEST','DELIVERY','OTHER'] as const;
 type FeedbackTheme=typeof FEEDBACK_THEMES[number];
 const FEEDBACK_SOURCES=['FIRST_PARTY_SURVEY','AUTHORIZED_CRM','SUPPORT_CASE',
