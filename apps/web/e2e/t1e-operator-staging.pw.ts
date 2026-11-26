@@ -43,7 +43,7 @@ async function provisionedSession(request:APIRequestContext,persona:Persona){
  expect(user.status(),await user.text()).toBe(201);
  return{token:issued.token,sessionId:(await user.json()).sessionId,expiresAt};
 }
-test('T1E-001 real browser self-hosted staging OIDC login binds signed subject and org to DB',async({page})=>{
+test('T1E-001 real browser self-hosted staging OIDC login binds signed subject and org to DB',async({page},testInfo)=>{
  await login(page);
  const me=await bff(page,'me');
  expect(me.status).toBe(200);
@@ -56,6 +56,7 @@ test('T1E-001 real browser self-hosted staging OIDC login binds signed subject a
  expect(cookie?.value.split('.')).toHaveLength(5);
  const overview=page.getByRole('region',{name:'Executive overview'});
  await expect(overview).toBeVisible();
+ await testInfo.attach('alpha-desktop-overview',{body:await page.screenshot(),contentType:'image/png'});
  const nav=page.getByRole('navigation',{name:'Marketing workspaces'});
  await nav.getByRole('link',{name:'Agent brain & plans'}).click();
  await expect(page.locator('#portfolio')).toBeHidden();
@@ -65,6 +66,7 @@ test('T1E-001 real browser self-hosted staging OIDC login binds signed subject a
  await expect(map.locator('button[aria-pressed]')).toHaveCount(13);
  await map.locator('button[aria-pressed]').last().click();
  await expect(map.locator('button[aria-pressed=true]')).toHaveCount(1);
+ await testInfo.attach('alpha-agent-network',{body:await page.screenshot(),contentType:'image/png'});
  await nav.getByRole('link',{name:'Signed Agent Studio'}).click();
  await expect(page.locator('#agent-brain')).toBeHidden();
  await page.getByRole('button',{name:'Load canonical agents and releases'}).click();
@@ -74,6 +76,12 @@ test('T1E-001 real browser self-hosted staging OIDC login binds signed subject a
  await nav.getByRole('link',{name:'Sign in & organization'}).click();
  await expect(page.locator('#identity')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(392);
+ const search=nav.getByRole('searchbox',{name:'Find workspace'});
+ await search.focus();
+ await page.keyboard.type('workflow');
+ await expect(nav.getByRole('link',{name:'Workflow Studio',exact:true})).toBeVisible();
+ await search.fill('');
+ await testInfo.attach('alpha-mobile-identity',{body:await page.screenshot(),contentType:'image/png'});
  await nav.getByRole('button',{name:'Show all workspaces'}).click();
  await expect(overview).toBeVisible();
  await expect(page.locator('#portfolio')).toBeVisible();
