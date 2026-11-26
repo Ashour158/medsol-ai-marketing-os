@@ -1,0 +1,3 @@
+# T1 — persistent offline silent video
+
+Canonical CreativeAssetRevision stores a bounded locally encoded WebM as a new immutable revision of an exact timed storyboard. Signature/DocType and SHA-256 readback are verified through the existing VerifiedMediaEvidence owner. Independent human comparison requires exact frame and video digests plus current readback. A separate OFFLINE_DB_VIDEO origin, database shape and publication-denial constraints prevent false remote provenance. Browser encoding, playable local readback and export are covered by real-browser regression; DB tests use an explicitly nondecoded header fixture. No audio production, full independent decoding, legal rights, provider release or real egress. Full CI and merge required.

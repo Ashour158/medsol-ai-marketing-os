@@ -69,7 +69,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length===2&&id==="evidence"&&request.method==="GET") ||
         (path.length===3&&id==="evidence"&&!!action&&request.method==="GET") ||
         (path.length===4&&id==="evidence"&&!!action&&
-          ["revoke","verify-offline"].includes(operation??"")&&
+          ["revoke","verify-offline","verify-motion-video"].includes(operation??"")&&
           request.method==="POST")
       )) ||
       (resource === "publications" && !(
@@ -87,12 +87,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
           (path.length===2 && !!id) ||
           (path.length===3 && id==="approvals" && !!action) ||
           (path.length===4 && id==="revisions" && !!action &&
-            ["offline-preview","layered-preview"].includes(operation??"")))) ||
+            ["offline-preview","layered-preview","motion-video-preview"].includes(operation??"")))) ||
         (request.method==="POST" && (
           path.length===1 ||
           (path.length===2 && id==="offline-raster") ||
           (path.length===3 && !!id && id!=="revisions" &&
-            (action==="revisions"||action==="offline-revisions"||action==="offline-layered-revisions")) ||
+            (action==="revisions"||action==="offline-revisions"||action==="offline-layered-revisions"||action==="offline-motion-video")) ||
           (path.length===4 && id==="revisions" && !!action &&
              (operation==="rights-review" || operation==="submit-approval"))
         ))

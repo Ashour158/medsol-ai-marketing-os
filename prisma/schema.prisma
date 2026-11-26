@@ -661,6 +661,7 @@ model CreativeAssetRevision {
   renditionDigest String
   /** Offline-only PNG bytes stored only for disposable simulations; no remote asset rights. */
   offlineRasterBase64 String?
+  offlineMotionVideoBase64 String?
   /** Editable text copy; PNG remains a flattened export, never a layered design source. */
   offlineEditableCopy String?
   offlineLayeredSpec Json?

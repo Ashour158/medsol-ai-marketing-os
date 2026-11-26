@@ -1,5 +1,6 @@
 import {renderOfflineLayeredSpec} from './offline-layered-design.js';
 import {inspectLayeredDraftQuality} from './layered-draft-quality.js';
+import {offlineWebmBytes} from './offline-webm.js';
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID,createHash} from 'node:crypto';
@@ -305,6 +306,47 @@ export class CreativeAssetService{
   });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
    throw new ConflictException('Concurrent layered revision; refresh before retry');throw e;}
  }
+ async saveOfflineMotionVideo(org:string,actorId:string,assetIdInput:unknown,raw:unknown){
+  const assetId=ident(assetIdInput,'asset'),actor=ident(actorId,'actor');
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='expectedVersion,parentRevisionId,requestKey,rightsExpiresAt,sourceDigest,videoBase64')
+   throw new BadRequestException('Exact offline motion rendition required');
+  const v=raw as Record<string,unknown>,parentId=ident(v.parentRevisionId,'parent revision'),requestKey=ident(v.requestKey,'motion command key');
+  const sourceDigest=clean(v.sourceDigest,'source digest',71),expiry=date(v.rightsExpiresAt,'review expiry',730),expected=v.expectedVersion;
+  if(!/^sha256:[a-f0-9]{64}$/.test(sourceDigest)||!Number.isSafeInteger(expected)||Number(expected)<1)throw new BadRequestException('Current exact motion source required');
+  const bytes=offlineWebmBytes(v.videoBase64),renditionDigest='sha256:'+createHash('sha256').update(bytes).digest('hex');
+  const commandId='offline-motion-'+requestKey,requestDigest='sha256:'+createHash('sha256').update(JSON.stringify([org,actor,assetId,parentId,expected,sourceDigest,renditionDigest,expiry.toISOString()])).digest('hex');
+  return this.scoped(org,async tx=>{
+   const prior=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:org,commandId}}});
+   if(prior){const saved=prior.response as Record<string,unknown>|null;if(prior.commandType!=='SaveOfflineMotionVideo'||saved?.requestDigest!==requestDigest)throw new ConflictException('Motion command reused with changed scope');return{...saved,replayed:true};}
+   const asset=await tx.creativeAsset.findFirst({where:{organizationId:org,id:assetId,status:'ACTIVE'}});
+   if(!asset||asset.version!==expected)throw new ConflictException('Current active motion asset required');
+   const parent=await tx.creativeAssetRevision.findFirst({where:{organizationId:org,id:parentId,assetId,version:Number(expected)}});
+   if(!parent?.offlineLayeredSpec||parent.offlineLayeredSourceDigest!==sourceDigest)throw new ConflictException('Exact current motion parent required');
+   const design=renderOfflineLayeredSpec(parent.offlineLayeredSpec);
+   if(!design.motionFrames||design.sourceDigest!==sourceDigest||design.renditionDigest!==parent.renditionDigest)throw new ConflictException('Exact timed storyboard required');
+   const brand=await tx.brand.findFirst({where:{organizationId:org,id:asset.brandId,status:'ACTIVE'}});
+   if(!brand)throw new ConflictException('Active tenant brand required');
+   if((await tx.creativeAsset.updateMany({where:{organizationId:org,id:assetId,version:Number(expected),status:'ACTIVE'},data:{version:{increment:1}}})).count!==1)throw new ConflictException('Concurrent motion revision');
+   const revisionId=randomUUID();
+   await tx.creativeAssetRevision.create({data:{id:revisionId,organizationId:org,assetId,version:Number(expected)+1,sourceKind:'FLATTENED_EXPORT',sourceRef:'internal:creative-source/motion/'+revisionId,renditionDigest,offlineMotionVideoBase64:v.videoBase64 as string,offlineRenditionParentRevisionId:parentId,offlineRenditionSourceDigest:sourceDigest,rightsExpiresAt:expiry,createdBy:actor}});
+   const receipt={assetId,revisionId,version:Number(expected)+1,parentRevisionId:parentId,sourceDigest,renditionDigest,requestDigest,offlineOnly:true,videoEncodingVerified:false,releaseAuthorized:false,externalEffectsAuthorized:false};
+   await tx.commandReceipt.create({data:{organizationId:org,commandId,commandType:'SaveOfflineMotionVideo',correlationId:revisionId,status:'COMPLETED',response:receipt}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:actor,action:'OFFLINE_MOTION_VIDEO_SAVED',objectType:'CreativeAssetRevision',objectId:revisionId,correlationId:revisionId,after:receipt}});
+   return{...receipt,replayed:false};
+  });
+ }
+ async offlineMotionVideoPreview(org:string,revisionInput:unknown){
+  const id=ident(revisionInput,'revision');
+  return this.scoped(org,async tx=>{
+   const r=await tx.creativeAssetRevision.findFirst({where:{organizationId:org,id,sourceRef:{startsWith:'internal:creative-source/motion/'}}});
+   if(!r?.offlineMotionVideoBase64||!r.offlineRenditionParentRevisionId)throw new NotFoundException('Offline motion video not found in tenant');
+   const bytes=offlineWebmBytes(r.offlineMotionVideoBase64);
+   if('sha256:'+createHash('sha256').update(bytes).digest('hex')!==r.renditionDigest)throw new ConflictException('Stored video digest mismatch');
+   const asset=await tx.creativeAsset.findFirst({where:{organizationId:org,id:r.assetId,status:'ACTIVE'}});
+   if(!asset)throw new NotFoundException('Active motion asset not found');
+   return{revisionId:id,assetId:r.assetId,version:r.version,current:asset.version===r.version,parentRevisionId:r.offlineRenditionParentRevisionId,sourceDigest:r.offlineRenditionSourceDigest,renditionDigest:r.renditionDigest,videoDataUrl:'data:video/webm;base64,'+r.offlineMotionVideoBase64,offlineOnly:true,videoEncodingVerified:false,releaseAuthorized:false,externalEffectsAuthorized:false};
+  });
+ }
  async offlineLayeredPreview(org:string,revisionInput:unknown){
   const id=ident(revisionInput,'revision');
   return this.scoped(org,async tx=>{
@@ -373,7 +415,7 @@ export class CreativeAssetService{
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    const {revisions,...safe}=asset;
    return{...safe,revisions:revisions.map(({sourceRef,offlineLayeredSpec,...revision})=>({
-    ...revision,motionDraft:!!offlineLayeredSpec&&typeof offlineLayeredSpec==='object'&&!Array.isArray(offlineLayeredSpec)&&'motion' in offlineLayeredSpec,layeredPreviewAvailable:sourceRef.startsWith('internal:creative-source/layered/'),offlinePreviewAvailable:sourceRef.startsWith(
+    ...revision,motionVideo:sourceRef.startsWith('internal:creative-source/motion/'),motionDraft:!!offlineLayeredSpec&&typeof offlineLayeredSpec==='object'&&!Array.isArray(offlineLayeredSpec)&&'motion' in offlineLayeredSpec,layeredPreviewAvailable:sourceRef.startsWith('internal:creative-source/layered/'),offlinePreviewAvailable:sourceRef.startsWith(
      'internal:creative-source/offline/')
    })),externalEffectsAuthorized:false};
   });
@@ -388,6 +430,7 @@ export class CreativeAssetService{
   if(!['EDITABLE_SOURCE','FLATTENED_EXPORT'].includes(sourceKind))
    throw new BadRequestException('Unsupported editable source/export classification');
   const sourceRef=internalRef(input?.sourceRef,'internal:creative-source/','source');
+  if(sourceRef.startsWith('internal:creative-source/motion/'))throw new BadRequestException('Use the canonical offline motion route');
   if(sourceRef.startsWith('internal:creative-source/layered/'))throw new BadRequestException('Use the canonical layered draft route');
   const renditionDigest=clean(input?.renditionDigest,'SHA-256 digest',72);
   if(!/^sha256:[0-9a-f]{64}$/.test(renditionDigest))
@@ -440,7 +483,13 @@ export class CreativeAssetService{
     const a=comparison as {motionReviewed?:unknown;sourceDigest?:unknown;renditionDigest?:unknown;frameDigests?:unknown}|undefined;
     if(asset.version!==revision.version||motion.sourceDigest!==revision.offlineLayeredSourceDigest||motion.renditionDigest!==revision.renditionDigest||a?.motionReviewed!==true||a.sourceDigest!==motion.sourceDigest||a.renditionDigest!==motion.renditionDigest||JSON.stringify(a.frameDigests)!==JSON.stringify(motion.motionFrames.map(f=>f.digest)))throw new ConflictException('Independent exact motion scene comparison required');
    }
-   if(revision.offlineRenditionParentRevisionId){
+   if(revision.offlineMotionVideoBase64){
+    const a=comparison as {motionVideoReviewed?:unknown;sourceDigest?:unknown;renditionDigest?:unknown;parentRevisionId?:unknown;frameDigests?:unknown}|undefined;
+    const p=await tx.creativeAssetRevision.findFirst({where:{organizationId,id:revision.offlineRenditionParentRevisionId??'',assetId:asset.id}});
+    const d=p?.offlineLayeredSpec?renderOfflineLayeredSpec(p.offlineLayeredSpec):null;
+    const proof=await tx.verifiedMediaEvidence.findUnique({where:{organizationId_creativeAssetRevisionId:{organizationId,creativeAssetRevisionId:revisionId}}});
+    if(asset.version!==revision.version||!p||p.createdBy===reviewerId||!d?.motionFrames||d.sourceDigest!==revision.offlineRenditionSourceDigest||a?.motionVideoReviewed!==true||a.parentRevisionId!==p.id||a.sourceDigest!==d.sourceDigest||a.renditionDigest!==revision.renditionDigest||JSON.stringify(a.frameDigests)!==JSON.stringify(d.motionFrames.map(f=>f.digest))||proof?.status!=='VERIFIED_READBACK'||proof.evidenceOrigin!=='OFFLINE_DB_VIDEO'||proof.sha256Digest!==revision.renditionDigest)throw new ConflictException('Independent exact video comparison and current byte readback required');
+   }else if(revision.offlineRenditionParentRevisionId){
     const attestation=comparison as {parentRevisionId?:unknown;sourceDigest?:unknown;renditionDigest?:unknown;visuallyCompared?:unknown}|undefined;
     const parent=await tx.creativeAssetRevision.findFirst({where:{id:revision.offlineRenditionParentRevisionId,organizationId,assetId:asset.id}});
     const media=await tx.verifiedMediaEvidence.findUnique({where:{organizationId_creativeAssetRevisionId:{organizationId,creativeAssetRevisionId:revisionId}}});
@@ -457,7 +506,7 @@ export class CreativeAssetService{
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:reviewerId,
     action:'CREATIVE_RIGHTS_REVIEWED',objectType:'CreativeAssetRevision',objectId:revisionId,
     correlationId:revisionId,after:{reviewerId,reason,rightsExpiresAt:revision.rightsExpiresAt.toISOString(),
-     ...(revision.offlineRenditionParentRevisionId?{visualComparisonAttested:true,parentRevisionId:revision.offlineRenditionParentRevisionId,sourceDigest:revision.offlineRenditionSourceDigest,renditionDigest:revision.renditionDigest}:{}),
+     ...(revision.offlineMotionVideoBase64?{motionVideoComparisonAttested:true,parentRevisionId:revision.offlineRenditionParentRevisionId,sourceDigest:revision.offlineRenditionSourceDigest,renditionDigest:revision.renditionDigest,videoEncodingVerified:false,releaseAuthorized:false}:revision.offlineRenditionParentRevisionId?{visualComparisonAttested:true,parentRevisionId:revision.offlineRenditionParentRevisionId,sourceDigest:revision.offlineRenditionSourceDigest,renditionDigest:revision.renditionDigest}:{}),
      ...(motion?.motionFrames?{motionReviewed:true,sourceDigest:motion.sourceDigest,renditionDigest:motion.renditionDigest,frameDigests:motion.motionFrames.map(f=>f.digest),videoEncodingVerified:false,releaseAuthorized:false}:{}),
      externalEffectsAuthorized:false}}});
    return{revisionId,rightsReviewed:true,externalEffectsAuthorized:false};
@@ -482,6 +531,7 @@ export class CreativeAssetService{
   return this.scoped(organizationId,async tx=>{
    const revision=await tx.creativeAssetRevision.findFirst({where:{id:revisionId,organizationId}});
    if(!revision)throw new NotFoundException('Asset revision not found in tenant');
+   if(revision.offlineMotionVideoBase64||revision.sourceRef.startsWith('internal:creative-source/motion/'))throw new ConflictException('Offline motion video cannot authorize publication');
    if(revision.offlineLayeredSpec!=null)throw new ConflictException('Layered draft requires a separately verified release rendition; no publication approval');
    const asset=await tx.creativeAsset.findFirst({where:{id:revision.assetId,organizationId,status:'ACTIVE'}});
    const brand=asset&&await tx.brand.findFirst({where:{

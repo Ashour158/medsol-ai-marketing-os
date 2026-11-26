@@ -169,6 +169,21 @@ describe.skipIf(!enabled)('T4A actual PostgreSQL offline creative iteration and 
    expect(await creative.reviewApprovalState(org,next.approvalId)).toMatchObject({scopeCurrent:false,humanDecisionValid:false});
    await expect(creative.reviseOfflineRasterDraft(org,creator,first.assetId,{expectedVersion:5,layeredParentRevisionId:motion.revisionId,layeredSourceDigest:preview.sourceDigest,editableCopy:'Research story\nInternal motion only',pngBase64:png64(55,1080),requestKey:randomUUID(),rightsExpiresAt:future})).rejects.toThrow('Motion storyboard');
    await expect(creative.offlineLayeredPreview(other,motion.revisionId)).rejects.toThrow('not found');
+   // Container-header fixture only; deliberately not a decoded video.
+   const webm=Buffer.concat([Buffer.from('1a45dfa38b428681014282847765626d18538067','hex'),Buffer.alloc(120,1)]).toString('base64');
+   const input={expectedVersion:5,parentRevisionId:motion.revisionId,sourceDigest:preview.sourceDigest,videoBase64:webm,requestKey:randomUUID(),rightsExpiresAt:future};
+   const video=await creative.saveOfflineMotionVideo(org,creator,first.assetId,input) as {revisionId:string;renditionDigest:string;version:number};
+   expect(video).toMatchObject({version:6,videoEncodingVerified:false,releaseAuthorized:false});
+   expect(await creative.saveOfflineMotionVideo(org,creator,first.assetId,input)).toMatchObject({revisionId:video.revisionId,replayed:true});
+   await expect(creative.saveOfflineMotionVideo(org,creator,first.assetId,{...input,requestKey:randomUUID(),videoBase64:png64()})).rejects.toThrow('WebM');
+   expect(await creative.offlineMotionVideoPreview(org,video.revisionId)).toMatchObject({current:true,videoEncodingVerified:false,renditionDigest:video.renditionDigest});
+   await expect(creative.offlineMotionVideoPreview(other,video.revisionId)).rejects.toThrow('not found');
+   const videoAttestation={motionVideoReviewed:true,parentRevisionId:motion.revisionId,sourceDigest:preview.sourceDigest,renditionDigest:video.renditionDigest,frameDigests:preview.motionFrames?.map(f=>f.digest)};
+   await expect(creative.reviewRights(org,reviewer,video.revisionId,'Compare exact video fixture',videoAttestation)).rejects.toThrow('byte readback');
+   await media.verifyOfflineMotionVideo(org,video.revisionId);
+   expect(await media.get(org,video.revisionId)).toMatchObject({detectedMime:'video/webm',evidenceOrigin:'OFFLINE_DB_VIDEO',remotePlatformMediaEligible:false,independentlyDecoded:false});
+   await creative.reviewRights(org,reviewer,video.revisionId,'Fixture attestation; actual decoding not asserted',videoAttestation);
+   await expect(creative.submitForApproval(org,creator,video.revisionId,{channel:'SOCIAL',destinationRef:'internal:connected-destination/inert',audienceRef:'internal:audience-snapshot/closed',policyVersion:'v1',scheduledAt:later(7),expiresAt:later(9)})).rejects.toThrow('cannot authorize publication');
   }finally{await db.$disconnect();}
  },90000);
 });

@@ -67,9 +67,12 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
   // The single added T5B audited context-preview route extends the original
   // 145-route authenticated inventory. All routes must stay BFF-allowlisted.
-  expect(endpoints).toHaveLength(174);
+  expect(endpoints).toHaveLength(177);
   expect(endpoints).toContainEqual({method:"GET",template:"/marketing/audience/loyalty/:id",path:"/marketing/audience/loyalty/id-acceptance"});
   expect(endpoints).toContainEqual({method:"POST",template:"/marketing/audience/loyalty",path:"/marketing/audience/loyalty"});
+  expect(endpoints).toContainEqual({method:"POST",template:"/marketing/assets/:id/offline-motion-video",path:"/marketing/assets/id-acceptance/offline-motion-video"});
+  expect(endpoints).toContainEqual({method:"GET",template:"/marketing/assets/revisions/:id/motion-video-preview",path:"/marketing/assets/revisions/id-acceptance/motion-video-preview"});
+  expect(endpoints).toContainEqual({method:"POST",template:"/marketing/media/evidence/:id/verify-motion-video",path:"/marketing/media/evidence/id-acceptance/verify-motion-video"});
   for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/tenancy/activation-reviews",path:"/marketing/tenancy/activation-reviews"});
   for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/audience/message-rehearsals",path:"/marketing/audience/message-rehearsals"});
   expect(endpoints).toContainEqual({method:"POST",template:"/marketing/campaigns/:id/channel-plans/:approvalId/rehearse",path:"/marketing/campaigns/id-acceptance/channel-plans/id-acceptance/rehearse"});

@@ -174,8 +174,16 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
   const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
   const bytes=Buffer.concat(chunks);expect(bytes.length).toBeGreaterThan(100);expect(bytes.subarray(0,4).toString("hex")).toBe("1a45dfa3");
   await expect(layered.getByRole("status")).toContainText("not stored, byte-verified");
- }
- expect((await ok(page,"assets/"+assetId)).version).toBe(5);
+  await layered.getByRole("button",{name:"Save encoded video as unapproved revision"}).click();
+  await expect(layered.getByRole("status")).toContainText("Immutable offline video saved");
+  const v6=await ok(page,"assets/"+assetId);expect(v6.version).toBe(6);
+  const videoId=v6.revisions[0].id;
+  const saved=await ok(page,"assets/revisions/"+videoId+"/motion-video-preview");expect(saved).toMatchObject({parentRevisionId:motionId,videoEncodingVerified:false,releaseAuthorized:false});
+  expect(Buffer.from(saved.videoDataUrl.split(",")[1],"base64")).toEqual(bytes);
+  await layered.getByRole("button",{name:"Verify stored video bytes"}).click();
+  await expect(layered.getByRole("status")).toContainText("Exact offline video bytes verified");
+  expect(await ok(page,"media/evidence/"+videoId)).toMatchObject({detectedMime:"video/webm",evidenceOrigin:"OFFLINE_DB_VIDEO",remotePlatformMediaEligible:false});
+ }else expect((await ok(page,"assets/"+assetId)).version).toBe(5);
 
 
 

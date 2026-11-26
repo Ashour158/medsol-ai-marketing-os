@@ -13,10 +13,13 @@ const actor=(role:string):VerifiedIdentity=>({
  email:"offline@example.invalid",subject:"oidc-offline",role
 });
 describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
- it("T03-025 covers all 178 real API method/path decorators in the single permission registry",()=>{
-  expect(endpoints).toHaveLength(178);
+ it("T03-025 covers all 181 real API method/path decorators in the single permission registry",()=>{
+  expect(endpoints).toHaveLength(181);
   expect(permissionForMarketingRoute('GET','/marketing/audience/loyalty/id-acceptance')).toBe('READ_TENANCY');
   expect(permissionForMarketingRoute('POST','/marketing/audience/loyalty')).toBe('MANAGE_TENANT');
+  expect(permissionForMarketingRoute('POST','/marketing/assets/id-acceptance/offline-motion-video')).toBe('MANAGE_CAMPAIGN');
+  expect(permissionForMarketingRoute('POST','/marketing/media/evidence/id-acceptance/verify-motion-video')).toBe('MANAGE_CAMPAIGN');
+  expect(permissionForMarketingRoute('GET','/marketing/assets/revisions/id-acceptance/motion-video-preview')).toBe('READ_PORTFOLIO');
   expect(permissionForMarketingRoute('GET','/marketing/tenancy/activation-reviews')).toBe('READ_TENANCY');
   expect(permissionForMarketingRoute('POST','/marketing/tenancy/activation-reviews')).toBe('MANAGE_TENANT');
   expect(permissionForMarketingRoute('GET','/marketing/audience/message-rehearsals')).toBe('READ_TENANCY');

@@ -2,6 +2,7 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {Prisma} from '@prisma/client';
 import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService} from './prisma.service.js';
+import {isOfflineWebm} from './offline-webm.js';
 
 /** Trusted back-end interface, never constructed from HTTP or LLM input.
  * A production adapter must authenticate to a versioned immutable object store
@@ -91,6 +92,14 @@ export class VerifiedMediaEvidenceService{
      bytes:Buffer.from(row.offlineRasterBase64,'base64')};
    }},'OFFLINE_DB_RASTER');
  }
+ async verifyOfflineMotionVideo(organizationId:string,revisionIdInput:unknown){
+  const revisionId=ident(revisionIdInput,'revision');
+  return this.verifyReadbackWithOrigin(organizationId,'offline-dam-video-verifier',revisionId,{readVersion:async input=>{
+   const row=await this.scoped(input.organizationId,tx=>tx.creativeAssetRevision.findFirst({where:{organizationId:input.organizationId,id:revisionId},select:{sourceRef:true,offlineMotionVideoBase64:true}}));
+   if(!row?.offlineMotionVideoBase64||row.sourceRef!==input.sourceRef||!row.sourceRef.startsWith('internal:creative-source/motion/'))throw new BadRequestException('Only authoritative offline video bytes can be read back');
+   return{sourceRef:row.sourceRef,objectVersion:'offline-db-video-v1',bytes:Buffer.from(row.offlineMotionVideoBase64,'base64')};
+  }},'OFFLINE_DB_VIDEO');
+ }
  async verifyReadback(organizationId:string,verifierId:string,revisionIdInput:unknown,
   reader:VersionedMediaReader){
   return this.verifyReadbackWithOrigin(organizationId,verifierId,revisionIdInput,
@@ -98,7 +107,7 @@ export class VerifiedMediaEvidenceService{
  }
  private async verifyReadbackWithOrigin(organizationId:string,verifierId:string,
   revisionIdInput:unknown,reader:VersionedMediaReader,
-  evidenceOrigin:'VERSIONED_OBJECT_STORE'|'OFFLINE_DB_RASTER'){
+  evidenceOrigin:'VERSIONED_OBJECT_STORE'|'OFFLINE_DB_RASTER'|'OFFLINE_DB_VIDEO'){
   ident(verifierId,'verifier');const revisionId=ident(revisionIdInput,'revision');
   if(!reader||typeof reader.readVersion!=='function')
    throw new BadRequestException('Trusted versioned media reader required');
@@ -113,9 +122,10 @@ export class VerifiedMediaEvidenceService{
    throw new BadRequestException('Versioned object-store readback provenance required');
   if(object.bytes.length<16||object.bytes.length>MAX_BYTES)
    throw new BadRequestException('Media byte size outside acceptance range');
-  const detectedMime=identify(object.bytes);
+  if(revision.sourceRef.startsWith('internal:creative-source/motion/')&&evidenceOrigin!=='OFFLINE_DB_VIDEO')throw new BadRequestException('Offline video cannot claim remote storage provenance');
+  const detectedMime=evidenceOrigin==='OFFLINE_DB_VIDEO'?(isOfflineWebm(object.bytes)?'video/webm':null):identify(object.bytes);
   if(!detectedMime)throw new BadRequestException('Unsupported or unrecognized media signature');
-  if(evidenceOrigin==='OFFLINE_DB_RASTER'&&object.malwareScan)
+  if(evidenceOrigin!=='VERSIONED_OBJECT_STORE'&&object.malwareScan)
    throw new BadRequestException('Synthetic raster cannot claim independent malware scan');
   const scan=object.malwareScan;
   if(scan!==undefined&&(scan.status!=='CLEAN'||typeof scan.scannerId!=='string'||
@@ -158,7 +168,7 @@ export class VerifiedMediaEvidenceService{
     after:{sha256Digest:actualDigest,sizeBytes:created.sizeBytes,
      objectVersion:created.objectVersion,detectedMime,
      malwareScanStatus,scannerId,evidenceOrigin,
-     syntheticOnly:evidenceOrigin==='OFFLINE_DB_RASTER',
+     syntheticOnly:evidenceOrigin!=='VERSIONED_OBJECT_STORE',
      signatureOnly:true,fullMediaDecodeValidated:false,
      externalEffectsAuthorized:false}}});
    return{evidenceId:created.id,status:created.status,replayed:false,
