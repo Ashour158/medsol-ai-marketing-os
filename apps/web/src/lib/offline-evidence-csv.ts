@@ -141,6 +141,7 @@ export type EmailTrialExport={
  replayed:boolean;
  results:{syntheticRecipients:number;syntheticEligible:number;withdrawn:number;
   complaintSuppressed:number;hardBounceSuppressed?:number;missingConsent:number;
+  domainBlockedEligible?:number;senderDomainPreflight?:{scenario:string;fixtureEligible:boolean;fixtureOnly:true;senderDomainVerified:false;realDnsQueries:0;realDeliverabilityVerified:false;externalEffectsAuthorized:false}|null;
   actualMessagesSent:0;verifiedProviderReceipts:0;
   syntheticJourneyPlan?:{requiresFreshConsentAtExecution:true;
    steps:Array<{key:string;scheduledAt:string;scenario:string;
@@ -155,12 +156,16 @@ export function emailSimulationCsv(report:EmailTrialExport){
    r.missingConsent].every(boundedCount)||
   r.syntheticEligible+r.withdrawn+r.complaintSuppressed+(r.hardBounceSuppressed??0)+r.missingConsent!==
    r.syntheticRecipients||
-  (report.status==='SIMULATED')!==(r.syntheticEligible>0))
+  !boundedCount(r.domainBlockedEligible??0)||
+  (r.domainBlockedEligible??0)!==(r.senderDomainPreflight?.fixtureEligible===false?r.syntheticEligible:0)||
+  (r.senderDomainPreflight!=null&&(r.senderDomainPreflight.fixtureOnly!==true||r.senderDomainPreflight.senderDomainVerified!==false||r.senderDomainPreflight.realDnsQueries!==0||r.senderDomainPreflight.realDeliverabilityVerified!==false||r.senderDomainPreflight.externalEffectsAuthorized!==false||typeof r.senderDomainPreflight.fixtureEligible!=='boolean'||!enumToken(r.senderDomainPreflight.scenario)))||
+  (report.status==='SIMULATED')!==(r.syntheticEligible>0&&(r.domainBlockedEligible??0)===0))
   fail('Synthetic email eligibility or no-delivery invariants not verified');
  const steps=r.syntheticJourneyPlan?.steps??[];
  if((r.syntheticJourneyPlan!=null&&
    (r.syntheticJourneyPlan.requiresFreshConsentAtExecution!==true||
     !Array.isArray(r.syntheticJourneyPlan.steps)))||
+  ((r.domainBlockedEligible??0)>0&&steps.length>0)||
   steps.length>20||steps.some(s=>!s||typeof s.key!=='string'||
    !/^[A-Za-z0-9_-]{1,64}$/.test(s.key)||!enumToken(s.scenario)||
    !Number.isFinite(Date.parse(s.scheduledAt))||
@@ -171,6 +176,8 @@ export function emailSimulationCsv(report:EmailTrialExport){
   ['email','scenario_status',report.status,'NO_REAL_DELIVERY'],
   ['email','synthetic_recipients',r.syntheticRecipients,'ANONYMOUS_SYNTHETIC_ONLY'],
   ['email','eligible_simulations',r.syntheticEligible,'MOCK_OPT_IN_NOT_LEGAL_CONSENT'],
+  ['email','sender_authentication_fixture',r.senderDomainPreflight?.scenario??'NOT_REQUESTED','NO_REAL_DNS_OR_SIGNATURE_VERIFICATION'],
+  ['email','domain_preflight_blocked_eligible',r.domainBlockedEligible??0,'SYNTHETIC_ONLY'],
   ['email','withdrawn',r.withdrawn,'SYNTHETIC_SUPPRESSION'],
   ['email','complaint_suppressed',r.complaintSuppressed,'SYNTHETIC_SUPPRESSION'],
   ['email','hard_bounce_suppressed',r.hardBounceSuppressed??0,'SYNTHETIC_SUPPRESSION'],
