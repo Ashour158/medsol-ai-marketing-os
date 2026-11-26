@@ -25,13 +25,13 @@ describe('Master Blueprint v2.1 complete declarative coverage',()=>{
    expect(TARGET_ENGINES.find(e=>e.id===id)?.state).toBe('PARTIAL');
   for(const id of ['WF03','WF27','WF28','WF34','WF35'])
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('NOT_IMPLEMENTED');
-  for(const id of ['WF01','WF05','WF06','WF08','WF09','WF10','WF11','WF14','WF16','WF17','WF18','WF19','WF20','WF21','WF22','WF29','WF30','WF32','WF33','WF36','WF37'])
+  for(const id of ['WF01','WF05','WF06','WF08','WF09','WF10','WF11','WF14','WF16','WF17','WF18','WF19','WF20','WF21','WF22','WF29','WF30','WF32','WF33','WF36','WF37','WF38'])
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('PARTIAL');
   expect([...TARGET_ENGINES,...TARGET_WORKFLOWS,...TARGET_STUDIOS]
    .filter(x=>String(x.state)==='VERIFIED_IMPLEMENTED')).toHaveLength(0);
  });
  it('records merged partial capabilities with explicit remaining gates',()=>{
-  for(const id of ['WF09','WF10','WF18','WF32','WF33','WF36','WF37']){
+  for(const id of ['WF09','WF10','WF18','WF32','WF33','WF36','WF37','WF38']){
    const target: {goal?:string;blocker?:string;state:string}|undefined=TARGET_WORKFLOWS.find(e=>e.id===id);
    expect(target?.state).toBe('PARTIAL');
    expect(target?.goal?.length).toBeGreaterThan(10);
