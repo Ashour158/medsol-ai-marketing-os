@@ -27,6 +27,24 @@ describe('authoritative catalogue data for the marketing Brain',()=>{
   const read=new MarketingReadService(db);
   await expect(read.brainAuthorityContext('other',{productId:'p1'})).rejects.toThrow('not found in tenant');
  });
+ it('derives exact campaign catalogue scope and rejects unrelated same-tenant references',async()=>{
+  const db:any={
+   campaign:{findFirst:vi.fn().mockResolvedValue({id:'c1',brandId:'b1',objectiveId:'o1',productId:'p1'})},
+   marketingProduct:{findFirst:vi.fn().mockResolvedValue({id:'p1',code:'SEQ-001',name:'Research platform'})},
+   marketingObjective:{findFirst:vi.fn().mockResolvedValue({id:'o1',name:'Expand awareness'})},
+   $queryRaw:vi.fn().mockResolvedValue([])
+  };
+  db.$transaction=vi.fn(async(fn:any)=>fn(db));
+  const read=new MarketingReadService(db);
+  expect(await read.brainAuthorityContext('tenant-a',{campaignId:'c1'})).toMatchObject({campaign:{id:'c1',brandId:'b1'},product:{id:'p1'},objective:{id:'o1'},scientificClaimsVerified:false});
+  expect(db.campaign.findFirst).toHaveBeenCalledWith(expect.objectContaining({where:{id:'c1',organizationId:'tenant-a'}}));
+  await expect(read.brainAuthorityContext('tenant-a',{campaignId:'c1',objectiveId:'o2'})).rejects.toThrow('stored campaign scope');
+  await expect(read.brainAuthorityContext('tenant-a',{campaignId:'c1',productId:'p2'})).rejects.toThrow('stored campaign scope');
+  db.campaign.findFirst.mockResolvedValue({id:'c1',brandId:'b1',objectiveId:'o1',productId:null});
+  await expect(read.brainAuthorityContext('tenant-a',{campaignId:'c1',productId:'p1'})).rejects.toThrow('stored campaign scope');
+  db.campaign.findFirst.mockResolvedValue(null);
+  await expect(read.brainAuthorityContext('tenant-a',{campaignId:'foreign'})).rejects.toThrow('Campaign not found in tenant');
+ });
  it('uses authoritative data in agent handoff without pretending literature is verified',async()=>{
   const run:any={status:'PENDING',organizationId:'tenant-a',correlationId:'corr',input:{requestedOutcome:'Launch',productId:'p1'},steps:[{agentId:'MKT-CMO-001',status:'PENDING'}]};
   const db:any={brainRun:{updateMany:vi.fn().mockResolvedValue({count:1})}};
