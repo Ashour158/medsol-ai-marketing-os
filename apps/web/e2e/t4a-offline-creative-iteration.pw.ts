@@ -119,6 +119,27 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
  const exportPromise=page.waitForEvent("download");
  await layered.getByRole("button",{name:"Download stored editable SVG"}).click();
  expect((await exportPromise).suggestedFilename()).toBe("medsol-layered-unapproved-"+layeredId+".svg");
+ await layered.getByRole("button",{name:"Render offline PNG candidate"}).click();
+ await expect(layered.getByRole("status")).toContainText("Offline PNG candidate saved");
+ const v4=await ok(page,"assets/"+assetId);
+ expect(v4.version).toBe(4);
+ const rendered=v4.revisions[0];
+ expect(rendered).toMatchObject({version:4,offlinePreviewAvailable:true,offlineRenditionParentRevisionId:layeredId,offlineRenditionSourceDigest:stored.sourceDigest,rightsReviewedAt:null});
+ const candidate=await ok(page,"assets/revisions/"+rendered.id+"/offline-preview");
+ expect(candidate.current).toBe(true);
+ expect(candidate.editableCopy).toBe("البحث والابتكار\nمسودة عربية للمراجعة العلمية");
+ const png=Buffer.from(candidate.imageDataUrl.split(",")[1],"base64");
+ expect(png.readUInt32BE(16)).toBe(1080);expect(png.readUInt32BE(20)).toBe(1350);
+ expect(candidate.renditionDigest).toBe(rendered.renditionDigest);
+ expect((await ok(page,"assets/revisions/"+layeredId+"/layered-preview")).current).toBe(false);
+ // The browser author cannot attest to their own rendition, even with exact hashes.
+ const comparison={parentRevisionId:layeredId,sourceDigest:stored.sourceDigest,renditionDigest:candidate.renditionDigest,visuallyCompared:true};
+ const verify=await ok(page,"media/evidence/"+rendered.id+"/verify-offline",{});
+ expect(verify).toMatchObject({evidenceOrigin:"OFFLINE_DB_RASTER",remotePlatformMediaEligible:false,externalEffectsAuthorized:false});
+ const deniedReview=await api(page,"assets/revisions/"+rendered.id+"/rights-review",{reason:"Attempted self comparison review of authored rendition",comparison});
+ expect(deniedReview.status).toBe(403);
+ expect((await ok(page,"assets/"+assetId)).revisions[0].rightsReviewedAt).toBeNull();
+
 
 });
 test("T20-002 same-tenant viewer cannot revise; signed foreign tenant cannot retrieve other brand creative",async({page})=>{
