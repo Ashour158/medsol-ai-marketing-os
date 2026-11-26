@@ -108,7 +108,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered source and deterministic SVG plus verified synthetic PNG exist; layered release rendition, multiformat production and external editor remain"
+    "blocker": "Persistent layered source, deterministic SVG, derived PNG lineage, byte verification and independent comparison review exist; production release, multiformat and external editor remain"
   },
   {
     "id": "E12",
@@ -135,7 +135,7 @@ export const TARGET_ENGINES = [
     "release": "R1",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Immutable DAM, independently reviewed rights and PNG verification, layered source and parent lineage exist; layered release rendition and multimedia remain"
+    "blocker": "Immutable DAM, layered source, derived PNG lineage, exact byte verification and independent comparison review exist; production release and multimedia remain"
   },
   {
     "id": "E15",
@@ -297,7 +297,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered title/body/accent and deterministic rendition lineage exist; multimodal brief and separately verified release render jobs remain"
+    "blocker": "Persistent layered title/body/accent, deterministic SVG and derived PNG verification/review exist; multimodal brief and production render jobs remain"
   },
   {
     "id": "E33",
@@ -324,7 +324,7 @@ export const TARGET_ENGINES = [
     "release": "R4",
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
-    "blocker": "Existing cohort screening and synthetic community cases; verified survey/support/CRM sources and production permissions remain"
+    "blocker": "Persistent reviewed synthetic feedback cohorts and community cases; verified survey/support/CRM sources and production permissions remain."
   },
   {
     "id": "E36",
@@ -333,7 +333,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "CampaignService",
     "state": "PARTIAL",
-    "blocker": "Draft risk triage exists; no earned-media distribution connector or public statements authority"
+    "blocker": "Persistent exact-scope internal communication plans and mock distribution; earned-media monitoring, professional claim verification and public statement authority remain."
   }
 ] as const satisfies readonly TargetDomain[];
 export const TARGET_WORKFLOWS = [
@@ -385,7 +385,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Creative production with editable source, verified raster and rendition lineage",
-    "blocker": "Persistent structured editable source and deterministic SVG with immutable lineage exist; separately verified layered release rendition remains"
+    "blocker": "Persistent editable source, derived PNG lineage, byte verification and independent rights review exist; production release and multimedia remain"
   },
   {
     "id": "WF07",
@@ -497,7 +497,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Brief to layered editable design, verified render and independent rights review",
-    "blocker": "Persisted layered source and deterministic SVG plus immutable parent lineage exist; verified release rendition and multimedia remain"
+    "blocker": "Persisted layered source, deterministic SVG, derived PNG lineage and independent comparison review exist; production rendition and multimedia remain"
   },
   {
     "id": "WF20",
@@ -538,8 +538,8 @@ export const TARGET_WORKFLOWS = [
     "name": "Price and promotion proposal",
     "release": "R4",
     "owner": "Product & Pricing Bridge",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Adjacent product catalog; price/promotion proposal and finance approval workflow not established."
+    "state": "PARTIAL",
+    "blocker": "Persistent immutable synthetic pricing proposals, exact product revision and independent marketing review; actual price authority, financial approval and execution remain."
   },
   {
     "id": "WF25",
@@ -554,8 +554,8 @@ export const TARGET_WORKFLOWS = [
     "name": "Loyalty and retention journey",
     "release": "R4",
     "owner": "Loyalty & Retention",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Adjacent synthetic journey; loyalty ledger/retention and financial liability not established."
+    "state": "PARTIAL",
+    "blocker": "Channel-specific synthetic retention, renewal and win-back rehearsals; loyalty/reward ledger, actual customer lifecycle and financial liability remain."
   },
   {
     "id": "WF27",
@@ -620,16 +620,16 @@ export const TARGET_WORKFLOWS = [
     "name": "Paid advertising",
     "release": "R5",
     "owner": "Strategy & Campaign",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Adjacent graph safety only; paid media execution not implemented."
+    "state": "PARTIAL",
+    "blocker": "Persistent paid media plans, hypothetical budgets, exact scope review, durable mock execution and ambiguous-outcome fencing; real media accounts, spend approval and delivery remain."
   },
   {
     "id": "WF35",
     "name": "Messaging WhatsApp SMS etc",
     "release": "R5",
     "owner": "Email & Messaging",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Adjacent email transport rehearsal; WhatsApp/SMS workflow not established."
+    "state": "PARTIAL",
+    "blocker": "Synthetic WhatsApp and SMS with independent channel consent/suppression, durable no-send outcomes and readback; real contacts, templates, legal consent and provider delivery remain."
   },
   {
     "id": "WF36",
@@ -663,26 +663,26 @@ export const TARGET_WORKFLOWS = [
     "name": "PR and earned-media approval and monitoring",
     "release": "R2",
     "owner": "CampaignService",
-    "state": "DRAFT_ONLY",
+    "state": "PARTIAL",
     "goal": "PR, earned media risk assessment, approval and authorized monitoring",
-    "blocker": "Draft risk screening exists; verified earned-media monitoring and publication remain"
+    "blocker": "Persistent internal communications plan, reviewed evidence, exact brand/campaign approval and mock execution; professional/legal verification, earned-media monitoring and distribution remain."
   },
   {
     "id": "WF40",
     "name": "Sales and partner enablement",
     "release": "R4",
     "owner": "MarketingProduct",
-    "state": "DRAFT_ONLY",
+    "state": "PARTIAL",
     "goal": "Partner/sales enablement with authoritative product, territory and approved material",
-    "blocker": "Approved content and commercial review still need integrated partner workflow"
+    "blocker": "Persistent product/delegation/collateral-bound partner kit and independent approval/rehearsal; commercial entitlement, territory rights and distribution remain."
   },
   {
     "id": "WF41",
     "name": "Customer onboarding and value realization",
     "release": "R1",
     "owner": "Tenancy & Commercial",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Customer activation acceptance helper; actual onboarding/value realization lifecycle not established."
+    "state": "PARTIAL",
+    "blocker": "Persistent internal onboarding/value target review bound to reviewed profile and campaign evidence, with independent approval; customer activation, billing, real value and pilot acceptance remain."
   }
 ] as const satisfies readonly TargetDomain[];
 export const TARGET_STUDIOS = [

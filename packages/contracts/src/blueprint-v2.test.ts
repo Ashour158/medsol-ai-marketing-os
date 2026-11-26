@@ -23,9 +23,9 @@ describe('Master Blueprint v2.1 complete declarative coverage',()=>{
  it('never represents an unbuilt external effect as implemented or authorized',()=>{
   for(const id of ['E01','E03','E04','E07','E08','E09','E10','E11','E12','E13','E14','E15','E16','E17','E18','E19','E20','E21','E22','E28','E29','E30','E31','E32','E33','E34'])
    expect(TARGET_ENGINES.find(e=>e.id===id)?.state).toBe('PARTIAL');
-  for(const id of ['WF03','WF27','WF28','WF34','WF35'])
+  for(const id of ['WF03','WF12','WF13','WF15','WF27','WF28'])
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('NOT_IMPLEMENTED');
-  for(const id of ['WF01','WF05','WF06','WF08','WF09','WF10','WF11','WF14','WF16','WF17','WF18','WF19','WF20','WF21','WF22','WF29','WF30','WF32','WF33','WF36','WF37','WF38'])
+  for(const id of ['WF01','WF05','WF06','WF08','WF09','WF10','WF11','WF14','WF16','WF17','WF18','WF19','WF20','WF21','WF22','WF29','WF30','WF32','WF33','WF36','WF37','WF38','WF24','WF26','WF34','WF35','WF39','WF40','WF41'])
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('PARTIAL');
   expect([...TARGET_ENGINES,...TARGET_WORKFLOWS,...TARGET_STUDIOS]
    .filter(x=>String(x.state)==='VERIFIED_IMPLEMENTED')).toHaveLength(0);
