@@ -110,6 +110,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       )) ||
       (resource === "performance" && !(
         (path.length===2&&id==="forms"&&["GET","POST"].includes(request.method))||
+        (path.length===2&&id==="experiments"&&request.method==="POST")||
+        (path.length===3&&id==="experiments"&&!!action&&request.method==="GET")||
         (path.length===4&&id==="submissions"&&!!action&&operation==="qualification"&&request.method==="POST")||
         (path.length===4&&id==="forms"&&!!action&&operation==="submit"&&request.method==="POST")||(path.length===2&&request.method==="GET"&&id==="observations")||
         (path.length===3&&request.method==="GET"&&id==="campaigns"&&!!action)||
