@@ -144,6 +144,39 @@ test("T20-001 creative editor saves version 2 on same asset, readbacks both PNGs
  const deniedReview=await api(page,"assets/revisions/"+rendered.id+"/rights-review",{reason:"Attempted self comparison review of authored rendition",comparison});
  expect(deniedReview.status).toBe(403);
  expect((await ok(page,"assets/"+assetId)).revisions[0].rightsReviewedAt).toBeNull();
+ await layered.getByLabel("Create timed motion storyboard").check();
+ await layered.getByLabel("Opening seconds").fill("2");
+ await layered.getByRole("group",{name:"Scene 2"}).getByLabel("Seconds").fill("2");
+ await layered.getByRole("button",{name:"Save layered design as new unapproved version"}).click();
+ await expect(layered.getByRole("status")).toContainText("Saved immutable editable design revision 5");
+ const v5=await ok(page,"assets/"+assetId),motionId=v5.revisions[0].id;
+ const motion=await ok(page,"assets/revisions/"+motionId+"/layered-preview");
+ expect(motion).toMatchObject({motionOnly:true,motionDurationSeconds:4,videoEncodingVerified:false,parentRevisionId:rendered.id,current:true,releaseAuthorized:false});
+ expect(motion.motionFrames.map((f:any)=>f.seconds)).toEqual([2,2]);
+ await layered.getByLabel("Inspect still scene").selectOption("1");
+ await expect(layered.getByRole("img",{name:"Stored deterministic editable design preview; unapproved"})).toHaveAttribute("src",motion.motionFrames[1].svgDataUrl);
+ await layered.getByRole("button",{name:"Play animated preview"}).click();
+ await expect(layered.getByRole("img",{name:"Stored deterministic editable design preview; unapproved"})).toHaveAttribute("src",motion.svgDataUrl);
+ const svgDownload=page.waitForEvent("download");
+ await layered.getByRole("button",{name:"Download stored animated SVG draft"}).click();
+ expect((await svgDownload).suggestedFilename()).toBe("medsol-layered-unapproved-"+motionId+".svg");
+ expect(await layered.getByRole("button",{name:"Render offline PNG candidate"}).count()).toBe(0);
+ const blocked=await api(page,"assets/"+assetId+"/offline-revisions",{expectedVersion:5,layeredParentRevisionId:motionId,layeredSourceDigest:motion.sourceDigest,editableCopy:candidate.editableCopy,pngBase64:candidate.imageDataUrl.split(",")[1],requestKey:randomUUID(),rightsExpiresAt:new Date(Date.now()+60*86400_000).toISOString()});
+ expect(blocked.status).toBe(409);
+ // Browser encoding is a separate unverified local output, not a persisted rendition.
+ const canEncode=await page.evaluate(()=>typeof MediaRecorder!=="undefined"&&MediaRecorder.isTypeSupported("video/webm")&&typeof HTMLCanvasElement.prototype.captureStream==="function");
+ if(canEncode){
+  const webmDownload=page.waitForEvent("download");
+  await layered.getByRole("button",{name:"Export local unverified silent WebM"}).click();
+  const download=await webmDownload;
+  expect(download.suggestedFilename()).toBe("medsol-unverified-motion-"+motionId+".webm");
+  const stream=await download.createReadStream();expect(stream).not.toBeNull();
+  const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
+  const bytes=Buffer.concat(chunks);expect(bytes.length).toBeGreaterThan(100);expect(bytes.subarray(0,4).toString("hex")).toBe("1a45dfa3");
+  await expect(layered.getByRole("status")).toContainText("not stored, byte-verified");
+ }
+ expect((await ok(page,"assets/"+assetId)).version).toBe(5);
+
 
 
 });
