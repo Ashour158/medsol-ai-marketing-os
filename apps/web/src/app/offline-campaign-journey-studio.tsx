@@ -7,9 +7,10 @@ import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
 type Brand={id:string;name:string};
+type ProductChoice={id:string;name:string;code:string;lifecycle?:string};
 type CampaignChoice={id:string;name:string;code:string;status:string};
 type Journey={
- campaign:{id:string;name:string;brandId:string;status:string;code:string;objectiveId?:string|null};
+ campaign:{id:string;name:string;brandId:string;status:string;code:string;objectiveId?:string|null;productId?:string|null};
  workflow:{id:string;status:string;currentStep:string}|null;
  campaignApprovals:Array<{id:string;decision:string;decidedBy:string|null}>;
  brainRuns:Array<{id:string;status:string;steps:Array<{stage:string;agentId:string;status:string}>}>;
@@ -92,10 +93,11 @@ async function shaText(value:string){
 }
 const dateAt=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 
-export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[]}){
+export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[]}){
  const [brands,setBrands]=useState<Brand[]>([]);
  const [brandId,setBrandId]=useState("");
  const [objectiveId,setObjectiveId]=useState("");
+ const [productId,setProductId]=useState("");
  const [objectiveName,setObjectiveName]=useState("Offline scientific campaign objective");
  const [brief,setBrief]=useState("Present an evidence-led, compliance-conscious biotechnology innovation campaign to qualified research laboratories, with no unsupported claims.");
  const [sector,setSector]=useState("biotechnology");
@@ -146,7 +148,7 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{id
   setBrandId(r.campaign.brandId);
   setWorkflowId(r.workflow?.id??"");
   setBrainRunId(r.brainRuns[0]?.id??"");
-  if(switching)setObjectiveId(r.campaign.objectiveId??"");
+  if(switching){setObjectiveId(r.campaign.objectiveId??"");setProductId(r.campaign.productId??"");}
   if(r.creativeAssets[0]&&(switching||!creative)) {
    const chosen=r.creativeAssets.find(x=>x.publicationLinked)??r.creativeAssets[0];
    // Campaign timeline is authoritative for linked metadata, but does not
@@ -173,7 +175,7 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{id
   setVersionHistory([]);setHistoryId("");setHistoricalPreview(null);
   setDestinationRef("");
   setCreativeApprovalId("");setSyntheticContacts([]);setPublicationId("");
-  setBrandPolicyVersion("");setObjectiveId("");setBrandId("");
+  setBrandPolicyVersion("");setObjectiveId("");setBrandId("");setProductId("");
   if(!identity)return;
   void load().catch(e=>setError(e instanceof Error?e.message:"Unable to load brand context"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -308,6 +310,14 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{id
        description:"Offline simulated journey objective: "+brief.slice(0,1000)});
       setObjectiveId(created.id);setNotice("Objective created in canonical catalogue");
      })}>Create objective</button>
+    <label style={label}>Product for next campaign (optional)
+     <select style={input} value={productId} disabled={blocked} onChange={e=>setProductId(e.target.value)}>
+      <option value="">No catalogue product</option>
+      {products.filter(p=>p.lifecycle==="ACTIVE").map(p=><option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+     </select>
+    </label>
+    {journey?.campaign.productId&&<p style={{fontSize:12}}>Loaded campaign product: {products.find(p=>p.id===journey.campaign.productId)?.name??journey.campaign.productId}. Agent research uses the stored campaign product, not unsaved selection changes.</p>}
+    <p style={{fontSize:12}}>Catalogue identity does not establish scientific claims or regulatory approval. Review supporting knowledge separately.</p>
     <label style={label}>Campaign brief (reviewed as unverified instructions)
      <textarea style={{...input,minHeight:90}} maxLength={2000} value={brief}
       onChange={e=>setBrief(e.target.value)}/>
@@ -316,7 +326,7 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{id
      onClick={()=>void run(async()=>{
       const result=await api("workflows",{
        organizationId:identity.organizationId,requestedOutcome:brief.trim(),
-       brandId,objectiveId
+       brandId,objectiveId,...(productId?{productId}:{})
       });
       setWorkflowId(result.workflowExecutionId);
       const id=result.output?.campaign?.campaignId as string|undefined;
@@ -337,6 +347,7 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{id
       const result=await api("brain/runs",{
        commandKey:"offline-brain-"+uuid(),campaignId,
        ...(journey?.campaign.objectiveId?{objectiveId:journey.campaign.objectiveId}:{}),
+       ...(journey?.campaign.productId?{productId:journey.campaign.productId}:{}),
        requestedOutcome:brief,market:sector
       });
       setBrainRunId(result.id);
