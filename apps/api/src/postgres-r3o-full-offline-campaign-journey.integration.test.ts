@@ -20,6 +20,7 @@ import {CreativeAssetService} from './creative-asset.service.js';
 import {VerifiedMediaEvidenceService} from './verified-media-evidence.service.js';
 import {PlatformIntegrationHubService} from './platform-integration-hub.service.js';
 import {CampaignPublicationService} from './campaign-publication.service.js';
+import {SyntheticConversionService} from './synthetic-conversion.service.js';
 import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.js';
 import {withMarketingTenant} from './prisma.service.js';
 const enabled=process.env.MARKETING_DB_INTEGRATION==='1';
@@ -262,9 +263,25 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    expect(timeline.observations).toHaveLength(4);
    expect(timeline.observations.every(x=>x.status==='REVIEWED')).toBe(true);
    expect(JSON.stringify(timeline.observations)).not.toContain('private@example.com');
+   const conversionAuthor='conversion-author-'+randomUUID(),conversionSubject='oidc-'+randomUUID();
+   await db.user.create({data:{id:conversionAuthor,organizationId:org,name:'Synthetic conversion operator',
+    role:'ADMIN',oidcSubject:conversionSubject,email:conversionAuthor+'@example.invalid'}});
+   const conversionIdentity={organizationId:org,userId:conversionAuthor,role:'ADMIN',subject:conversionSubject,email:conversionAuthor+'@example.invalid'};
+   const conversion=new SyntheticConversionService(db as any);
+   const form=await conversion.create(org,conversionIdentity,{campaignId,brandId,formKey:'fixture-'+randomUUID(),
+    headline:'Synthetic research inquiry',cta:'Request information'});
+   const decideConversion=(approvalId:string)=>approval.approve({organizationId:org,approvalId,approverUserId:reviewer,
+    commandId:randomUUID(),correlationId:randomUUID(),decision:'APPROVED',rationale:'Independent internal synthetic conversion review'});
+   await decideConversion(form.approvalId);
+   const submission=await conversion.submit(org,conversionIdentity,form.formId,{contactId:contact.contactId,
+    requestKey:'fixture-'+randomUUID(),formDigest:form.contentDigest,mockCrmPurposeGranted:true,mockTransport:'OUTCOME_UNKNOWN'});
+   const qualification=await conversion.qualify(org,conversionIdentity,submission.submissionId,{
+    bant:{budget:4,authority:4,need:5,timeline:4},icp:{industry:2,companySize:2,role:2,geography:2}});
+   await decideConversion(qualification.approvalId);
+   const conversionLedger=await conversion.list(org,identity,campaignId);
    const dossier=buildCustomerDeliveryDossier(org,timeline,
     await performance.summary(org,campaignId),
-    await learning.trendBrief(org),new Date());
+    await learning.trendBrief(org),new Date(),conversionLedger);
    expect(dossier.stages.map(s=>s.key)).toEqual(OFFLINE_CAMPAIGN_STAGE_KEYS);
    expect(dossier.missingOfflineGates).toEqual([]);
    expect(dossier).toMatchObject({
@@ -273,7 +290,7 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     pillars:{creative:{currentLinkedRightsAndApprovalReviewed:1},
      social:{sandboxSimulated:1,realPostsPublished:0},
      email:{syntheticSimulations:1,actualMessagesSent:0},
-     conversion:{reviewedQualifiedLeadCount:'5',causalAttributionVerified:false},
+     conversion:{reviewedQualifiedLeadCount:'5',causalAttributionVerified:false,syntheticLedger:{status:'BOUNDED_HISTORICAL_SYNTHETIC_LEDGER',counts:{forms:1,submissions:1,outcomeUnknown:1,protocolRecorded:1,qualificationReviews:1,independentInternalQualificationApprovals:1},actualCrmWrites:0}},
      commercial:{roiVerified:false}},
     signed:false,externalEffectsAuthorized:false
    });
