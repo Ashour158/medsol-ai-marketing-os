@@ -49,7 +49,7 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
     !Array.isArray(r.queueSummary.byPriority)||
     ![r.queueSummary.activeCount,r.queueSummary.overdueCount,r.queueSummary.escalatedCount,r.queueSummary.withoutDeadlineCount]
      .every(n=>Number.isSafeInteger(n)&&n>=0&&n<=r.queueSummary!.activeCount)))throw Error("Invalid internal queue summary");
-  setQueue({scope,cases:r.cases,windowCapped:r.windowCapped,queueSummary:r.queueSummary});
+  setQueue({scope,cases:r.cases,windowCapped:r.windowCapped,...(r.queueSummary?{queueSummary:r.queueSummary}:{})});
  }
  async function runCase(task:()=>Promise<void>){
   setBusy(true);setError("");setCaseNotice("");
