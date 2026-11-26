@@ -37,7 +37,7 @@ async function selectBrand(page:Page){
 async function loadJourney(page:Page){
  await page.getByRole('textbox',{name:'Tenant campaign ID'}).fill('campaign-e2e');
  await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
- await expect(page.getByText('Chromium-only scientific campaign').first()).toBeVisible();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('Chromium-only scientific campaign');
 }
 async function createCampaign(page:Page){
  await selectBrand(page);
@@ -56,7 +56,7 @@ test('T16-009 anonymous browser cannot load an authenticated marketing workspace
 test('T16-010 encrypted browser session opens the real Next UI and tenant dashboard',async({page})=>{
  await login(page);
  await expect(page.getByRole('heading',{name:'Campaign portfolio'})).toBeVisible();
- await expect(page.getByText('OFFLINE-E2E').first()).toBeVisible();
+ await expect(page.locator('#portfolio').getByText('OFFLINE-E2E',{exact:true})).toBeVisible();
  await studio(page);
  await expect(page.getByText(/Real accounts, outbound posts, real email/)).toBeVisible();
 });
@@ -70,7 +70,7 @@ test('T16-011 viewer persona has visible read-only objective and creative afford
 test('T16-012 operator completes browser brief-to-canonical-workflow creation',async({page})=>{
  await login(page);await studio(page);await createCampaign(page);
  await expect(page.getByText(/Workflow: workflow-e2e/)).toBeVisible();
- await expect(page.getByText(/PENDING_APPROVAL/).first()).toBeVisible();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('PENDING_APPROVAL');
 });
 test('T16-013 operator invokes the simulated 13-agent brain and inspects its ledger',async({page})=>{
  await login(page);await studio(page);await createCampaign(page);
@@ -89,7 +89,7 @@ test('T16-015 creator cannot self-approve even with an enabled reviewer control'
  await login(page);await studio(page);await loadJourney(page);
  await page.getByRole('button',{name:'Approve campaign as authenticated reviewer'}).click();
  await expect(page.getByRole('alert').filter({hasText:'Creator cannot self-approve'})).toBeVisible();
- await expect(page.getByText(/PENDING_APPROVAL/).first()).toBeVisible();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('PENDING_APPROVAL');
 });
 test('T16-016 mobile-sized real browser retains readable journey controls',async({page})=>{
  await page.setViewportSize({width:390,height:844});
