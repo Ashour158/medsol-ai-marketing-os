@@ -5,6 +5,10 @@
 **Classification:** approved product **target**, not implementation or production certification.  
 **Authoritative control:** one concept, one domain write owner; no shadow agents, approval engines, workflow engines, tables, or integrators.
 
+## Current delivery priority — Alpha first (26 November 2026)
+
+The product owner approved prioritizing a working internal Alpha over further feature expansion. [Alpha-first release plan](ALPHA_FIRST_RELEASE_PLAN.md) governs engineering order and the scoped go/no-go gates. The full R0–R5 target below remains intact, including all commercial/security/provider acceptance requirements; its order is historical target sequencing, not a requirement to finish all commercial features before Alpha. The original Tranche 1 full-scope acceptance remains open. No current implementation or release status is promoted by this decision.
+
 ## What has actually been added in this tranche
 
 - `packages/contracts/src/blueprint-v2.ts` — stable, typed **target-state inventory** for E01–E36, WF01–WF41, 13 studios, B01–B10 cognitive roles, and 12 product personas; phased ownership and honest states.
