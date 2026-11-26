@@ -39,6 +39,9 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/performance/forms/:id/submit') conversionSubmit(@Req() req:any,@Param('id') id:string,@Body() b:unknown){
   return this.conversion.submit(req.identity.organizationId,req.identity,id,b);
  }
+ @Post('marketing/performance/submissions/:id/qualification') conversionQualification(@Req() req:any,@Param('id') id:string,@Body() b:unknown){
+  return this.conversion.qualify(req.identity.organizationId,req.identity,id,b);
+ }
  @Get('marketing/social/cases') communityCaseList(@Req() req:any){
   return this.communityCases.list(req.identity?.organizationId,req.identity,req.query?.brandId);
  }

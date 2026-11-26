@@ -14,6 +14,7 @@ describe('T1 durable conversion form and synthetic lead handoff',()=>{
   expect(permissionForMarketingRoute('GET','/marketing/performance/forms')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('POST','/marketing/performance/forms')).toBe('MANAGE_CAMPAIGN');
   expect(permissionForMarketingRoute('POST','/marketing/performance/forms/id-1/submit')).toBe('SUBMIT_EVIDENCE');
+  expect(permissionForMarketingRoute('POST','/marketing/performance/submissions/id-1/qualification')).toBe('SUBMIT_EVIDENCE');
   expect(()=>permissionForMarketingRoute('POST','/marketing/performance/forms/id-1/dispatch')).toThrow();
  });
  it.skipIf(!enabled)('persists exact approved form, enforces synthetic consent, dedupe and immutable unknown outcome',async()=>{
@@ -74,7 +75,20 @@ describe('T1 durable conversion form and synthetic lead handoff',()=>{
    expect(await service.submit(org,author,form.formId,submission)).toMatchObject({submissionId:result.submissionId,replayed:true});
    await expect(service.submit(org,author,form.formId,{...submission,mockTransport:'ACCEPTED'})).rejects.toThrow('changed evidence');
    await expect(service.submit(org,author,form.formId,{...submission,requestKey:'fixture-'+randomUUID()})).rejects.toThrow('already submitted');
+   const scores={bant:{budget:4,authority:4,need:5,timeline:4},icp:{industry:2,companySize:2,role:2,geography:2}};
+   await expect(service.qualify(org,author,result.submissionId,{...scores,bant:{...scores.bant,budget:null}})).rejects.toThrow('bounded');
+   await expect(service.qualify(org,author,result.submissionId,{...scores,email:'invalid@example.invalid'})).rejects.toThrow('anonymous');
+   await expect(service.qualify(foreign,outsider,result.submissionId,scores)).rejects.toThrow('not found');
+   const review=await service.qualify(org,author,result.submissionId,scores);
+   expect(review).toMatchObject({decision:'PENDING',assessment:{bantTotal:17,icpTotal:8,priority:'HOT',fitTier:'A'},
+    realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false,replayed:false});
+   expect(await service.qualify(org,author,result.submissionId,scores)).toMatchObject({approvalId:review.approvalId,replayed:true});
+   await expect(service.qualify(org,author,result.submissionId,{...scores,bant:{...scores.bant,budget:3}})).rejects.toThrow('different');
+   await expect(decide(review.approvalId,author.userId)).rejects.toThrow('Independent OIDC synthetic lead');
+   await decide(review.approvalId,reviewer.userId);
+   await expect(withMarketingTenant(db,org,tx=>tx.approval.update({where:{id:review.approvalId},data:{scopeDigest:'sha256:'+'f'.repeat(64)}}))).rejects.toThrow();
    await consent(contact.contactId,'SIMULATED_WITHDRAWAL');
+   await expect(service.qualify(org,author,result.submissionId,scores)).rejects.toThrow('no longer current');
    expect(await service.submit(org,author,form.formId,submission)).toMatchObject({replayed:true,outcome:'OUTCOME_UNKNOWN',crmHandoffsExecuted:0});
    for(const scenario of ['DUPLICATE_CALLBACK','READBACK_MISMATCH','RATE_LIMITED'] as const){
     const fixture=await email.createSyntheticContact(org,author,{brandId});await consent(fixture.contactId,'SIMULATED_OPT_IN');
@@ -82,11 +96,20 @@ describe('T1 durable conversion form and synthetic lead handoff',()=>{
      requestKey:'fixture-'+randomUUID(),mockTransport:scenario});
     expect(r).toMatchObject({outcome:scenario==='DUPLICATE_CALLBACK'?'MOCK_ACCEPTED':scenario==='RATE_LIMITED'?'MOCK_REJECTED':'OUTCOME_UNKNOWN',
      protocolEvidence:{scenario,actualCrmRequests:0,verifiedRemoteReceipts:0,automaticRetryAuthorized:false}});
+    if(scenario==='RATE_LIMITED'){
+     const pendingReview=await service.qualify(org,author,r.submissionId,scores);
+     await consent(fixture.contactId,'SIMULATED_WITHDRAWAL');
+     await expect(decide(pendingReview.approvalId,reviewer.userId)).rejects.toThrow('no longer current');
+    }
     if(scenario==='DUPLICATE_CALLBACK')expect(r.protocolEvidence).toMatchObject({mockCallbacks:2,uniqueMockCallbacks:1,fixtureReadback:'MATCH'});
     if(scenario==='READBACK_MISMATCH')expect(r.protocolEvidence).toMatchObject({fixtureReadback:'MISMATCH',mockRecordRef:null});
    }
    const rows=await service.list(org,reviewer,campaign.campaignId);
    expect(rows.forms).toHaveLength(1);expect(rows.submissions).toHaveLength(4);
+   expect(rows.qualifications).toHaveLength(2);
+   expect(rows.qualifications.find(x=>x.approvalId===review.approvalId)).toMatchObject({decision:'APPROVED',
+    independentInternalReviewRecorded:true,realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false});
+   expect((await service.list(foreign,outsider,campaign.campaignId)).qualifications).toEqual([]);
    expect((await service.list(foreign,outsider,campaign.campaignId)).forms).toEqual([]);
    await expect(service.submit(foreign,outsider,form.formId,{...submission,requestKey:'fixture-'+randomUUID()})).rejects.toThrow('not found');
    await expect(withMarketingTenant(db,org,tx=>tx.marketingConversionSubmission.update({where:{id:result.submissionId},

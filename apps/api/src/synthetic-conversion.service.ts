@@ -4,6 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
+import {SYNTHETIC_LEAD_REVIEW,currentSyntheticLeadTarget,syntheticQualificationScope,matchSyntheticQualification} from './synthetic-lead-qualification.js';
 import {parseCrmFixtureScenario,rehearseSyntheticCrmProtocol} from './synthetic-crm-protocol.js';
 const digest=(v:unknown[])=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 function object(v:unknown,keys:readonly string[]){
@@ -87,11 +88,50 @@ export class SyntheticConversionService{
    const rows=await tx.marketingConversionForm.findMany({where:{organizationId:org,campaignId},orderBy:{createdAt:'desc'},
     take:51,include:{approval:{select:{decision:true}}}});
    const submissions=await tx.marketingConversionSubmission.findMany({where:{organizationId:org,form:{campaignId}},
-    orderBy:{createdAt:'desc'},take:101});
-   return{forms:rows.slice(0,50).map(x=>formView(x,x.approval.decision)),
+    orderBy:{createdAt:'desc'},take:101,include:{form:true}});
+   const visible=submissions.slice(0,100);
+   const reviews=visible.length?await tx.approval.findMany({where:{organizationId:org,objectType:SYNTHETIC_LEAD_REVIEW,
+    objectId:{in:visible.map(s=>s.id)}}}):[];
+   const qualifications=visible.flatMap(s=>{
+    const matches=reviews.filter(a=>a.objectId===s.id);
+    if(matches.length!==1)return[];
+    const a=matches[0]!,exact=matchSyntheticQualification(s,a);
+    if(!exact)return[];
+    return[{submissionId:s.id,approvalId:a.id,decision:a.decision,scopeDigest:a.scopeDigest,
+     assessment:exact.scope.assessment,independentInternalReviewRecorded:a.decision==='APPROVED'&&!!a.decidedBy&&
+      a.decidedBy!==a.requestedBy&&a.decidedBy!==s.createdBy,syntheticOnly:true,
+     realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false}];
+   });
+   return{qualifications,forms:rows.slice(0,50).map(x=>formView(x,x.approval.decision)),
     submissions:submissions.slice(0,100).map(submissionView),windowCapped:rows.length>50||submissions.length>100,
     syntheticOnly:true,externalEffectsAuthorized:false};
   });
+ }
+ async qualify(org:string,identity:VerifiedIdentity,submissionIdInput:unknown,raw:unknown){
+  const submissionId=id(submissionIdInput,'synthetic submission');
+  try{return await this.transaction(org,identity,'SUBMIT_EVIDENCE',async tx=>{
+   const target=await currentSyntheticLeadTarget(tx,org,submissionId);
+   // Reuse the immutable submission and ApprovalService, never a second lead/CRM authority.
+   const exact=syntheticQualificationScope(target,identity.userId,raw);
+   const prior=await tx.approval.findMany({where:{organizationId:org,objectType:SYNTHETIC_LEAD_REVIEW,objectId:submissionId},take:2});
+   if(prior.length){
+    const a=prior[0]!;
+    if(prior.length!==1||a.scopeDigest!==exact.scopeDigest||!matchSyntheticQualification(target,a))
+     throw new ConflictException('Synthetic submission already has different or ambiguous qualification evidence');
+    return{approvalId:a.id,decision:a.decision,submissionId,scopeDigest:exact.scopeDigest,assessment:exact.scope.assessment,
+     syntheticOnly:true,realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false,replayed:true};
+   }
+   const a=await tx.approval.create({data:{id:randomUUID(),organizationId:org,objectType:SYNTHETIC_LEAD_REVIEW,
+    objectId:submissionId,requestedBy:identity.userId,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',
+    scope:exact.scope,scopeDigest:exact.scopeDigest}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,
+    action:'SYNTHETIC_LEAD_QUALIFICATION_PROPOSED',objectType:SYNTHETIC_LEAD_REVIEW,objectId:submissionId,
+    correlationId:submissionId,after:{approvalId:a.id,scopeDigest:exact.scopeDigest,assessment:exact.scope.assessment,
+     syntheticOnly:true,externalEffectsAuthorized:false}}});
+   return{approvalId:a.id,decision:a.decision,submissionId,scopeDigest:exact.scopeDigest,assessment:exact.scope.assessment,
+    syntheticOnly:true,realLeadVerified:false,crmWriteAuthorized:false,externalEffectsAuthorized:false,replayed:false};
+  });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
+   throw new ConflictException('Concurrent qualification; refresh before retry');throw e;}
  }
  async submit(org:string,identity:VerifiedIdentity,formIdInput:unknown,raw:unknown){
   const formId=id(formIdInput,'form'),r=object(raw,['contactId','requestKey','formDigest','mockCrmPurposeGranted','mockTransport']);

@@ -9,6 +9,11 @@ type FormRevision={formId:string;campaignId:string;brandId:string;headline:strin
 type Submission={submissionId:string;formId:string;contactId:string;outcome:string;
  protocolEvidence:null|{scenario:string;fixtureReadback:string;mockAcknowledgementStatus:number|null;mockCallbacks:number;uniqueMockCallbacks:number;fixtureOnly:true;actualCrmRequests:0;verifiedRemoteReceipts:0;externalEffectsAuthorized:false;automaticRetryAuthorized:false};
  externalEffectsAuthorized:false;crmHandoffsExecuted:0};
+type Qualification={submissionId:string;approvalId:string;decision:string;scopeDigest:string;
+ assessment:{bantTotal:number|null;icpTotal:number|null;priority:string|null;fitTier:string|null;suggestedReview:string;independentlyVerified:false};
+ independentInternalReviewRecorded:boolean;syntheticOnly:true;realLeadVerified:false;crmWriteAuthorized:false;externalEffectsAuthorized:false};
+const bantKeys=["budget","authority","need","timeline"] as const,icpKeys=["industry","companySize","role","geography"] as const;
+const emptyGrades=()=>({budget:"",authority:"",need:"",timeline:"",industry:"",companySize:"",role:"",geography:""});
 const field={padding:"9px 11px",border:"1px solid #cbd5e1",borderRadius:8,
  background:"#fff",width:"100%",boxSizing:"border-box" as const};
 const btn={padding:"9px 13px",background:"#124d83",color:"white",
@@ -44,6 +49,10 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
  const [formKey,setFormKey]=useState("");
  const [formRows,setFormRows]=useState<FormRevision[]>([]);
  const [submissionRows,setSubmissionRows]=useState<Submission[]>([]);
+ const [qualificationRows,setQualificationRows]=useState<Qualification[]>([]);
+ const [qualificationSelected,setQualificationSelected]=useState("");
+ const [grades,setGrades]=useState(emptyGrades);
+ const reviewedQualification=qualificationRows.find(x=>x.submissionId===qualificationSelected);
  const [formSelected,setFormSelected]=useState("");
  const [contactId,setContactId]=useState("");
  const [purpose,setPurpose]=useState(false);
@@ -53,8 +62,8 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
  const [durableError,setDurableError]=useState("");
  const [durableNotice,setDurableNotice]=useState("");
  const currentForm=formRows.find(x=>x.formId===formSelected);
- async function durableCall(path:string,body?:unknown){
-  const response=await fetch("/api/marketing/performance/forms"+path,{
+ async function durableCall(path:string,body?:unknown,resource:"forms"|"submissions"="forms"){
+  const response=await fetch("/api/marketing/performance/"+resource+path,{
    method:body===undefined?"GET":"POST",credentials:"same-origin",cache:"no-store",
    ...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
   const result=await response.json();
@@ -68,7 +77,13 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
     result.submissions.some((x:Submission)=>x.externalEffectsAuthorized!==false||x.crmHandoffsExecuted!==0||
       (x.protocolEvidence!==null&&(x.protocolEvidence.fixtureOnly!==true||x.protocolEvidence.actualCrmRequests!==0||x.protocolEvidence.verifiedRemoteReceipts!==0||x.protocolEvidence.externalEffectsAuthorized!==false||x.protocolEvidence.automaticRetryAuthorized!==false))))
    throw Error("Unexpected conversion evidence provenance");
-  setFormRows(result.forms);setSubmissionRows(result.submissions);
+  const qualifications=result.qualifications??[];
+  if(!Array.isArray(qualifications)||qualifications.some((x:Qualification)=>
+   x.syntheticOnly!==true||x.realLeadVerified!==false||x.crmWriteAuthorized!==false||
+   x.externalEffectsAuthorized!==false||x.assessment?.independentlyVerified!==false||
+   !result.submissions.some((s:Submission)=>s.submissionId===x.submissionId)))
+   throw Error("Unexpected qualification scope");
+  setFormRows(result.forms);setSubmissionRows(result.submissions);setQualificationRows(qualifications);
  }
  async function durableAction(fn:()=>Promise<void>){
   setDurableBusy(true);setDurableError("");setDurableNotice("");
@@ -195,7 +210,7 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
    <h4>Internal form revision and synthetic submission</h4>
    <p style={{fontSize:12}}>Create a form revision from the headline and CTA above, then have a separate manager decide its pending approval in the existing Approvals console. Submit only an existing same-brand synthetic contact with current mock opt-in. No public form, real contact, external CRM or legal consent is created.</p>
    <label>Approved campaign ID<input style={field} value={durableCampaign} disabled={!enabled||durableBusy}
-    onChange={e=>{setDurableCampaign(e.target.value);setFormRows([]);setSubmissionRows([]);setFormSelected("");setFormKey("");setSubmissionKey("");}}/></label>
+    onChange={e=>{setDurableCampaign(e.target.value);setFormRows([]);setSubmissionRows([]);setQualificationRows([]);setQualificationSelected("");setGrades(emptyGrades());setFormSelected("");setFormKey("");setSubmissionKey("");}}/></label>
    <label>Form brand ID<input style={field} value={durableBrand} disabled={!enabled||durableBusy}
     onChange={e=>{setDurableBrand(e.target.value);setFormKey("");}}/></label>
    <div style={{display:"flex",gap:8,margin:"8px 0",flexWrap:"wrap"}}>
@@ -230,6 +245,34 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
    </>}
    {durableError&&<p role="alert" style={{color:"#991b1b"}}>{durableError}</p>}
    {durableNotice&&<p style={{fontSize:12}}>{durableNotice}</p>}
+   {submissionRows.length>0&&<fieldset style={{marginTop:12,border:"1px solid #cbd5e1",borderRadius:8,padding:12}} disabled={!enabled||durableBusy}>
+    <legend>Independent synthetic lead qualification review</legend>
+    <p style={{fontSize:12}}>Review a stored synthetic submission with the canonical BANT/ICP rubric. Supply all eight evidence grades; no real lead, actual consent verification, CRM write or retry is authorized. A different manager must decide the exact review in Approvals. The original form and synthetic opt-in must still be current at approval.</p>
+    <label>Qualification submission<select style={field} value={qualificationSelected} onChange={e=>{setQualificationSelected(e.target.value);setGrades(emptyGrades());}}>
+     <option value="">Select a recorded synthetic submission</option>
+     {submissionRows.map(s=><option key={s.submissionId} value={s.submissionId}>{s.submissionId.slice(0,12)} · {s.outcome}</option>)}
+    </select></label>
+    {qualificationSelected&&!reviewedQualification&&<>
+     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginTop:8}}>
+      {[...bantKeys,...icpKeys].map(k=>{
+       const bant=(bantKeys as readonly string[]).includes(k);
+       const values=bant?[1,2,3,4,5]:[0,1,2];
+       return <label key={k}>{bant?"BANT":"ICP"} · {k}
+        <select style={field} value={grades[k]} onChange={e=>setGrades(g=>({...g,[k]:e.target.value}))}>
+         <option value="">Unknown</option>{values.map(n=><option key={n} value={n}>{n}</option>)}
+        </select></label>;
+      })}
+     </div>
+     <button type="button" style={{...btn,marginTop:8}} disabled={Object.values(grades).some(x=>x==="")} onClick={()=>void durableAction(async()=>{
+      const bant=Object.fromEntries(bantKeys.map(k=>[k,Number(grades[k])]));
+      const icp=Object.fromEntries(icpKeys.map(k=>[k,Number(grades[k])]));
+      const r=await durableCall("/"+encodeURIComponent(qualificationSelected)+"/qualification",{bant,icp},"submissions");
+      if(r.crmWriteAuthorized!==false||r.realLeadVerified!==false||r.externalEffectsAuthorized!==false)throw Error("Unexpected qualification effects");
+      setDurableNotice("Independent qualification review: "+r.approvalId);await refreshForms();
+     })}>Propose exact synthetic qualification review</button>
+    </>}
+    {reviewedQualification&&<p role="status" style={{fontSize:12}}>Historical review {reviewedQualification.approvalId} · {reviewedQualification.decision} · BANT {reviewedQualification.assessment.bantTotal??"Unknown"} · ICP {reviewedQualification.assessment.icpTotal??"Unknown"} · {reviewedQualification.assessment.priority??"Unknown"} / {reviewedQualification.assessment.fitTier??"Unknown"} · {reviewedQualification.assessment.suggestedReview}. Independent internal review: {reviewedQualification.independentInternalReviewRecorded?"recorded":"not recorded"}. Real lead and consent verification: none. No CRM write or retry.</p>}
+   </fieldset>}
    {submissionRows.length>0&&<div><strong>Recorded mock outcomes</strong>{submissionRows.map(x=><p key={x.submissionId} style={{fontSize:12}}>{x.formId.slice(0,12)} · {x.contactId.slice(0,12)} · {x.outcome} · zero actual CRM writes {x.protocolEvidence&&<>· {x.protocolEvidence.scenario} · acknowledgement {x.protocolEvidence.mockAcknowledgementStatus??"Unknown"} · readback {x.protocolEvidence.fixtureReadback} · callbacks {x.protocolEvidence.uniqueMockCallbacks}/{x.protocolEvidence.mockCallbacks} · no retry</>}</p>)}</div>}
   </section>
   {error&&<p role="alert" style={{color:"#991b1b"}}>{error}</p>}
