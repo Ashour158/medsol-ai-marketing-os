@@ -37,7 +37,7 @@ async function brand(page:Page){
 async function journey(page:Page,id='campaign-e2e'){
  await page.getByRole('textbox',{name:'Tenant campaign ID'}).fill(id);
  await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
- await expect(page.getByText(id==='campaign-e2e'?'Chromium-only scientific campaign':'Separate tenant campaign fixture').first()).toBeVisible();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText(id==='campaign-e2e'?'Chromium-only scientific campaign':'Separate tenant campaign fixture');
 }
 async function creative(page:Page){
  await brand(page);
