@@ -305,7 +305,7 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
     data:{offlineLayeredSourceDigest:'sha256:'+'f'.repeat(64)}}))).rejects.toThrow();
    const localInput={parentRevisionId:layer.revisionId,expectedVersion:layer.version,requestKey:randomUUID(),
     rightsExpiresAt:later(60),spec:{format:'PORTRAIT',title:'البحث والابتكار',body:'مسودة عربية للمراجعة العلمية',accent:'#124d83',locale:'ar-EG'}};
-   const local=await creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,localInput);
+   const local=await creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,localInput) as {revisionId:string;version:number};
    expect(local).toMatchObject({version:layer.version+1,parentRevisionId:layer.revisionId,approvalInherited:false,releaseAuthorized:false});
    const localPreview=await creatives.offlineLayeredPreview(org,local.revisionId);
    expect(localPreview).toMatchObject({current:true,spec:localInput.spec,releaseAuthorized:false,rightsVerified:false});
