@@ -67,7 +67,8 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
   // The single added T5B audited context-preview route extends the original
   // 145-route authenticated inventory. All routes must stay BFF-allowlisted.
-  expect(endpoints).toHaveLength(170);
+  expect(endpoints).toHaveLength(172);
+  for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/tenancy/activation-reviews",path:"/marketing/tenancy/activation-reviews"});
   for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/audience/message-rehearsals",path:"/marketing/audience/message-rehearsals"});
   expect(endpoints).toContainEqual({method:"POST",template:"/marketing/campaigns/:id/channel-plans/:approvalId/rehearse",path:"/marketing/campaigns/id-acceptance/channel-plans/id-acceptance/rehearse"});
   for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/campaigns/:id/channel-plans",path:"/marketing/campaigns/id-acceptance/channel-plans"});
@@ -159,6 +160,7 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
    ["POST","/marketing/products/synthetic-price-proposals/apply"],
    ["POST","/marketing/campaigns/id-1/channel-plans/dispatch"],
    ["POST","/marketing/audience/message-rehearsals/send"],
+   ["POST","/marketing/tenancy/activation-reviews/activate"],
    ["POST","/marketing/products"],
    ["POST","/marketing/tools/registrations/id-1/dispatch"]] as const){
    expect((await call(path,method)).status).toBe(404);

@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from "react";
 import {dossierCsv,dossierPillarCsv,DOSSIER_PILLARS,validateDossierForExport,
  type DeliveryDossier,type DossierPillar} from "../lib/customer-delivery-dossier-export";
 import {OFFLINE_CAMPAIGN_STAGE_ORDER} from "@medsol/contracts";
+import CustomerActivationReviewStudio from "./customer-activation-review-studio";
 
 type Identity={organizationId:string;userId:string;role:string};
 type Campaign={id:string;code:string;name:string;brandId:string|null};
@@ -139,6 +140,7 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
     <button type="button" style={{...btn,background:"#475569"}} disabled={!dossier}
      onClick={()=>exportFile("csv")}>Export unsigned CSV</button>
    </div>
+   {campaignId&&identity&&campaigns.find(c=>c.id===campaignId)?.brandId&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase())&&<CustomerActivationReviewStudio key={key+":"+campaignId} campaignId={campaignId} brandId={campaigns.find(c=>c.id===campaignId)!.brandId!}/>}
    {dossier&&<div role="group" aria-label="Export each customer engine evidence" style={{
     display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
     {DOSSIER_PILLARS.map(pillar=><button key={pillar} type="button" style={{
