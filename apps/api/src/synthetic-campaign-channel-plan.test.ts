@@ -7,6 +7,14 @@ describe('synthetic campaign channel plan',()=>{
   expect(channelPlanId('tenant-a',input.requestKey)).not.toBe(channelPlanId('tenant-b',input.requestKey));
   for(const bad of [{...input,fixtureOnly:false},{...input,dispatch:true},{...input,sourceIds:['doc-a','doc-a']},{...input,currency:'EGP'},{...input,body:'<script>bad</script>'}])expect(()=>normalizeChannelPlan(bad)).toThrow();
  });
+ it('requires exact product, read delegation and reviewed collateral inputs for partner kit',()=>{
+  const partner={productId:'product-a',agencyGrantId:'grant-a',creativeApprovalId:'approval-a',territory:'Egypt'};
+  const p=normalizeChannelPlan({...input,kind:'PARTNER_ENABLEMENT',channel:'PARTNER_KIT',partner});
+  expect(p.partner).toEqual(partner);
+  expect(()=>normalizeChannelPlan({...input,partner})).toThrow();
+  expect(()=>normalizeChannelPlan({...input,kind:'PARTNER_ENABLEMENT',channel:'PARTNER_KIT',partner:{...partner,territoryRightsVerified:true}})).toThrow();
+  expect(()=>normalizeChannelPlan({...input,kind:'PARTNER_ENABLEMENT',channel:'PARTNER_KIT'})).toThrow();
+ });
  it('uses hypothetical paid budget and rejects missing or prohibited literal copy',()=>{
   const paid=normalizeChannelPlan({...input,kind:'PAID_MEDIA',channel:'SEARCH_ADS',currency:'EGP',budgetMicros:'100000000'});
   expect(paid.budgetMicros).toBe('100000000');

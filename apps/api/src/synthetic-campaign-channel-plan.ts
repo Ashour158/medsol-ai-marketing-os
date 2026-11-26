@@ -1,7 +1,8 @@
 import {BadRequestException,ConflictException,NotFoundException} from '@nestjs/common';
 import type {Approval,Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
-import {reviewCorporateCommunication} from '@medsol/agent-runtime';
+import {reviewCorporateCommunication,reviewPartnerEnablement} from '@medsol/agent-runtime';
+import {isExactCreativeScope,exactCreativeScopeHash} from './exact-creative-scope.js';
 import {parseRules} from './brand-master.service.js';
 import {safeForAgentEvidence} from './agent-content-firewall.js';
 export const SYNTHETIC_CAMPAIGN_PLAN='SyntheticCampaignChannelPlan';
@@ -14,19 +15,28 @@ const paid=['SEARCH_ADS','SOCIAL_ADS','DISPLAY_ADS'];
 export function normalizeChannelPlan(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact synthetic channel plan required');
  const r=raw as Record<string,unknown>,fields=['requestKey','kind','channel','headline','body','sourceIds','expiresAt','fixtureOnly','regulatedClaim','currency','budgetMicros'];
+ if(r.kind==='PARTNER_ENABLEMENT')fields.push('partner');
  if(Object.keys(r).length!==fields.length||fields.some(k=>!Object.prototype.hasOwnProperty.call(r,k))||!id(r.requestKey)||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(r.requestKey)||
   !plain(r.headline,140)||!plain(r.body,1800)||!Array.isArray(r.sourceIds)||r.sourceIds.length<1||r.sourceIds.length>5||!r.sourceIds.every(id)||
   new Set(r.sourceIds).size!==r.sourceIds.length||typeof r.expiresAt!=='string'||!Number.isFinite(Date.parse(r.expiresAt))||new Date(r.expiresAt).toISOString()!==r.expiresAt||
   r.fixtureOnly!==true||typeof r.regulatedClaim!=='boolean')throw new BadRequestException('Invalid bounded synthetic channel plan');
- if(r.kind==='COMMUNICATIONS'){
+ let partner:{productId:string;agencyGrantId:string;creativeApprovalId:string;territory:string}|null=null;
+ if(r.kind==='PARTNER_ENABLEMENT'){
+  const p=r.partner as Record<string,unknown>|null;
+  if(r.channel!=='PARTNER_KIT'||r.currency!==null||r.budgetMicros!==null||!p||typeof p!=='object'||Array.isArray(p)||
+   Object.keys(p).sort().join(',')!=='agencyGrantId,creativeApprovalId,productId,territory'||
+   !id(p.productId)||!id(p.agencyGrantId)||!id(p.creativeApprovalId)||!plain(p.territory,100))
+   throw new BadRequestException('Exact synthetic partner kit product, read grant, collateral and territory required');
+  partner={productId:p.productId,agencyGrantId:p.agencyGrantId,creativeApprovalId:p.creativeApprovalId,territory:p.territory.trim()};
+ }else if(r.kind==='COMMUNICATIONS'){
   if(!kinds.includes(String(r.channel))||r.currency!==null||r.budgetMicros!==null)throw new BadRequestException('Communications rehearsal cannot authorize budget or dispatch');
  }else if(r.kind==='PAID_MEDIA'){
   if(!paid.includes(String(r.channel))||typeof r.currency!=='string'||!/^[A-Z]{3}$/.test(r.currency)||typeof r.budgetMicros!=='string'||!/^[1-9][0-9]{0,11}$/.test(r.budgetMicros))
    throw new BadRequestException('Bounded hypothetical paid media budget and currency required');
  }else throw new BadRequestException('Unsupported synthetic campaign channel');
- return{requestKey:r.requestKey,kind:r.kind as 'COMMUNICATIONS'|'PAID_MEDIA',channel:r.channel as string,headline:r.headline.trim(),body:r.body.trim(),
+ return{requestKey:r.requestKey,kind:r.kind as 'COMMUNICATIONS'|'PAID_MEDIA'|'PARTNER_ENABLEMENT',channel:r.channel as string,headline:r.headline.trim(),body:r.body.trim(),
   sourceIds:(r.sourceIds as string[]).slice().sort(),expiresAt:r.expiresAt,fixtureOnly:true as const,regulatedClaim:r.regulatedClaim,
-  currency:r.currency as string|null,budgetMicros:r.budgetMicros as string|null};
+  currency:r.currency as string|null,budgetMicros:r.budgetMicros as string|null,...(partner?{partner}:{})};
 }
 type Input=ReturnType<typeof normalizeChannelPlan>;
 export const channelPlanId=(org:string,key:string)=>'channel-'+hash([org,key]).slice(7);
@@ -40,7 +50,7 @@ export async function buildChannelPlan(tx:Prisma.TransactionClient,org:string,ac
  const expiry=new Date(input.expiresAt);
  if(expiry<=now||expiry.getTime()>now.getTime()+30*86400000)throw new BadRequestException('Channel plan expiry must be within 30 days');
  if(lock)await tx.$queryRaw`SELECT "id" FROM "Campaign" WHERE "organizationId"=${org} AND "id"=${campaignId} FOR UPDATE`;
- const campaign=await tx.campaign.findFirst({where:{organizationId:org,id:campaignId,status:'APPROVED'},select:{id:true,version:true,brandId:true}});
+ const campaign=await tx.campaign.findFirst({where:{organizationId:org,id:campaignId,status:'APPROVED'},select:{id:true,version:true,brandId:true,productId:true}});
  if(!campaign?.brandId)throw new NotFoundException('Current approved tenant brand campaign required');
  if(lock)await tx.$queryRaw`SELECT "id" FROM "Brand" WHERE "organizationId"=${org} AND "id"=${campaign.brandId} FOR UPDATE`;
  const brand=await tx.brand.findFirst({where:{organizationId:org,id:campaign.brandId,status:'ACTIVE'},select:{id:true}});
@@ -57,9 +67,43 @@ export async function buildChannelPlan(tx:Prisma.TransactionClient,org:string,ac
  const sources=docs.map(d=>({documentId:d.id,contentDigest:d.contentDigest}));
  const risk=input.kind==='COMMUNICATIONS'?reviewCorporateCommunication(org,{organizationId:org,briefId:campaignId,type:input.channel,regulatedClaim:input.regulatedClaim,
   claimEvidence:sources.map(s=>({organizationId:org,claimId:s.documentId,sourceReference:'internal:knowledge/'+s.documentId,authorityVerified:false,rightsReviewed:false}))}):null;
+ const p=input.partner;
+ let partnerEvidence=null;
+ if(p){
+  // Agency CAMPAIGN_READ is merely a scoped rehearsal prerequisite. It never
+  // represents a reseller contract, territory rights or delivery entitlement.
+  if(lock){
+   await tx.$queryRaw`SELECT "id" FROM "MarketingProduct" WHERE "organizationId"=${org} AND "id"=${p.productId} FOR UPDATE`;
+   await tx.$queryRaw`SELECT "id" FROM "AgencyGrant" WHERE "clientOrganizationId"=${org} AND "id"=${p.agencyGrantId} FOR SHARE`;
+  }
+  const product=await tx.marketingProduct.findFirst({where:{organizationId:org,id:p.productId,lifecycle:'ACTIVE'},select:{id:true,code:true,name:true,vendor:true,marketingProfile:true,updatedAt:true}});
+  if(!product||campaign.productId&&campaign.productId!==product.id)throw new ConflictException('Current tenant product required for partner rehearsal');
+  const grant=await tx.agencyGrant.findFirst({where:{id:p.agencyGrantId,clientOrganizationId:org,brandId:brand.id,status:'ACTIVE',expiresAt:{gt:expiry}},select:{id:true,version:true,agencyOrganizationId:true,actions:true,expiresAt:true}});
+  if(!grant||!Array.isArray(grant.actions)||!grant.actions.includes('CAMPAIGN_READ'))throw new ConflictException('Current same-brand read delegation required for partner rehearsal');
+  const a=await tx.approval.findFirst({where:{id:p.creativeApprovalId,organizationId:org,objectType:'CreativeAssetRevision',decision:'APPROVED'}});
+  const q=a?.scope;
+  if(!a||!a.creativeAssetRevisionId||!a.decidedBy||a.decidedBy===a.requestedBy||!a.decidedAt||!isExactCreativeScope(q)||
+   !a.scopeExpiresAt||a.scopeExpiresAt<=expiry||a.scopeExpiresAt.getTime()!==Date.parse(q.expiresAt)||
+   q.brandId!==brand.id||q.policyVersion!=='v'+policy.version||exactCreativeScopeHash(q)!==a.scopeDigest)
+   throw new ConflictException('Exact current approved collateral evidence required for partner rehearsal');
+  const v=await tx.creativeAssetRevision.findFirst({where:{id:a.creativeAssetRevisionId,organizationId:org}});
+  if(lock&&v)await tx.$queryRaw`SELECT "id" FROM "CreativeAsset" WHERE "organizationId"=${org} AND "id"=${v.assetId} FOR SHARE`;
+  const asset=v&&await tx.creativeAsset.findFirst({where:{organizationId:org,id:v.assetId,brandId:brand.id,status:'ACTIVE'}});
+  if(!v||!asset||asset.version!==v.version||a.objectId!==v.id||q.assetId!==asset.id||q.revisionId!==v.id||
+   q.revisionVersion!==v.version||q.renditionDigest!==v.renditionDigest||q.sourceRef!==v.sourceRef||
+   !v.rightsReviewedAt||!v.rightsReviewedBy||v.rightsReviewedBy===v.createdBy||v.rightsExpiresAt<=expiry)
+   throw new ConflictException('Current rights-reviewed collateral revision required for partner rehearsal');
+  const productDigest=hash({...product,updatedAt:product.updatedAt.toISOString()});
+  const review=reviewPartnerEnablement(org,{organizationId:org,productId:product.id,territory:p.territory,
+   partnerGrantVerified:false,productSourceVerified:true,productSourceVersion:productDigest,claimEvidenceReviewed:true});
+  partnerEvidence={productId:product.id,productDigest,grantId:grant.id,grantRevision:grant.version,
+   grantExpiresAt:grant.expiresAt.toISOString(),collateralApprovalId:a.id,collateralScopeDigest:a.scopeDigest,
+   collateralRevisionId:v.id,collateralDigest:v.renditionDigest,review,readDelegationOnly:true as const,
+   territoryRightsVerified:false as const,commercialDistributionAuthorized:false as const};
+ }
  const scope={policy:'SYNTHETIC_CAMPAIGN_CHANNEL_V1' as const,organizationId:org,requestedBy:actor,campaignId,campaignVersion:campaign.version,
   brandId:brand.id,campaignApprovalId:decision.id,brandPolicyId:policy.id,brandPolicyVersion:policy.version,brandPolicyDigest:hash(policy.rules),
-  input,sources,reviewRoles:risk?.reviewRoles??['MARKETING_OWNER','BUDGET_OWNER'],
+  input,sources,reviewRoles:risk?.reviewRoles??(p?['MARKETING_OWNER','PRODUCT_OWNER','COMMERCIAL_OWNER']:['MARKETING_OWNER','BUDGET_OWNER']),...(partnerEvidence?{partnerEvidence}:{}),
   syntheticOnly:true as const,claimVerification:false as const,professionalReviewVerified:false as const,budgetAuthorized:false as const,
   actualMediaSpendMicros:'0' as const,distributionAuthorized:false as const,externalEffectsAuthorized:false as const};
  return{scope,scopeDigest:hash(scope)};
@@ -74,6 +118,7 @@ export function readChannelPlan(a:Approval):Scope{
    s.syntheticOnly!==true||s.claimVerification!==false||s.professionalReviewVerified!==false||s.budgetAuthorized!==false||
    s.actualMediaSpendMicros!=='0'||s.distributionAuthorized!==false||s.externalEffectsAuthorized!==false||
    !Array.isArray(s.sources)||s.sources.length!==i.sourceIds.length||s.sources.some((x,j)=>x.documentId!==i.sourceIds[j]||!/^sha256:[a-f0-9]{64}$/.test(x.contentDigest))||
+   (!!i.partner!==!!s.partnerEvidence)||(s.partnerEvidence&&(s.partnerEvidence.territoryRightsVerified!==false||s.partnerEvidence.commercialDistributionAuthorized!==false||s.partnerEvidence.readDelegationOnly!==true||s.partnerEvidence.productId!==i.partner?.productId||s.partnerEvidence.grantId!==i.partner?.agencyGrantId||s.partnerEvidence.collateralApprovalId!==i.partner?.creativeApprovalId))||
    hash(s)!==a.scopeDigest||hash({...s,input:i})!==a.scopeDigest)throw Error('scope');
   return{...s,input:i};
  }catch{throw new ConflictException('Exact synthetic channel plan scope invalid');}
