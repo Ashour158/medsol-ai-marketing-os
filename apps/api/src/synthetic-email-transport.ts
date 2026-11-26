@@ -56,7 +56,7 @@ export function simulateSyntheticEmailTransport(input:{
  const virtualCallbackCount=n===0?0:scenario==='DUPLICATE_CALLBACK'?2:
   ['ACCEPTED','BOUNCED','COMPLAINT','READBACK_MISMATCH'].includes(scenario)?1:0;
  const syntheticReadback:SyntheticEmailTransport['syntheticReadback']=
-  ['ACCEPTED','DUPLICATE_CALLBACK'].includes(scenario)?'MATCH':
+  n===0?'UNAVAILABLE':['ACCEPTED','DUPLICATE_CALLBACK'].includes(scenario)?'MATCH':
   scenario==='READBACK_MISMATCH'?'MISMATCH':
   ['DELAYED_WEBHOOK','TIMEOUT_AFTER_ACCEPT'].includes(scenario)?'DELAYED':
   'UNAVAILABLE';

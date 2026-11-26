@@ -228,6 +228,23 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
       externalEffectsAuthorized:false},createdBy:reviewer
     }});
    })).rejects.toThrow();
+   const failedDomainKey='domain-'+randomUUID();
+   const domainBlocked=await synthetic.simulateEmailJourney(org,identity,{...audience,
+    requestKey:failedDomainKey,senderDomainScenario:'DKIM_MISALIGNED',journey});
+   expect(domainBlocked).toMatchObject({status:'BLOCKED',results:{
+    syntheticEligible:1,domainBlockedEligible:1,senderDomainPreflight:{fixtureEligible:false,senderDomainVerified:false},
+    syntheticTransport:{simulatedEligible:0,virtualAccepted:0,virtualCallbackCount:0,syntheticReadback:'UNAVAILABLE'},
+    syntheticJourneyPlan:null,actualMessagesSent:0,verifiedProviderReceipts:0}});
+   expect(await synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:failedDomainKey,
+    senderDomainScenario:'DKIM_MISALIGNED',journey})).toMatchObject({replayed:true,simulationId:domainBlocked.simulationId});
+   await expect(synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:failedDomainKey,
+    senderDomainScenario:'ALIGNED',journey})).rejects.toThrow('changed audience, consent or creative');
+   expect(await synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:'domain-'+randomUUID(),
+    senderDomainScenario:'ALIGNED',journey})).toMatchObject({status:'SIMULATED',results:{
+    domainBlockedEligible:0,senderDomainPreflight:{fixtureEligible:true,senderDomainVerified:false},
+    syntheticTransport:{virtualAccepted:1},syntheticJourneyPlan:{actualMessagesSent:0}}});
+   await expect(synthetic.simulateEmailJourney(org,identity,{...audience,requestKey:'domain-'+randomUUID(),
+    senderDomainScenario:'REAL_DOMAIN'})).rejects.toThrow('Unknown synthetic sender-domain scenario');
    // New withdrawal invalidates the previous audience snapshot, and all
    // synthetic recipients are now suppressed. No automatic send or replay.
    await action(eligible!,'SIMULATED_WITHDRAWAL','consent-'+randomUUID());
@@ -270,14 +287,14 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     expect(observed.before).toEqual([0,0,0]);
     expect(observed.own[0]).toBe(4);
     expect(observed.own[1]).toBeGreaterThan(0);
-    expect(observed.own[2]).toBe(4);
+    expect(observed.own[2]).toBe(6);
     expect(observed.other).toEqual([0,0,0]);
    }finally{
     await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingSyntheticContact",'+
      '"MarketingSyntheticConsent","MarketingEmailSimulation" FROM "'+probeRole+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+probeRole+'"');
    }
-   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(4);
+   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(6);
    // Hard-bounce feedback is synthetic and permanent even after withdrawal.
    await action(unknown!,'SIMULATED_HARD_BOUNCE','consent-'+randomUUID());
    await action(unknown!,'SIMULATED_WITHDRAWAL','consent-'+randomUUID());

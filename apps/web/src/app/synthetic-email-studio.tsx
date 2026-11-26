@@ -27,6 +27,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
  const [mailKey,setMailKey]=useState("");
  const [content,setContent]=useState("Controlled mock email campaign. No real recipients.");
  const [scenario,setScenario]=useState("ACCEPTED");
+ const [domainScenario,setDomainScenario]=useState("ALIGNED");
  const [journeyEnabled,setJourneyEnabled]=useState(false);
  const [journeyJson,setJourneyJson]=useState(JSON.stringify({
   timeZone:"Africa/Cairo",startAt:"2026-11-21T08:00:00Z",
@@ -185,6 +186,12 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
    }} style={{...field,minHeight:86}}/>
   </label>
   <div style={{marginTop:12,display:"grid",gap:10}}>
+   <label style={{fontSize:13}}>Synthetic sender-domain authentication
+    <select style={field} value={domainScenario} onChange={e=>{setDomainScenario(e.target.value);setMailKey("");setResult(null);}}>
+     {["ALIGNED","SPF_MISSING","SPF_PERMERROR","DKIM_MISSING","DKIM_MISALIGNED","DMARC_MISSING","DMARC_MONITOR_ONLY","AUTH_TEMPERROR"].map(x=><option key={x}>{x}</option>)}
+    </select>
+    <small>Strict internal SPF/DKIM alignment and enforced DMARC fixture only. No DNS query or real domain verification.</small>
+   </label>
    <label style={{fontSize:13}}>Synthetic ESP outcome
     <select style={field} value={scenario} onChange={e=>{
      setScenario(e.target.value);setMailKey("");setResult(null);
@@ -219,7 +226,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     if(!mailKey)setMailKey(requestKey);
     const r=await call("email/simulations",{
      brandId,campaignId,contactIds:selected,
-     contentDigest:"sha256:"+hex,requestKey,scenario,
+     contentDigest:"sha256:"+hex,requestKey,scenario,senderDomainScenario:domainScenario,
      ...(journeyEnabled?{journey:JSON.parse(journeyJson)}:{})
     });
     setResult(r as EmailResult);
@@ -232,6 +239,7 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
     Complaint-suppressed: {result.results.complaintSuppressed} ·
     Hard-bounce suppressed: {result.results.hardBounceSuppressed??0} ·
     Missing opt-in: {result.results.missingConsent}</p>
+   {result.results.senderDomainPreflight&&<p>Domain fixture: {result.results.senderDomainPreflight.scenario} · {result.results.senderDomainPreflight.fixtureEligible?"Mock gate passed":"Mock gate blocked"} · blocked eligible {result.results.domainBlockedEligible??0} · real domain not verified.</p>}
    <p>Actual emails sent: <strong>0</strong> · Verified external receipts: <strong>0</strong></p>
    <button type="button" style={{...btn,background:"#475569",marginTop:8}}
     disabled={busy||!enabled}
