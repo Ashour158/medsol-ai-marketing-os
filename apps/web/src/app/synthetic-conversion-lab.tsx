@@ -7,6 +7,7 @@ import {conversionFunnelCsv,crmHandoffRehearsalCsv,saveOfflineCsv} from "../lib/
 type FormRevision={formId:string;campaignId:string;brandId:string;headline:string;cta:string;
  approvalId:string;approvalDecision:string;contentDigest:string;publicFormHosted:false;syntheticOnly:true};
 type Submission={submissionId:string;formId:string;contactId:string;outcome:string;
+ protocolEvidence:null|{scenario:string;fixtureReadback:string;mockAcknowledgementStatus:number|null;mockCallbacks:number;uniqueMockCallbacks:number;fixtureOnly:true;actualCrmRequests:0;verifiedRemoteReceipts:0;externalEffectsAuthorized:false;automaticRetryAuthorized:false};
  externalEffectsAuthorized:false;crmHandoffsExecuted:0};
 const field={padding:"9px 11px",border:"1px solid #cbd5e1",borderRadius:8,
  background:"#fff",width:"100%",boxSizing:"border-box" as const};
@@ -64,7 +65,8 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
   const result=await durableCall("?campaignId="+encodeURIComponent(durableCampaign));
   if(result.externalEffectsAuthorized!==false||!Array.isArray(result.forms)||!Array.isArray(result.submissions)||
     result.forms.some((x:FormRevision)=>x.campaignId!==durableCampaign||x.publicFormHosted!==false)||
-    result.submissions.some((x:Submission)=>x.externalEffectsAuthorized!==false||x.crmHandoffsExecuted!==0))
+    result.submissions.some((x:Submission)=>x.externalEffectsAuthorized!==false||x.crmHandoffsExecuted!==0||
+      (x.protocolEvidence!==null&&(x.protocolEvidence.fixtureOnly!==true||x.protocolEvidence.actualCrmRequests!==0||x.protocolEvidence.verifiedRemoteReceipts!==0||x.protocolEvidence.externalEffectsAuthorized!==false||x.protocolEvidence.automaticRetryAuthorized!==false))))
    throw Error("Unexpected conversion evidence provenance");
   setFormRows(result.forms);setSubmissionRows(result.submissions);
  }
@@ -156,7 +158,7 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
     <label>Virtual transport
      <select style={field} value={mockTransport} onChange={e=>{
       setMockTransport(e.target.value as OfflineHandoffInput["mockTransport"]);setHandoff(null);}}>
-      {["ACCEPTED","REJECTED","OUTCOME_UNKNOWN"].map(x=><option key={x}>{x}</option>)}
+      {["ACCEPTED","REJECTED","OUTCOME_UNKNOWN","RATE_LIMITED","TIMEOUT_BEFORE_ACK","TIMEOUT_AFTER_ACCEPT","READBACK_MISMATCH","DUPLICATE_CALLBACK","MALFORMED_RESPONSE","CONTACT_SCOPE_MISMATCH"].map(x=><option key={x}>{x}</option>)}
      </select>
     </label>
     <label>Offline idempotency key
@@ -213,7 +215,7 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
      onChange={e=>{setContactId(e.target.value);setSubmissionKey("");}}/></label>
     <label style={{display:"block",fontSize:12,marginTop:8}}><input type="checkbox" checked={purpose} disabled={!enabled||durableBusy}
      onChange={e=>{setPurpose(e.target.checked);setSubmissionKey("");}}/> Explicit simulated CRM purpose only (not legal consent)</label>
-    <label>Mock CRM outcome<select style={field} value={transport} disabled={!enabled||durableBusy}
+    <label>Mock CRM protocol scenario<select style={field} value={transport} disabled={!enabled||durableBusy}
      onChange={e=>{setTransport(e.target.value);setSubmissionKey("");}}>
      {["ACCEPTED","REJECTED","OUTCOME_UNKNOWN"].map(x=><option key={x}>{x}</option>)}
     </select></label>
@@ -228,7 +230,7 @@ export default function SyntheticConversionLab({enabled}:{enabled:boolean}){
    </>}
    {durableError&&<p role="alert" style={{color:"#991b1b"}}>{durableError}</p>}
    {durableNotice&&<p style={{fontSize:12}}>{durableNotice}</p>}
-   {submissionRows.length>0&&<div><strong>Recorded mock outcomes</strong>{submissionRows.map(x=><p key={x.submissionId} style={{fontSize:12}}>{x.formId.slice(0,12)} · {x.contactId.slice(0,12)} · {x.outcome} · zero actual CRM writes</p>)}</div>}
+   {submissionRows.length>0&&<div><strong>Recorded mock outcomes</strong>{submissionRows.map(x=><p key={x.submissionId} style={{fontSize:12}}>{x.formId.slice(0,12)} · {x.contactId.slice(0,12)} · {x.outcome} · zero actual CRM writes {x.protocolEvidence&&<>· {x.protocolEvidence.scenario} · acknowledgement {x.protocolEvidence.mockAcknowledgementStatus??"Unknown"} · readback {x.protocolEvidence.fixtureReadback} · callbacks {x.protocolEvidence.uniqueMockCallbacks}/{x.protocolEvidence.mockCallbacks} · no retry</>}</p>)}</div>}
   </section>
   {error&&<p role="alert" style={{color:"#991b1b"}}>{error}</p>}
   {snapshot&&<div role="status" style={{marginTop:12,fontSize:13}}>
