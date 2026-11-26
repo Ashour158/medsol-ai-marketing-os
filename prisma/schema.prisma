@@ -1239,7 +1239,7 @@ model MarketingConversionSubmission {
  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
  form MarketingConversionForm @relation(fields:[organizationId,formId],references:[organizationId,id],onDelete:Restrict)
  contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict)
- consentEvent MarketingSyntheticConsent @relation(fields:[organizationId,consentEventId],references:[organizationId,id],onDelete:Restrict)
+ consentEvent MarketingSyntheticConsent @relation(fields:[organizationId,consentEventId],references:[organizationId,id],onDelete:Restrict,map:"ConversionSubmission_org_consent_fk")
  @@unique([organizationId,id])
  @@unique([organizationId,requestKey])
  @@unique([organizationId,formId,contactId],map:"ConversionSubmission_form_contact_uq")
