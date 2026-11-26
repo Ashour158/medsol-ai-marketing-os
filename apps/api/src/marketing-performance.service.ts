@@ -6,6 +6,7 @@ import {SYNTHETIC_EXPERIMENT,normalizeExperimentInput,buildSyntheticExperiment,r
 import {randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {combinedReviewedCommercial} from '@medsol/contracts';
+import {retryAbortedSyntheticConversion} from './synthetic-submission-transaction.js';
 import {summarizeReviewedCommercialMetrics,reconcileReviewedFunnelCohorts,reconcileReviewedMonetaryCohorts,monetaryKeys,COHORT_ROW_LIMIT,reviewedCommercialEvidenceManifest} from './commercial-metric-calculation.js';
 
 const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads',...monetaryKeys]);
@@ -20,7 +21,7 @@ export class MarketingPerformanceService{
  async proposeExperiment(org:string,identity:VerifiedIdentity,raw:unknown){
   const input=normalizeExperimentInput(raw);
   if(!identity||identity.organizationId!==org)throw new ForbiddenException('Verified experiment operator required');
-  try{return await withMarketingTenant(this.db,org,async tx=>{
+  try{return await retryAbortedSyntheticConversion(()=>withMarketingTenant(this.db,org,async tx=>{
    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_CAMPAIGN');
    const prior=await tx.approval.findMany({where:{organizationId:org,objectType:SYNTHETIC_EXPERIMENT,objectId:input.experimentKey},take:2});
    if(prior.length){
@@ -41,7 +42,7 @@ export class MarketingPerformanceService{
     correlationId:a.id,after:{scopeDigest:exact.scopeDigest,assignedCount:exact.scope.assignments.length,externalEffectsAuthorized:false}}});
    return{experimentKey:input.experimentKey,approvalId:a.id,scopeDigest:exact.scopeDigest,decision:a.decision,
     assignedCount:exact.scope.assignments.length,syntheticOnly:true,externalEffectsAuthorized:false,replayed:false};
-  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable}));}
   catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
    throw new ConflictException('Concurrent synthetic experiment; refresh exact key');throw e;}
  }
