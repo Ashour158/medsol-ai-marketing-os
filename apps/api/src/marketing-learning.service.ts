@@ -1,5 +1,12 @@
 import type {MarketingResearchWatch} from '@prisma/client';
+import {governedSourceImport} from './governed-source-import.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
+function sameGovernedEvidence(a:unknown,b:unknown){
+ if(a===null||a===undefined||b===null||b===undefined)return (a??null)===(b??null);
+ if(typeof a!=='object'||typeof b!=='object'||Array.isArray(a)||Array.isArray(b))return false;
+ const x=a as Record<string,unknown>,y=b as Record<string,unknown>;
+ return Object.keys(x).length===Object.keys(y).length&&Object.entries(x).every(([key,value])=>y[key]===value);
+}
 function watchInput(raw:unknown,keys:readonly string[]){
  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!keys.includes(k)))
   throw new BadRequestException('Invalid bounded watch input');
@@ -123,12 +130,14 @@ export class MarketingLearningService {
  private knowledgeMeta(row:{
   id:string;sourceKey:string;title:string;sourceUrl:string|null;
   status:string;accessMode:string;agentScope:string[];
+  sourceType?:string;governedSourceEvidence?:Prisma.JsonValue|null;
   contentDigest:string;createdBy:string;reviewedBy:string|null;
   expiresAt:Date|null;publishedAt:Date|null;
   createdAt:Date;revokedAt:Date|null
  }){
   return{id:row.id,sourceKey:row.sourceKey,title:row.title,
    sourceUrl:row.sourceUrl,status:row.status,accessMode:row.accessMode,
+   sourceType:row.sourceType??'MANUAL',governedSourceEvidence:row.status==='REVOKED'?null:row.governedSourceEvidence??null,
    agentScope:row.agentScope,contentDigest:row.contentDigest,
    createdBy:row.createdBy,reviewedBy:row.reviewedBy,
    expiresAt:row.expiresAt,publishedAt:row.publishedAt,
@@ -138,7 +147,7 @@ export class MarketingLearningService {
  async ingestKnowledge(org:string,identity:VerifiedIdentity,raw:{
    sourceKey?:unknown;title?:unknown;text?:unknown;sourceUrl?:unknown;
    publishedAt?:unknown;expiresAt?:unknown;accessMode?:unknown;
-   agentScope?:unknown
+   agentScope?:unknown;governedImport?:unknown
  }){
   const sourceKey=this.knowledgeId(raw?.sourceKey,'source key');
   if(sourceKey.length<12)throw new BadRequestException('Source key must have at least 12 characters');
@@ -158,6 +167,12 @@ export class MarketingLearningService {
    (accessMode==='AGENT_SCOPED'&&agents.length===0)||
    (accessMode==='REVIEWERS_ONLY'&&agents.length!==0))
    throw new ForbiddenException('Knowledge scope must use explicit canonical agent IDs');
+  let governed:ReturnType<typeof governedSourceImport>|null=null;
+  if(raw.governedImport!==undefined){
+   try{governed=governedSourceImport(raw.governedImport,sourceUrl,expiresAt,raw.text);}
+   catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid governed source import');}
+  }
+  const sourceType=governed?'GOVERNED_IMPORT':'MANUAL';
   const chunks=chunkKnowledge(raw?.text);
   const contentDigest=knowledgeSourceDigest(
    chunks.map(c=>c.content).join('\n[chunk-boundary]\n'));
@@ -168,7 +183,8 @@ export class MarketingLearningService {
    if(previous){
     if(previous.contentDigest!==contentDigest||
      previous.title!==title||previous.sourceUrl!==sourceUrl||
-     previous.accessMode!==accessMode||
+     previous.accessMode!==accessMode||previous.sourceType!==sourceType||
+     !sameGovernedEvidence(previous.governedSourceEvidence,governed)||
      JSON.stringify(previous.agentScope)!==JSON.stringify(agents)||
      previous.publishedAt?.toISOString()!==publishedAt?.toISOString()||
      previous.expiresAt?.toISOString()!==expiresAt?.toISOString())
@@ -178,7 +194,7 @@ export class MarketingLearningService {
    const documentId=randomUUID();
    const doc=await tx.knowledgeDocument.create({data:{
     id:documentId,organizationId:org,sourceKey,title,sourceUrl,
-    sourceType:'MANUAL',publishedAt,expiresAt,contentDigest,status:'QUARANTINED',
+    sourceType,...(governed?{governedSourceEvidence:governed}:{}),publishedAt,expiresAt,contentDigest,status:'QUARANTINED',
     accessMode:accessMode as string,agentScope:agents as string[],
     createdBy:identity.userId
    }});
@@ -190,7 +206,7 @@ export class MarketingLearningService {
     actorId:identity.userId,action:'KNOWLEDGE_QUARANTINED',
     objectType:'KnowledgeDocument',objectId:doc.id,correlationId:doc.id,
     after:{contentDigest,chunkCount:chunks.length,
-     accessMode,sourceKey,externalEffectsAuthorized:false}}});
+     accessMode,sourceKey,sourceType,governedImport:governed!==null,externalEffectsAuthorized:false}}});
    return{...this.knowledgeMeta(doc),chunkCount:chunks.length,replayed:false};
   });
  }
