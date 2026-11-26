@@ -20,6 +20,15 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
   catch(error){throw new BadRequestException(error instanceof Error?
    error.message:'Invalid simulated discussion input');}
  }
+ @Get('marketing/learning/watches') reviewedWatchList(@Req() req:any){
+  return this.learning.listReviewedWatches(req.identity.organizationId,req.identity);
+ }
+ @Post('marketing/learning/watches') reviewedWatchCreate(@Req() req:any,@Body() b:unknown){
+  return this.learning.createReviewedWatch(req.identity.organizationId,req.identity,b);
+ }
+ @Post('marketing/learning/watches/:id/transition') reviewedWatchTransition(@Req() req:any,@Param('id') id:string,@Body() b:unknown){
+  return this.learning.transitionReviewedWatch(req.identity.organizationId,req.identity,id,b);
+ }
  @Get('marketing/social/cases') communityCaseList(@Req() req:any){
   return this.communityCases.list(req.identity?.organizationId,req.identity,req.query?.brandId);
  }

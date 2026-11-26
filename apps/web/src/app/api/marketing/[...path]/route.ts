@@ -125,6 +125,8 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       )) ||
       (resource === "brand" && !(path.length===2 && ((request.method==="GET"&&(id==="active"||id==="revisions"))||(request.method==="POST"&&(id==="propose"||id==="decide"))))) ||
       (resource === "learning" && !(
+        (path.length===2&&id==="watches"&&["GET","POST"].includes(request.method))||
+        (path.length===4&&id==="watches"&&!!action&&operation==="transition"&&request.method==="POST")||
         (path.length===2&&id==="graph"&&request.method==="POST")||
         (path.length===3&&id==="graph"&&!!action&&request.method==="GET")||
         (path.length===4&&id==="graph"&&!!action&&
