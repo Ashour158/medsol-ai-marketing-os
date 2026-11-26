@@ -171,7 +171,7 @@ export default function CreativeGovernanceStudio({identity}:{identity:Identity|n
        setComparison(null);setCompared(false);
        const parent=await call("assets/revisions/"+encodeURIComponent(chosen.offlineRenditionParentRevisionId!)+"/layered-preview");
        const raster=await call("assets/revisions/"+encodeURIComponent(chosen.id)+"/offline-preview");
-       if(parent.sourceDigest!==chosen.offlineRenditionSourceDigest||raster.renditionDigest!==chosen.renditionDigest||!raster.current||!/^data:image\\/svg\\+xml;base64,[A-Za-z0-9+/]+=*$/.test(parent.svgDataUrl)||!/^data:image\\/png;base64,[A-Za-z0-9+/]+=*$/.test(raster.imageDataUrl))throw Error("Exact comparison evidence unavailable");
+       if(parent.sourceDigest!==chosen.offlineRenditionSourceDigest||raster.renditionDigest!==chosen.renditionDigest||!raster.current||!/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/.test(parent.svgDataUrl)||!/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(raster.imageDataUrl))throw Error("Exact comparison evidence unavailable");
        await call("media/evidence/"+encodeURIComponent(chosen.id)+"/verify-offline",{});
        setComparison({revisionId:chosen.id,parentRevisionId:parent.revisionId,sourceDigest:parent.sourceDigest,renditionDigest:raster.renditionDigest,svg:parent.svgDataUrl,png:raster.imageDataUrl});
       })}>Load exact source and verified PNG</button>
