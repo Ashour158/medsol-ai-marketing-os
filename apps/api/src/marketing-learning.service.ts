@@ -1,5 +1,6 @@
 import type {MarketingResearchWatch} from '@prisma/client';
 import {governedSourceImport} from './governed-source-import.js';
+import {FEEDBACK_PREFIX,buildSyntheticFeedback,encodeSyntheticFeedback,decodeSyntheticFeedback} from './synthetic-feedback.js';
 import {BUSINESS_PROFILE_PREFIX,BUSINESS_PROFILE_AGENTS,parseBusinessProfile,serializeBusinessProfile,decodeBusinessProfile} from './business-profile.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 function sameGovernedEvidence(a:unknown,b:unknown){
@@ -148,7 +149,7 @@ export class MarketingLearningService {
  async ingestKnowledge(org:string,identity:VerifiedIdentity,raw:{
    sourceKey?:unknown;title?:unknown;text?:unknown;sourceUrl?:unknown;
    publishedAt?:unknown;expiresAt?:unknown;accessMode?:unknown;
-   agentScope?:unknown;governedImport?:unknown;businessProfile?:unknown;businessProfileAttested?:unknown
+   agentScope?:unknown;governedImport?:unknown;businessProfile?:unknown;businessProfileAttested?:unknown;syntheticFeedback?:unknown
  }){
   const sourceKey=this.knowledgeId(raw?.sourceKey,'source key');
   if(sourceKey.length<12)throw new BadRequestException('Source key must have at least 12 characters');
@@ -160,7 +161,17 @@ export class MarketingLearningService {
     throw new BadRequestException('Business profile requires its own immutable fixture key, explicit manual-source attestation and structured fields only');
    try{profile=parseBusinessProfile(raw.businessProfile);sourceText=serializeBusinessProfile(profile);}catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid business profile');}
   }
-  const title=profile?'Business profile · '+profile.name:required(raw?.title,'knowledge title',300);
+  const feedbackMode=raw?.syntheticFeedback!==undefined;
+  if(feedbackMode!==sourceKey.startsWith(FEEDBACK_PREFIX))throw new BadRequestException('Reserved synthetic feedback key requires structured intake');
+  let feedback:ReturnType<typeof buildSyntheticFeedback>|null=null;
+  if(feedbackMode){
+   if(!/^synthetic-feedback-[a-f0-9-]{36}$/.test(sourceKey)||raw?.title!==undefined||raw?.text!==undefined||
+    raw?.sourceUrl!==undefined||raw?.publishedAt!==undefined||raw?.governedImport!==undefined||profileMode)
+    throw new BadRequestException('Synthetic feedback requires immutable fixture key and structured counts only');
+   try{feedback=buildSyntheticFeedback(org,raw.syntheticFeedback);sourceText=encodeSyntheticFeedback(feedback);}
+   catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid feedback fixture');}
+  }
+  const title=feedback?'Synthetic customer feedback cohort':profile?'Business profile · '+profile.name:required(raw?.title,'knowledge title',300);
   const sourceUrl=this.knowledgeUrl(raw?.sourceUrl);
   const publishedAt=this.knowledgeDate(raw?.publishedAt,'publishedAt');
   const expiresAt=this.knowledgeDate(raw?.expiresAt,'expiresAt');
@@ -170,6 +181,8 @@ export class MarketingLearningService {
   if(!['REVIEWERS_ONLY','AGENT_SCOPED'].includes(accessMode as string))
    throw new BadRequestException('Unknown knowledge access scope');
   const agents=raw?.agentScope??[];
+  if(feedback&&(!expiresAt||expiresAt.getTime()>Date.now()+90*86400000||accessMode!=='REVIEWERS_ONLY'||!Array.isArray(agents)||agents.length!==0))
+   throw new BadRequestException('Synthetic feedback must be reviewer-only and expire within 90 days');
   if(profile&&(!sourceUrl||!expiresAt||expiresAt.getTime()>Date.now()+365*86400000||!Array.isArray(agents)||agents.some(a=>!BUSINESS_PROFILE_AGENTS.includes(a as typeof BUSINESS_PROFILE_AGENTS[number]))))
    throw new BadRequestException('Business profile needs HTTPS provenance, expiry within one year and only designated canonical agents');
   if(!Array.isArray(agents)||agents.length>13||
@@ -185,11 +198,13 @@ export class MarketingLearningService {
   }
   const sourceType=governed?'GOVERNED_IMPORT':'MANUAL';
   const chunks=chunkKnowledge(sourceText);
+  if(feedback&&chunks.length!==1)throw new BadRequestException('Synthetic feedback must occupy exactly one immutable chunk');
   if(profile&&chunks.length!==1)throw new BadRequestException('Business profile must occupy exactly one immutable chunk');
   const contentDigest=knowledgeSourceDigest(
    chunks.map(c=>c.content).join('\n[chunk-boundary]\n'));
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   if(feedback&&!await tx.brand.findFirst({where:{organizationId:org,id:feedback.brandId,status:'ACTIVE'},select:{id:true}}))throw new NotFoundException('Active tenant brand not found');
    const previous=await tx.knowledgeDocument.findFirst({where:{
     organizationId:org,sourceKey}});
    if(previous){
@@ -218,7 +233,7 @@ export class MarketingLearningService {
     actorId:identity.userId,action:'KNOWLEDGE_QUARANTINED',
     objectType:'KnowledgeDocument',objectId:doc.id,correlationId:doc.id,
     after:{contentDigest,chunkCount:chunks.length,
-     accessMode,sourceKey,sourceType,governedImport:governed!==null,...(profile?{businessProfileManualSourceAttested:true,legalRightsVerified:false}:{}),externalEffectsAuthorized:false}}});
+     accessMode,sourceKey,sourceType,governedImport:governed!==null,...(profile?{businessProfileManualSourceAttested:true,legalRightsVerified:false}:{}),...(feedback?{syntheticFeedbackOnly:true,brandId:feedback.brandId,realCustomerData:false}:{}),externalEffectsAuthorized:false}}});
    return{...this.knowledgeMeta(doc),chunkCount:chunks.length,replayed:false};
   });
  }
@@ -229,12 +244,17 @@ export class MarketingLearningService {
     where:{organizationId:org},orderBy:{createdAt:'desc'},take:100});
    const now=new Date();
    const profiles=rows.filter(d=>d.sourceKey.startsWith(BUSINESS_PROFILE_PREFIX)&&['QUARANTINED','REVIEWED'].includes(d.status)&&d.sourceUrl&&d.expiresAt&&d.expiresAt>now);
-   const chunks=profiles.length?await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:{in:profiles.map(d=>d.id)}},select:{documentId:true,ordinal:true,content:true,digest:true},take:201}):[];
+   const feedbackRows=rows.filter(d=>d.sourceKey.startsWith(FEEDBACK_PREFIX)&&['QUARANTINED','REVIEWED'].includes(d.status)&&d.expiresAt&&d.expiresAt>now&&d.accessMode==='REVIEWERS_ONLY'&&d.agentScope.length===0&&d.sourceUrl===null);
+   const structured=[...profiles,...feedbackRows];
+   const chunks=structured.length?await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:{in:structured.map(d=>d.id)}},select:{documentId:true,ordinal:true,content:true,digest:true},take:201}):[];
+   const feedbackBrands=await tx.brand.findMany({where:{organizationId:org,status:'ACTIVE'},select:{id:true}});
+   const activeBrandIds=new Set(feedbackBrands.map(b=>b.id));
    return rows.map(d=>{
     const list=chunks.filter(c=>c.documentId===d.id),chunk=list[0];
+    const cohort=feedbackRows.some(x=>x.id===d.id)&&list.length===1&&chunk?.ordinal===0&&knowledgeSourceDigest(chunk.content)===d.contentDigest&&chunk.digest===d.contentDigest?decodeSyntheticFeedback(chunk.content):null;
     const profile=profiles.some(x=>x.id===d.id)&&list.length===1&&chunk?.ordinal===0&&
      knowledgeSourceDigest(chunk.content)===d.contentDigest&&knowledgeSourceDigest(chunk.content)===chunk.digest?decodeBusinessProfile(chunk.content):null;
-    return {...this.knowledgeMeta(d),...(profile&&d.title==='Business profile · '+profile.name?{businessProfile:profile,profileReviewStatus:d.status,profileAuthoritative:false}: {})};
+    return {...this.knowledgeMeta(d),...(profile&&d.title==='Business profile · '+profile.name?{businessProfile:profile,profileReviewStatus:d.status,profileAuthoritative:false}: {}),...(cohort&&activeBrandIds.has(cohort.brandId)&&d.title==='Synthetic customer feedback cohort'?{syntheticFeedback:cohort,feedbackReviewStatus:d.status}: {})};
    });
   });
  }
@@ -256,6 +276,14 @@ export class MarketingLearningService {
     throw new ForbiddenException('Independent evidence reviewer required');
    if(decisionInput==='REVIEW'&&doc.expiresAt&&doc.expiresAt<=new Date())
     throw new ConflictException('Expired source cannot enter retrieval');
+   if(decisionInput==='REVIEW'&&doc.sourceKey.startsWith(FEEDBACK_PREFIX)){
+    const chunks=await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:id},select:{ordinal:true,content:true,digest:true},take:2});
+    const c=chunks[0],cohort=c&&decodeSyntheticFeedback(c.content);
+    if(!cohort||chunks.length!==1||c?.ordinal!==0||knowledgeSourceDigest(c.content)!==doc.contentDigest||c.digest!==doc.contentDigest||
+     doc.title!=='Synthetic customer feedback cohort'||doc.sourceUrl!==null||doc.accessMode!=='REVIEWERS_ONLY'||doc.agentScope.length||
+     !doc.expiresAt||doc.expiresAt<=new Date()||!await tx.brand.findFirst({where:{organizationId:org,id:cohort.brandId,status:'ACTIVE'},select:{id:true}}))
+     throw new ConflictException('Invalid or expired synthetic feedback cohort');
+   }
    if(decisionInput==='REVIEW'&&doc.sourceKey.startsWith(BUSINESS_PROFILE_PREFIX)){
     const chunks=await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:id},select:{ordinal:true,content:true,digest:true},take:2});
     const c=chunks[0],profile=c&&decodeBusinessProfile(c.content);

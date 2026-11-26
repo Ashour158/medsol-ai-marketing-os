@@ -17,8 +17,8 @@ export const TARGET_ENGINES = [
     "goal": "E01 Business profile intake",
     "release": "R1",
     "owner": "Business & Brand Knowledge",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "Website, docs and human validation required"
+    "state": "PARTIAL",
+    "blocker": "Merged structured reviewed manual-source business-profile intake; authorized website/document extraction, authoritative revision selection and independent acceptance remain."
   },
   {
     "id": "E02",

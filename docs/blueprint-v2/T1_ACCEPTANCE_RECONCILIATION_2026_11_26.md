@@ -16,7 +16,7 @@
 
 | Type | Missing | Draft only | Partial | Verified |
 |---|---:|---:|---:|---:|
-| Engines | 1 | 0 | 35 | 0 |
+| Engines | 0 | 0 | 36 | 0 |
 | Workflows | 11 | 3 | 27 | 0 |
 
 PARTIAL = limited concrete implementation, not completed full scope. Related evidence for missing/draft items is explicitly adjacent only. No target promoted to VERIFIED_IMPLEMENTED.
@@ -25,7 +25,7 @@ PARTIAL = limited concrete implementation, not completed full scope. Related evi
 
 | ID | Capability | Proposed state | Pinned test/related evidence | What is present and what remains |
 |---|---|---|---|---|
-| E01 | Business Discovery | NOT_IMPLEMENTED | [brand-master.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/104f46fed74cdc2306a1b8a19959c0558bfb8007/apps/api/src/brand-master.test.ts) | Adjacent brand rule review; no comprehensive business profile discovery workflow. |
+| E01 | Business Discovery | PARTIAL | [business-profile.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/3ee64ffe4ee8c12f07830a34beb77dced064bd3c/apps/api/src/business-profile.test.ts); [postgres-r3h-knowledge.integration.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/3ee64ffe4ee8c12f07830a34beb77dced064bd3c/apps/api/src/postgres-r3h-knowledge.integration.test.ts) | Merged immutable manual-source business profile with independent reviewer, expiry, revocation and agent ACL. Authorized extraction and authoritative revision selection remain. |
 | E02 | Brand Knowledge | PARTIAL | [brand-master.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/104f46fed74cdc2306a1b8a19959c0558bfb8007/apps/api/src/brand-master.test.ts); [postgres-tenant-brand-agency.integration.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/104f46fed74cdc2306a1b8a19959c0558bfb8007/apps/api/src/postgres-tenant-brand-agency.integration.test.ts) | Tenant and brand entities plus approved tenant rule revisions; no brand-specific policy and claim-lineage completeness. |
 | E03 | Market Research | PARTIAL | [postgres-reviewed-market-watch.integration.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/104f46fed74cdc2306a1b8a19959c0558bfb8007/apps/api/src/postgres-reviewed-market-watch.integration.test.ts); [marketing-learning.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/104f46fed74cdc2306a1b8a19959c0558bfb8007/apps/api/src/marketing-learning.test.ts) | Persistent reviewed watch and intelligence evidence; broader permissioned source acquisition and corroboration remain. |
 | E04 | Audience Intelligence | PARTIAL | [postgres-synthetic-audience-email.integration.test.ts](https://github.com/Ashour158/medsol-ai-marketing-os/blob/104f46fed74cdc2306a1b8a19959c0558bfb8007/apps/api/src/postgres-synthetic-audience-email.integration.test.ts) | Synthetic purpose/consent/audience only; real contact authority and segmentation remain. |
@@ -110,7 +110,8 @@ PARTIAL = limited concrete implementation, not completed full scope. Related evi
 - [x] All 77 target IDs mapped to baseline source/test evidence and remaining gaps.
 - [ ] Corrected integrated CI and actual full-stack browser journey green on the final accepted SHA.
 - [x] PRs 137–140 merged after individually successful branch CI.
-- [ ] Additional simulated gap PRs 141–142 validated and integrated; rerun final combined CI.
+- [x] PRs [141](https://github.com/Ashour158/medsol-ai-marketing-os/pull/141) and [142](https://github.com/Ashour158/medsol-ai-marketing-os/pull/142) passed full branch CI ([141](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/45874424956), [142](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/45874760360)) and merged; new combined [main CI](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/45877435750) required. Prior [main CI](https://github.com/Ashour158/medsol-ai-marketing-os/actions/runs/45874109000) passed.
+- [ ] Synthetic feedback workflow candidate must pass CI and merge before updating WF38 from draft-only.
 - [ ] Remaining in-scope simulated capability requirements implemented, tested and accepted; distinguish future live-provider work through explicit scope approval, not a blanket waiver.
 - [ ] Independent acceptance evidence and sign-off recorded by authorized reviewers.
 - [ ] Tranche closure decision recorded after the preceding gates. No transition to Tranche 2 is authorized by this report.
