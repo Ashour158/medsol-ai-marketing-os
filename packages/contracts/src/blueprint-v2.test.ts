@@ -21,16 +21,24 @@ describe('Master Blueprint v2.1 complete declarative coverage',()=>{
    Array.from({length:41},(_,i)=>'WF'+String(i+1).padStart(2,'0')));
  });
  it('never represents an unbuilt external effect as implemented or authorized',()=>{
-  for(const id of ['E11','E17','E28','E31','E32','E33'])
+  for(const id of ['E28','E33'])
    expect(TARGET_ENGINES.find(e=>e.id===id)?.state).toBe('NOT_IMPLEMENTED');
-  for(const id of ['E14','E15','E16','E29','E30'])
+  for(const id of ['E03','E04','E09','E11','E14','E15','E16','E17','E18','E19','E20','E21','E29','E30','E31','E32','E34'])
    expect(TARGET_ENGINES.find(e=>e.id===id)?.state).toBe('PARTIAL');
-  for(const id of ['WF03','WF08','WF18','WF19','WF27','WF28','WF29','WF30'])
+  for(const id of ['WF03','WF27','WF28','WF29','WF30'])
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('NOT_IMPLEMENTED');
-  for(const id of ['WF16','WF17'])
+  for(const id of ['WF06','WF08','WF09','WF10','WF11','WF16','WF17','WF18','WF19','WF20','WF21','WF32','WF33','WF36','WF37'])
    expect(TARGET_WORKFLOWS.find(e=>e.id===id)?.state).toBe('PARTIAL');
   expect([...TARGET_ENGINES,...TARGET_WORKFLOWS,...TARGET_STUDIOS]
    .filter(x=>String(x.state)==='VERIFIED_IMPLEMENTED')).toHaveLength(0);
+ });
+ it('records merged partial capabilities with explicit remaining gates',()=>{
+  for(const id of ['WF09','WF10','WF18','WF32','WF33','WF36','WF37']){
+   const target: {goal?:string;blocker?:string;state:string}|undefined=TARGET_WORKFLOWS.find(e=>e.id===id);
+   expect(target?.state).toBe('PARTIAL');
+   expect(target?.goal?.length).toBeGreaterThan(10);
+   expect(target?.blocker?.length).toBeGreaterThan(10);
+  }
  });
  it('does not create new executing agents: aliases map to the 13 existing canonical authorities',()=>{
   const authorized=new Set([
