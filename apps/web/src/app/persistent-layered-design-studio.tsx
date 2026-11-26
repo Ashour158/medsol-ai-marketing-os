@@ -89,6 +89,17 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
     const anchor=document.createElement("a");anchor.href=fresh.svgDataUrl;anchor.download="medsol-layered-unapproved-"+fresh.revisionId+".svg";
     document.body.appendChild(anchor);anchor.click();anchor.remove();
    })}>Download stored editable SVG</button>
+   <button type="button" style={{...button,marginLeft:8}} disabled={!enabled||busy||!preview.current} onClick={()=>void run(async()=>{
+    const fresh=await loadPreview(preview.revisionId);
+    if(!fresh.current||fresh.sourceDigest!==preview.sourceDigest||fresh.renditionDigest!==preview.renditionDigest)throw Error("Stored design changed");
+    const image=new Image();await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(Error("Cannot render stored SVG"));image.src=fresh.svgDataUrl;});
+    const canvas=document.createElement("canvas");canvas.width=1080;canvas.height=fresh.spec.format==="PORTRAIT"?1350:1080;
+    const context=canvas.getContext("2d");if(!context)throw Error("Canvas unavailable");context.drawImage(image,0,0,canvas.width,canvas.height);
+    const pngBase64=canvas.toDataURL("image/png").split(",")[1];
+    const r=await call("assets/"+encodeURIComponent(fresh.assetId)+"/offline-revisions",{expectedVersion:fresh.version,layeredParentRevisionId:fresh.revisionId,layeredSourceDigest:fresh.sourceDigest,editableCopy:fresh.spec.title+"\n"+fresh.spec.body,pngBase64,requestKey:crypto.randomUUID(),rightsExpiresAt:new Date(Date.now()+60*86400000).toISOString()});
+    if(r.offlineOnly!==true||r.externalEffectsAuthorized!==false||r.visualFidelityVerified!==false)throw Error("Unexpected rendition authority");
+    onSaved(fresh.assetId);await load();setNotice("Offline PNG candidate saved. Independent visual comparison, byte readback and exact approval remain required.");
+   })}>Render offline PNG candidate</button>
   </div>}
   {notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}
  </section>;
