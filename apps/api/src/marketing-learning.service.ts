@@ -247,7 +247,8 @@ export class MarketingLearningService {
    const feedbackRows=rows.filter(d=>d.sourceKey.startsWith(FEEDBACK_PREFIX)&&['QUARANTINED','REVIEWED'].includes(d.status)&&d.expiresAt&&d.expiresAt>now&&d.accessMode==='REVIEWERS_ONLY'&&d.agentScope.length===0&&d.sourceUrl===null);
    const structured=[...profiles,...feedbackRows];
    const chunks=structured.length?await tx.knowledgeChunk.findMany({where:{organizationId:org,documentId:{in:structured.map(d=>d.id)}},select:{documentId:true,ordinal:true,content:true,digest:true},take:201}):[];
-   const feedbackBrands=await tx.brand.findMany({where:{organizationId:org,status:'ACTIVE'},select:{id:true}});
+   const candidateBrandIds=[...new Set(chunks.filter(c=>feedbackRows.some(d=>d.id===c.documentId)).map(c=>decodeSyntheticFeedback(c.content)?.brandId).filter((id):id is string=>!!id))];
+   const feedbackBrands=candidateBrandIds.length?await tx.brand.findMany({where:{organizationId:org,status:'ACTIVE',id:{in:candidateBrandIds}},select:{id:true},take:100}):[];
    const activeBrandIds=new Set(feedbackBrands.map(b=>b.id));
    return rows.map(d=>{
     const list=chunks.filter(c=>c.documentId===d.id),chunk=list[0];

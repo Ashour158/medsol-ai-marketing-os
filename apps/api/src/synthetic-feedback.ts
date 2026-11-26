@@ -1,7 +1,6 @@
-import {reviewVoiceOfCustomer} from '@medsol/agent-runtime';
+import {reviewVoiceOfCustomer,FEEDBACK_THEMES} from '@medsol/agent-runtime';
 import {createHash} from 'node:crypto';
 export const FEEDBACK_PREFIX='synthetic-feedback-';
-export const FEEDBACK_THEMES=['PRODUCT_QUALITY','ONBOARDING','PRICE_VALUE','SUPPORT','USABILITY','TRUST','FEATURE_REQUEST','DELIVERY','OTHER'] as const;
 type Theme=typeof FEEDBACK_THEMES[number];
 const fixtureBrand=(x:unknown):x is string=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(x);
 const exact=(x:unknown,keys:readonly string[]):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).length===keys.length&&keys.every(k=>Object.prototype.hasOwnProperty.call(x,k));

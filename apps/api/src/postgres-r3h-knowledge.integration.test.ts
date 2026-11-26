@@ -181,7 +181,7 @@ describe('R3-H authoritative knowledge fabric integration',()=>{
    expect(revoked).toMatchObject({status:'REVOKED'});expect(revoked).not.toHaveProperty('businessProfile');
    expect((await service.contextForAgent(org,'MKT-BRAND-001','proteomics reagents')).results).toHaveLength(0);
    const brandId='feedback-'+randomUUID();
-   await db.brand.create({data:{id:brandId,organizationId:org,name:'Synthetic feedback brand',status:'ACTIVE'}});
+   await db.brand.create({data:{id:brandId,organizationId:org,name:'Synthetic feedback brand',slug:'synthetic-feedback',createdBy:creator,status:'ACTIVE'}});
    const counts={PRODUCT_QUALITY:0,ONBOARDING:0,PRICE_VALUE:0,SUPPORT:5,USABILITY:2,TRUST:0,FEATURE_REQUEST:0,DELIVERY:0,OTHER:0};
    const fixture={sourceKey:'synthetic-feedback-'+randomUUID(),syntheticFeedback:{brandId,fixtureOnly:true,counts},
     expiresAt:new Date(Date.now()+30*86400000).toISOString(),accessMode:'REVIEWERS_ONLY'};
