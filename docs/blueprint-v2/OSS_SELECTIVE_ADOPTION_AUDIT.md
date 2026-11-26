@@ -115,3 +115,8 @@
 5. Next prioritization: durable community inbox/case lifecycle, market watch acquisition, consent-bound lead intake, and monetary reconciliation; assess individual permissive components before building anew. Existing independent QA, staging and release gates remain NOT_CERTIFIED.
 
 **Limit:** This is a 77-capability reuse map and selected source inspection, not a comprehensive line-by-line audit, dependency clearance for entire upstream projects or legal advice. No claimed engineering-hours savings or full Tranche 1 completion.
+
+
+## Creative OSS follow-up — OpenMotion and alternatives
+
+See [pinned creative integration audit and C0–C9 scope](CREATIVE_OSS_INTEGRATION_TRANCHE.md). OpenMotion/HyperFrames is the first motion-render candidate; select one still canvas after comparison. No upstream code adopted in this amendment. File-level rights and security review precede import.
