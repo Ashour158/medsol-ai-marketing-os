@@ -26,7 +26,7 @@ for target in api web; do
     --mount "type=bind,src=$work/images,dst=/images,readonly" \
     --mount "type=bind,src=$work/reports,dst=/reports" "$scanner" \
     image --cache-dir /cache --skip-db-update --skip-java-db-update --offline-scan \
-    --scanners vuln --pkg-types os,library --format json \
+    --scanners vuln --pkg-types os,library --list-all-pkgs --format json \
     --output "/reports/$target.json" --timeout 5m --input "/images/$target.tar"
   cp "$work/reports/$target.json" "alpha-$target-vulnerabilities.json"
 done
