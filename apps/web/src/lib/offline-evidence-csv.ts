@@ -312,3 +312,51 @@ export function reviewedMarketWatchCsv(baseline:WatchSnapshot,current:WatchSnaps
   ['release','','','production_status','NOT_CERTIFIED','UNSIGNED_OFFLINE_ONLY']
  ]);
 }
+
+export type CommercialEvidenceManifest={
+ status:"ROW_LIMIT_EXCEEDED"|"BOUNDED_REVIEWED_SOURCE_MANIFEST";rowCount:number|null;sourceDigest:string|null;
+ independentVerification:false;attributionValidated:false;revenueVerified:false;roiValidated:false;
+ fxConversionPerformed:false;signed:false;externalEffectsAuthorized:false;
+ groups:Array<{recordDigest:string;funnelStatus:string;monetaryStatus:string;metrics:Array<{metricKey:string;value:string;currency:string|null}>}>;
+};
+/** Export the fresh bounded summary only, not the source documents or a
+ * signed finance report. Validate each amount and preserve currency labels. */
+export function reviewedCommercialEvidenceCsv(summary:{campaign:{id:string};organizationId:string;evidenceManifest:CommercialEvidenceManifest},
+ organizationId:string,campaignId:string){
+ const m=summary?.evidenceManifest,digest=(v:unknown)=>typeof v==='string'&&/^sha256:[a-f0-9]{64}$/.test(v);
+ const keys=['impressions','clicks','engagements','leads','qualified_leads','spend_micros','reported_revenue_micros','reported_gross_profit_micros'];
+ const money=keys.slice(5),funnelStatuses=['NO_COMPLETE_MATCHED_GROUPS','PARTIAL_SOURCE_MATCH','EXACT_SOURCE_RECORD_MATCH'];
+ const monetaryStatuses=['NO_MATCHED_MONETARY_GROUPS','PARTIAL_MONETARY_MATCH','EXACT_MONETARY_SOURCE_MATCH'];
+ if(summary?.organizationId!==organizationId||summary?.campaign?.id!==campaignId||
+   !/^[A-Za-z0-9_-]{1,200}$/.test(campaignId)||!m||m.status!=='BOUNDED_REVIEWED_SOURCE_MANIFEST'||
+   m.independentVerification!==false||m.attributionValidated!==false||m.revenueVerified!==false||
+   m.roiValidated!==false||m.fxConversionPerformed!==false||m.signed!==false||m.externalEffectsAuthorized!==false||
+   !digest(m.sourceDigest)||!Array.isArray(m.groups)||m.groups.length>1000||
+   typeof m.rowCount!=='number'||!Number.isSafeInteger(m.rowCount)||m.rowCount<0||m.rowCount>1000)
+  fail('Commercial manifest is missing, unbounded or not current scope');
+ const rows:unknown[][]=[['section','record_fingerprint','metric','value','currency','qualification'],
+  ['source','','campaign_id',campaignId,'','TENANT_SCOPED_REVIEWED_LEDGER'],
+  ['source','','manifest_fingerprint',m.sourceDigest,'','UNSIGNED_FINGERPRINT_NOT_SIGNATURE'],
+  ['source','','reviewed_rows',m.rowCount,'','BOUNDED_REPEATABLE_READ']];
+ const seen=new Set<string>();let count=0;
+ for(const group of m.groups){
+  if(!group||!digest(group.recordDigest)||seen.has(group.recordDigest)||!funnelStatuses.includes(group.funnelStatus)||
+   !monetaryStatuses.includes(group.monetaryStatus)||!Array.isArray(group.metrics)||!group.metrics.length||group.metrics.length>keys.length)
+   fail('Invalid commercial source-record projection');
+  seen.add(group.recordDigest);
+  const metricSeen=new Set<string>();
+  for(const r of group.metrics){
+   if(!r||!keys.includes(r.metricKey)||metricSeen.has(r.metricKey)||typeof r.value!=='string'||!/^(0|[1-9][0-9]{0,24})$/.test(r.value)||
+    (r.currency!==null&&(typeof r.currency!=='string'||!/^[A-Z]{3}$/.test(r.currency)||!money.includes(r.metricKey)))||
+    (r.metricKey.startsWith('reported_')&&r.currency===null))fail('Invalid commercial metric or currency');
+   metricSeen.add(r.metricKey);count++;
+   rows.push(['reviewed_metric',group.recordDigest,r.metricKey,r.value,
+    money.includes(r.metricKey)?r.currency??'UNKNOWN':'',money.includes(r.metricKey)?'REPORTED_MICRO_UNITS_NOT_FINANCE_VERIFIED':'REVIEWED_SOURCE_COUNT']);
+  }
+  rows.push(['reconciliation',group.recordDigest,'funnel',group.funnelStatus,'','NOT_CAUSAL_ATTRIBUTION'],
+   ['reconciliation',group.recordDigest,'monetary',group.monetaryStatus,'','NO_FX_OR_FINANCE_VERIFICATION']);
+ }
+ if(count!==m.rowCount)fail('Commercial manifest row count mismatch');
+ rows.push(['release','','production_status','NOT_CERTIFIED','','UNSIGNED_OFFLINE_ONLY']);
+ return csv(rows);
+}
