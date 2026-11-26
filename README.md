@@ -30,6 +30,10 @@ The current executable release is a **governed internal vertical slice**; it is 
 
 Authorized auditors can inspect this target-state inventory from `GET /marketing/architecture/blueprint` in the Command Center. The endpoint and catalog expose **no new external side effects**.
 
+### Active delivery priority — internal Alpha
+
+Follow the [Alpha-first release plan](docs/blueprint-v2/ALPHA_FIRST_RELEASE_PLAN.md): stabilize the merged baseline, complete the core simulated campaign journey, validate canonical agents/workflows, establish persistent test-only staging and obtain scoped operator acceptance before adding advanced features. The full commercial blueprint remains the target; no real provider connection, paid hosting or production launch is authorized. Alpha is not yet accepted or launched.
+
 ### Release sequence and truth-in-status
 
 R0 reliability and security evidence → R1 commercial tenant/agency/brand/IAM/approval/DAM → R2 real creative/social/email and consent-governed customer campaign → R3 multi-provider, MCP/A2A, Agent/Workflow/Blueprint Studios and knowledge → R4 market/product/pricing/loyalty/conversion → R5 paid media/messaging/commercial ecosystem.
