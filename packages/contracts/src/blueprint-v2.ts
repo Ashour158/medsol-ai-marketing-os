@@ -125,8 +125,8 @@ export const TARGET_ENGINES = [
     "goal": "Factual, accessibility, rights and brand QA",
     "release": "R2",
     "owner": "BrandMasterService",
-    "state": "DRAFT_ONLY",
-    "blocker": "Some brand review concepts, no asset QA pipeline"
+    "state": "PARTIAL",
+    "blocker": "Stored revision-bound brand-policy advisory checks phrases, disclaimers, accents and contrast; independent factual, accessibility, translation and rights validation remain"
   },
   {
     "id": "E14",
@@ -934,7 +934,7 @@ export type BlueprintInventory={
  releaseGates:typeof RELEASE_GATES;
 };
 export function getBlueprintV2Inventory():BlueprintInventory {
- return {version:'2.1',asOfCommit:'104f46fed74cdc2306a1b8a19959c0558bfb8007',
+ return {version:'2.1',asOfCommit:'035d4d556a08eaa37ab75cf1c7446a91c99cb8db',
   targetStateOnly:true,counts:TARGET_COUNTS,engines:TARGET_ENGINES,
   workflows:TARGET_WORKFLOWS,studios:TARGET_STUDIOS,
   brains:TARGET_BRAINS,personas:TARGET_PERSONAS,releaseGates:RELEASE_GATES};

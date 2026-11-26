@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {renderOfflineLayeredSpec as render} from './offline-layered-design.js';
+import {inspectLayeredDraftQuality} from './layered-draft-quality.js';
 const input={format:'SQUARE',title:'Research & innovation',body:'Plain copy <script> is escaped.',accent:'#124D83'};
 describe('Deterministic bounded layered source',()=>{
  it('normalizes and renders independent editable layers with stable digests',()=>{
@@ -36,5 +37,27 @@ describe('Deterministic bounded layered source',()=>{
    {...input,accent:'url(https://example.org)'},{...input,format:'VIDEO'},
    {...input,title:'x'.repeat(91)},{...input,body:'x'.repeat(401)},{...input,body:'a\u0000b'}])
    expect(()=>render(value)).toThrow();
+ });
+});
+
+describe('Exact revision content quality advisory',()=>{
+ const policy={id:'reviewed-master',version:2,proposedBy:'author',approvedBy:'reviewer',approvedAt:new Date('2026-01-01'),rules:{
+  voice:'Factual',primaryColor:'#124d83',prohibitedClaims:['guaranteed cure'],requiredDisclaimers:['Research use only']}};
+ const check=(raw:unknown,p:typeof policy|null=policy)=>{
+  const x=render(raw);return inspectLayeredDraftQuality(x.spec,x.sourceDigest,x.renditionDigest,p);
+ };
+ it('reports literal claim, disclaimer and accent findings without approving the content',()=>{
+  const x=check({...input,title:'GUARANTEED CURE',body:'Other copy',accent:'#ffffff'});
+  expect(x).toMatchObject({status:'REVIEW_FINDINGS',policyRevisionId:'reviewed-master',prohibitedPhraseMatches:1,
+   missingDisclaimers:1,accentMatchesTenantPrimary:false,advisoryOnly:true,factualAccuracyVerified:false,releaseAuthorized:false});
+  expect(x.fixedTextContrast.bodyOnWhite).toBeGreaterThan(4.5);
+  expect(x.fixedTextContrast.headlineOnWhite).toBeGreaterThan(4.5);
+  const good=check({...input,body:'Research use only'});
+  expect(good).toMatchObject({status:'NO_LITERAL_FINDINGS',missingDisclaimers:0,rightsVerified:false,accessibilityCertified:false,externalEffectsAuthorized:false});
+  expect(good.sourceDigest).not.toBe(x.sourceDigest);
+ });
+ it('fails closed on missing or self-approved/malformed policy',()=>{
+  for(const p of [null,{...policy,approvedBy:'author'},{...policy,rules:{...policy.rules,primaryColor:'bad'}}])
+   expect(check(input,p)).toMatchObject({status:'POLICY_UNAVAILABLE',prohibitedPhraseMatches:null,missingDisclaimers:null,releaseAuthorized:false});
  });
 });

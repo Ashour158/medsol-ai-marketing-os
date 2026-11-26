@@ -137,6 +137,12 @@ describe.skipIf(!enabled)('T4A actual PostgreSQL offline creative iteration and 
    expect(await creative.list(other)).toHaveLength(0);
    await expect(creative.offlinePreview(other,second.revisionId))
     .rejects.toThrow('not found in tenant');
+   const layer=await creative.appendOfflineLayeredDraft(org,creator,first.assetId,{parentRevisionId:second.revisionId,expectedVersion:2,
+    requestKey:randomUUID(),rightsExpiresAt:future,spec:{format:'SQUARE',title:'Scientific draft',body:'Internal review only',accent:'#164c7c'}}) as {revisionId:string};
+   const layerPreview=await creative.offlineLayeredPreview(org,layer.revisionId);
+   expect(layerPreview.quality).toMatchObject({status:'NO_LITERAL_FINDINGS',policyVersion:1,policyScope:'TENANT_MASTER_ONLY',
+    sourceDigest:layerPreview.sourceDigest,renditionDigest:layerPreview.renditionDigest,releaseAuthorized:false,externalEffectsAuthorized:false});
+   await expect(creative.offlineLayeredPreview(other,layer.revisionId)).rejects.toThrow('not found');
   }finally{await db.$disconnect();}
  },90000);
 });
