@@ -4,6 +4,7 @@ import {discussionTriageCsv,saveOfflineCsv,type DiscussionTriageExport}
  from "../lib/offline-evidence-csv";
 
 type Identity={organizationId:string;userId:string;role:string}|null;
+type QueueSummary={asOf:string;activeCount:number;overdueCount:number;escalatedCount:number;withoutDeadlineCount:number;byPriority:{priority:string;active:number;overdue:number;escalated:number;withoutDeadline:number}[];externalNotificationAuthorized:false};
 type CommunityCase={caseId:string;brandId:string;discussionId:string;disposition:string;
  escalations:string[];priority:string;status:string;version:number;createdBy:string;
  assignedTo:string|null;closedBy:string|null;specialistApprovalVerified:false;
@@ -25,7 +26,7 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
  const [brandId,setBrandId]=useState("");
- const [queue,setQueue]=useState<{scope:string;cases:CommunityCase[];windowCapped:boolean}|null>(null);
+ const [queue,setQueue]=useState<{scope:string;cases:CommunityCase[];windowCapped:boolean;queueSummary?:QueueSummary}|null>(null);
  const [caseNotice,setCaseNotice]=useState("");
  const scope=identity?JSON.stringify([identity.organizationId,identity.userId,brandId]):"";
  const currentQueue=queue?.scope===scope?queue:null;
@@ -40,11 +41,15 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
   return value;
  }
  async function refreshQueue(){
-  const r=await caseRequest("?brandId="+encodeURIComponent(brandId)) as {cases:CommunityCase[];windowCapped:boolean;externalEffectsAuthorized:false};
+  const r=await caseRequest("?brandId="+encodeURIComponent(brandId)) as {cases:CommunityCase[];windowCapped:boolean;externalEffectsAuthorized:false;queueSummary?:QueueSummary};
   if(r.externalEffectsAuthorized!==false||!Array.isArray(r.cases)||r.cases.some(x=>x.brandId!==brandId||
     x.syntheticOnly!==true||x.externalEffectsAuthorized!==false||x.externalResolutionVerified!==false||
     x.specialistApprovalVerified!==false||!Array.isArray(x.specialistReviews)||typeof x.internalSpecialistReviewComplete!=="boolean"))throw Error("Invalid synthetic case scope");
-  setQueue({scope,cases:r.cases,windowCapped:r.windowCapped});
+  if(r.queueSummary&&(r.queueSummary.externalNotificationAuthorized!==false||
+    !Array.isArray(r.queueSummary.byPriority)||
+    ![r.queueSummary.activeCount,r.queueSummary.overdueCount,r.queueSummary.escalatedCount,r.queueSummary.withoutDeadlineCount]
+     .every(n=>Number.isSafeInteger(n)&&n>=0&&n<=r.queueSummary!.activeCount)))throw Error("Invalid internal queue summary");
+  setQueue({scope,cases:r.cases,windowCapped:r.windowCapped,queueSummary:r.queueSummary});
  }
  async function runCase(task:()=>Promise<void>){
   setBusy(true);setError("");setCaseNotice("");
@@ -140,6 +145,12 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
     {caseNotice&&<p role="status">{caseNotice}</p>}
     {currentQueue&&<>
      <p style={{fontSize:12}}>{currentQueue.cases.length} cases · {currentQueue.windowCapped?"First 100 shown":"Current bounded queue"}</p>
+     {currentQueue.queueSummary&&<div aria-label="Prioritized internal case queue summary" style={{fontSize:12,border:"1px solid #cbd5e1",borderRadius:6,padding:10}}>
+      <strong>{currentQueue.queueSummary.activeCount} active · {currentQueue.queueSummary.overdueCount} overdue · {currentQueue.queueSummary.escalatedCount} escalated internally</strong>
+      <p>Snapshot: {currentQueue.queueSummary.asOf} · {currentQueue.queueSummary.withoutDeadlineCount} active legacy cases without deadlines.</p>
+      {currentQueue.queueSummary.byPriority.map(p=><div key={p.priority}>{p.priority} · {p.active} active · {p.overdue} overdue · {p.escalated} escalated · {p.withoutDeadline} without deadline</div>)}
+      <p>Active cases are prioritized by risk, then persisted deadline. Counts include cases beyond the visible page. No external notification.</p>
+     </div>}
      {currentQueue.cases.map(row=><article key={row.caseId} style={{borderTop:"1px solid #e2e8f0",padding:"10px 0",fontSize:12}}>
       <strong>{row.discussionId} · {row.priority} · {row.status}</strong>
       <p>Version {row.version} · {row.assignedTo===identity.userId?"Assigned to you":row.assignedTo?"Assigned":"Unassigned"} · {row.escalations.join(", ")||"No rule-based escalation"}</p>
