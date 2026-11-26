@@ -159,7 +159,10 @@ describe('R3-H authoritative knowledge fabric integration',()=>{
    expect(await db.outboxEvent.count({where:{
     organizationId:org,eventType:'KnowledgeSourceRevokedInternal'}})).toBe(1);
    const businessProfile={name:'Synthetic Med Research',industry:'Life sciences',offerings:'Proteomics reagents and instruments',audience:'Research laboratories',territories:'Egypt',differentiators:'Technical support and training'};
-   const profileInput={sourceKey:'business-profile-'+randomUUID(),businessProfile,sourceUrl:'https://example.invalid/business-profile',expiresAt:new Date(Date.now()+60*86400000).toISOString(),accessMode:'AGENT_SCOPED',agentScope:['MKT-BRAND-001']};
+   const profileInput={sourceKey:'business-profile-'+randomUUID(),businessProfile,businessProfileAttested:true,sourceUrl:'https://example.invalid/business-profile',expiresAt:new Date(Date.now()+60*86400000).toISOString(),accessMode:'AGENT_SCOPED',agentScope:['MKT-BRAND-001']};
+   await expect(service.ingestKnowledge(org,author,{...profileInput,businessProfileAttested:false})).rejects.toThrow('attestation');
+   await expect(service.ingestKnowledge(org,author,{...profileInput,expiresAt:new Date(Date.now()-86400000).toISOString()})).rejects.toThrow('expired');
+   await expect(service.ingestKnowledge(org,author,{...profileInput,agentScope:['MKT-CRM-001']})).rejects.toThrow('designated');
    const profile=await service.ingestKnowledge(org,author,profileInput);
    expect(profile).toMatchObject({status:'QUARANTINED',chunkCount:1});
    expect(await service.ingestKnowledge(org,author,profileInput)).toMatchObject({id:profile.id,replayed:true});

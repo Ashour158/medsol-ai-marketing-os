@@ -148,16 +148,16 @@ export class MarketingLearningService {
  async ingestKnowledge(org:string,identity:VerifiedIdentity,raw:{
    sourceKey?:unknown;title?:unknown;text?:unknown;sourceUrl?:unknown;
    publishedAt?:unknown;expiresAt?:unknown;accessMode?:unknown;
-   agentScope?:unknown;governedImport?:unknown;businessProfile?:unknown
+   agentScope?:unknown;governedImport?:unknown;businessProfile?:unknown;businessProfileAttested?:unknown
  }){
   const sourceKey=this.knowledgeId(raw?.sourceKey,'source key');
   if(sourceKey.length<12)throw new BadRequestException('Source key must have at least 12 characters');
   const profileMode=raw?.businessProfile!==undefined;
-  if(profileMode!==sourceKey.startsWith(BUSINESS_PROFILE_PREFIX))throw new BadRequestException('Reserved business profile source key requires structured intake');
+  if(profileMode!==sourceKey.startsWith(BUSINESS_PROFILE_PREFIX)||(!profileMode&&raw?.businessProfileAttested!==undefined))throw new BadRequestException('Reserved business profile source key requires structured intake');
   let profile:ReturnType<typeof parseBusinessProfile>|null=null,sourceText=raw?.text;
   if(profileMode){
-   if(!/^business-profile-[a-f0-9-]{36}$/.test(sourceKey)||raw?.title!==undefined||raw?.text!==undefined||raw?.governedImport!==undefined)
-    throw new BadRequestException('Business profile requires its own immutable fixture key and structured fields only');
+   if(!/^business-profile-[a-f0-9-]{36}$/.test(sourceKey)||raw?.title!==undefined||raw?.text!==undefined||raw?.governedImport!==undefined||raw?.businessProfileAttested!==true)
+    throw new BadRequestException('Business profile requires its own immutable fixture key, explicit manual-source attestation and structured fields only');
    try{profile=parseBusinessProfile(raw.businessProfile);sourceText=serializeBusinessProfile(profile);}catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid business profile');}
   }
   const title=profile?'Business profile · '+profile.name:required(raw?.title,'knowledge title',300);
@@ -218,7 +218,7 @@ export class MarketingLearningService {
     actorId:identity.userId,action:'KNOWLEDGE_QUARANTINED',
     objectType:'KnowledgeDocument',objectId:doc.id,correlationId:doc.id,
     after:{contentDigest,chunkCount:chunks.length,
-     accessMode,sourceKey,sourceType,governedImport:governed!==null,externalEffectsAuthorized:false}}});
+     accessMode,sourceKey,sourceType,governedImport:governed!==null,...(profile?{businessProfileManualSourceAttested:true,legalRightsVerified:false}:{}),externalEffectsAuthorized:false}}});
    return{...this.knowledgeMeta(doc),chunkCount:chunks.length,replayed:false};
   });
  }

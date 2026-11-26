@@ -84,7 +84,7 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
    <label style={{display:'block'}}><input type='checkbox' checked={profileAgents} disabled={busy} onChange={e=>{setProfileAgents(e.target.checked);setProfileKey('');}}/> Permit the designated brand, strategy and director agents to retrieve this source only after independent review.</label>
    <button style={button} disabled={busy||!profileAttested||!profileUrl.startsWith('https://')||!profileExpiry||profileFields.some(([key])=>profile[key].trim().length<2)} onClick={()=>void task(async()=>{
     const key=profileKey||'business-profile-'+crypto.randomUUID();setProfileKey(key);
-    setLast(await call('',{sourceKey:key,businessProfile:profile,sourceUrl:profileUrl,expiresAt:new Date(profileExpiry+'T23:59:59Z').toISOString(),accessMode:profileAgents?'AGENT_SCOPED':'REVIEWERS_ONLY',agentScope:profileAgents?['MKT-BRAND-001','MKT-STR-001','MKT-CMO-001']:[]}));
+    setLast(await call('',{sourceKey:key,businessProfile:profile,businessProfileAttested:profileAttested,sourceUrl:profileUrl,expiresAt:new Date(profileExpiry+'T23:59:59Z').toISOString(),accessMode:profileAgents?'AGENT_SCOPED':'REVIEWERS_ONLY',agentScope:profileAgents?['MKT-BRAND-001','MKT-STR-001','MKT-CMO-001']:[]}));
     await refresh();
    })}>Submit business profile to quarantine</button>
   </fieldset>}
