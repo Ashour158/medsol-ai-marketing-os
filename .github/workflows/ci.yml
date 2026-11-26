@@ -70,7 +70,7 @@ jobs:
           test "$(psql -h localhost -p 5432 -U marketing_test -d marketing_upgrade_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='upgrade-tenant' AND \"name\"='Historical tenant';")" = "1"
       - name: Test
         run: pnpm test
-      - name: Audit all 47 tenant-owned PostgreSQL tables for FORCE RLS (zero uncovered allowed)
+      - name: Audit all 48 tenant-owned PostgreSQL tables for FORCE RLS (zero uncovered allowed)
         env:
           MARKETING_R3N_RLS_CI_ONLY: '1'
         run: node scripts/quality/r3n-tenant-rls-inventory.mjs --output r3n-rls-inventory.json
