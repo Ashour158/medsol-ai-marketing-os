@@ -16,3 +16,5 @@ export * from './disposable-oidc.js';
 export * from './staging-oidc.js';
 
 export * from './offline-campaign-stages.js';
+
+export * from './combined-commercial.js';

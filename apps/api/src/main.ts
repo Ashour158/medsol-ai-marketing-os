@@ -30,6 +30,12 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/learning/watches/:id/transition') reviewedWatchTransition(@Req() req:any,@Param('id') id:string,@Body() b:unknown){
   return this.learning.transitionReviewedWatch(req.identity.organizationId,req.identity,id,b);
  }
+ @Post('marketing/performance/experiments') proposeExperiment(@Req() req:any,@Body() b:unknown){
+  return this.performance.proposeExperiment(req.identity.organizationId,req.identity,b);
+ }
+ @Get('marketing/performance/experiments/:id') experimentReport(@Req() req:any,@Param('id') id:string){
+  return this.performance.experimentReport(req.identity.organizationId,req.identity,id);
+ }
  @Get('marketing/performance/forms') conversionForms(@Req() req:any){
   return this.conversion.list(req.identity.organizationId,req.identity,req.query?.campaignId);
  }

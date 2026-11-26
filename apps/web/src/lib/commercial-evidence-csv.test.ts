@@ -1,4 +1,5 @@
 import {describe,it,expect} from 'vitest';
+import {combinedReviewedCommercial} from '@medsol/contracts';
 import {reviewedCommercialEvidenceCsv as csv,type CommercialEvidenceManifest} from './offline-evidence-csv';
 const fp='sha256:'+'a'.repeat(64);
 const manifest=():CommercialEvidenceManifest=>({status:'BOUNDED_REVIEWED_SOURCE_MANIFEST',rowCount:2,sourceDigest:fp,
@@ -12,6 +13,14 @@ describe('Reviewed commercial CSV',()=>{
   const s=csv(report(),'org','campaign');
   expect(s).toContain('EGP');expect(s).toContain('5000000');expect(s).toContain('NOT_CERTIFIED');
   expect(s).toContain('UNSIGNED_FINGERPRINT_NOT_SIGNATURE');expect(s).toContain('NOT_CAUSAL_ATTRIBUTION');
+ });
+ it('recomputes combined evidence and refuses changed aggregate exports',()=>{
+  const r=report(),m=r.evidenceManifest;
+  m.groups[0]!.metrics.push(...[['impressions','100'],['clicks','20'],['leads','8'],['qualified_leads','4']].map(([metricKey,value])=>({metricKey:metricKey!,value:value!,currency:null})));
+  m.groups[0]!.funnelStatus='EXACT_SOURCE_RECORD_MATCH';m.rowCount=6;
+  const combined=combinedReviewedCommercial(m);
+  expect(csv({...r,combinedCommercialReconciliation:combined},'org','campaign')).toContain('5.0000');
+  expect(()=>csv({...r,combinedCommercialReconciliation:{...combined,matchedGroups:99}},'org','campaign')).toThrow('Combined commercial arithmetic');
  });
  it('rejects scope mismatch, altered flags, row bound, duplicate metrics and malformed values',()=>{
   expect(()=>csv(report(),'other','campaign')).toThrow('OFFLINE_CSV_BLOCKED');
