@@ -471,7 +471,9 @@ jobs:
 
       - name: Block Alpha candidate on high or critical audit findings or missing scanner evidence
         if: always()
-        run: node scripts/quality/alpha-dependency-gate.mjs
+        run: |
+          node --test scripts/quality/alpha-dependency-gate.test.mjs
+          node scripts/quality/alpha-dependency-gate.mjs
 
   alpha-packaging:
     name: Alpha offline image packaging rehearsal
