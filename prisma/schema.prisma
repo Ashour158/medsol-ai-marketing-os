@@ -69,6 +69,7 @@ model Organization {
   workflows WorkflowExecution[]
   workflowSteps WorkflowStepExecution[]
   learningSignals LearningSignal[]
+  marketWatches MarketingResearchWatch[]
   knowledgeDocuments KnowledgeDocument[]
   knowledgeChunks KnowledgeChunk[]
   knowledgeRelations KnowledgeRelation[]
@@ -1166,4 +1167,28 @@ model SocialCommunityCase {
  @@unique([organizationId,id])
  @@unique([organizationId,brandId,discussionId])
  @@index([organizationId,brandId,status,updatedAt],map:"SocialCommunityCase_queue_idx")
+}
+
+
+// WF36: durable watch configuration and last bounded evaluation only.
+// LearningSignal remains the sole evidence authority; AuditEvent records history.
+model MarketingResearchWatch {
+ id String @id @default(cuid())
+ organizationId String
+ topic String
+ sector String
+ intervalHours Int
+ status String @default("ACTIVE")
+ version Int @default(1)
+ createdBy String
+ nextDueAt DateTime
+ lastEvaluatedAt DateTime?
+ lastSignalIds String[] @default([])
+ lastEvaluation Json?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,topic,sector])
+ @@index([organizationId,status,nextDueAt],map:"MarketingResearchWatch_due_idx")
 }
