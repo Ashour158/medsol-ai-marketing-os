@@ -73,6 +73,6 @@ BEGIN
   OR (OLD."status" IN ('PENDING_REVIEW','RESOLVED_INTERNAL') AND NEW."status"='OPEN' AND NEW."assignedTo" IS NULL)
  ) THEN RAISE EXCEPTION 'Invalid community case transition'; END IF;
  RETURN NEW;
-END $$;
+END; $;
 CREATE TRIGGER "SocialCommunityCase_transition_guard" BEFORE INSERT OR UPDATE OR DELETE ON "SocialCommunityCase"
  FOR EACH ROW EXECUTE FUNCTION medsol_social_case_guard();
