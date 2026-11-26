@@ -2,7 +2,7 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
-import {summarizeReviewedCommercialMetrics,reconcileReviewedFunnelCohorts,reconcileReviewedMonetaryCohorts,monetaryKeys,COHORT_ROW_LIMIT} from './commercial-metric-calculation.js';
+import {summarizeReviewedCommercialMetrics,reconcileReviewedFunnelCohorts,reconcileReviewedMonetaryCohorts,monetaryKeys,COHORT_ROW_LIMIT,reviewedCommercialEvidenceManifest} from './commercial-metric-calculation.js';
 
 const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads',...monetaryKeys]);
 const SOURCE_SYSTEMS=new Set(['MANUAL_EXPORT','APPROVED_CONNECTOR_EXPORT']);
@@ -121,7 +121,7 @@ export class MarketingPerformanceService{
    metrics.warnings.push('CURRENCY_SPEND_REPORTED_SEPARATELY');
   const monetaryReconciliation=reconcileReviewedMonetaryCohorts(cohortRows);
   return{organizationId,campaign,...metrics,sourceRecordReconciliation:reconcileReviewedFunnelCohorts(cohortRows),
-   monetaryReconciliation,
+   monetaryReconciliation,evidenceManifest:reviewedCommercialEvidenceManifest(organizationId,campaignId,cohortRows),
    independentlyVerified:false,spendUnit:'micro currency units'};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
