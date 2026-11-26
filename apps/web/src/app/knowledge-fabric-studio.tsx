@@ -2,9 +2,12 @@
 import {useEffect,useState} from "react";
 
 type Identity={userId:string;organizationId:string;role:string};
+type BusinessProfile={name:string;industry:string;offerings:string;audience:string;territories:string;differentiators:string};
+const emptyProfile:BusinessProfile={name:'',industry:'',offerings:'',audience:'',territories:'',differentiators:''};
+const profileFields=[['name','Business name',60],['industry','Industry',60],['offerings','Offerings',100],['audience','Audience',100],['territories','Territories',80],['differentiators','Differentiators',120]] as const;
 type Document={id:string;sourceKey:string;title:string;status:string;
  accessMode:string;agentScope:string[];contentDigest:string;
- sourceUrl:string|null;reviewedBy:string|null;sourceType?:string;governedSourceEvidence?:null|{rightsBasis:string;scope:string;permissionExpiresAt:string;permissionReference:string;legalRightsVerified:false}};
+ sourceUrl:string|null;reviewedBy:string|null;businessProfile?:BusinessProfile;profileReviewStatus?:string;profileAuthoritative?:false;sourceType?:string;governedSourceEvidence?:null|{rightsBasis:string;scope:string;permissionExpiresAt:string;permissionReference:string;legalRightsVerified:false}};
 type Result={results:Array<{citationRef:string;snippet:string;
  sourceTitle:string;sourceUrl:string|null;score:number;independentlyVerified:false}>;
  retrievalMethod:string;independentlyVerified:false};
@@ -14,6 +17,7 @@ const button={background:"#124d83",color:"#fff",border:0,
  borderRadius:8,padding:"9px 13px",fontWeight:650,cursor:"pointer"} as const;
 export default function KnowledgeFabricStudio({identity}:{identity:Identity|null}){
  const [docs,setDocs]=useState<Document[]>([]);
+ const [profile,setProfile]=useState<BusinessProfile>(emptyProfile),[profileUrl,setProfileUrl]=useState(''),[profileExpiry,setProfileExpiry]=useState(''),[profileKey,setProfileKey]=useState(''),[profileAgents,setProfileAgents]=useState(false),[profileAttested,setProfileAttested]=useState(false);
  const [sourceKey,setSourceKey]=useState("");
  const [title,setTitle]=useState("");
  const [content,setContent]=useState("");
@@ -68,6 +72,22 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
    <strong> reviewed source excerpts, not independently verified claims</strong>.
    No provider, model or web scraper is contacted.
   </p>
+  {isAdmin&&<fieldset style={{border:'1px solid #cbd5e1',padding:12,marginBottom:15}}>
+   <legend>Structured business discovery · manual source</legend>
+   <p style={{fontSize:12}}>Author a compact business profile from an authorized source. A different administrator must review it. This is a knowledge snapshot, not a legal identity, verified claim or brand-policy change.</p>
+   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10}}>
+    {profileFields.map(([key,label,max])=><label key={key}>{label}<input style={field} value={profile[key]} maxLength={max} disabled={busy} onChange={e=>{setProfile(p=>({...p,[key]:e.target.value}));setProfileKey('');}}/></label>)}
+    <label>Business source HTTPS URL<input style={field} value={profileUrl} disabled={busy} onChange={e=>{setProfileUrl(e.target.value);setProfileKey('');}}/></label>
+    <label>Business profile expiry<input type='date' style={field} value={profileExpiry} disabled={busy} onChange={e=>{setProfileExpiry(e.target.value);setProfileKey('');}}/></label>
+   </div>
+   <label style={{display:'block'}}><input type='checkbox' checked={profileAttested} disabled={busy} onChange={e=>setProfileAttested(e.target.checked)}/> I confirm authorized manual business information, with no personal data.</label>
+   <label style={{display:'block'}}><input type='checkbox' checked={profileAgents} disabled={busy} onChange={e=>{setProfileAgents(e.target.checked);setProfileKey('');}}/> Permit the designated brand, strategy and director agents to retrieve this source only after independent review.</label>
+   <button style={button} disabled={busy||!profileAttested||!profileUrl.startsWith('https://')||!profileExpiry||profileFields.some(([key])=>profile[key].trim().length<2)} onClick={()=>void task(async()=>{
+    const key=profileKey||'business-profile-'+crypto.randomUUID();setProfileKey(key);
+    setLast(await call('',{sourceKey:key,businessProfile:profile,businessProfileAttested:profileAttested,sourceUrl:profileUrl,expiresAt:new Date(profileExpiry+'T23:59:59Z').toISOString(),accessMode:profileAgents?'AGENT_SCOPED':'REVIEWERS_ONLY',agentScope:profileAgents?['MKT-BRAND-001','MKT-STR-001','MKT-CMO-001']:[]}));
+    await refresh();
+   })}>Submit business profile to quarantine</button>
+  </fieldset>}
   {isAdmin&&<div>
    <h4>Quarantine a new source</h4>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",
@@ -160,7 +180,7 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
      <th align="left">Agent scope</th><th align="left">Governance</th></tr></thead>
     <tbody>{docs.map(doc=><tr key={doc.id}>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
-      <strong>{doc.title}</strong><div>{doc.sourceKey}</div>{doc.governedSourceEvidence&&<small>Declared {doc.governedSourceEvidence.rightsBasis} · {doc.governedSourceEvidence.scope} · expiry {doc.governedSourceEvidence.permissionExpiresAt} · rights reference {doc.governedSourceEvidence.permissionReference} · not legally verified</small>}</td>
+      <strong>{doc.title}</strong><div>{doc.sourceKey}</div>{doc.businessProfile&&<details><summary>Business profile · {doc.profileReviewStatus} · not authoritative</summary><dl>{profileFields.map(([key,label])=><div key={key}><dt>{label}</dt><dd>{doc.businessProfile?.[key]}</dd></div>)}</dl></details>}{doc.governedSourceEvidence&&<small>Declared {doc.governedSourceEvidence.rightsBasis} · {doc.governedSourceEvidence.scope} · expiry {doc.governedSourceEvidence.permissionExpiresAt} · rights reference {doc.governedSourceEvidence.permissionReference} · not legally verified</small>}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>{doc.status}</td>
      <td style={{padding:9,borderTop:"1px solid #e2e8f0"}}>
       {doc.accessMode==="REVIEWERS_ONLY"?"Reviewers only":doc.agentScope.join(", ")}</td>

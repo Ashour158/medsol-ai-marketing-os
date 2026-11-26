@@ -1,4 +1,6 @@
-# Tranche 1 closure register — unsigned engineering reconciliation
+# Tranche 1 closure register — historical unsigned engineering reconciliation
+
+**Historical snapshot, superseded for current inventory by [the 77-entry engineering acceptance reconciliation](T1_ACCEPTANCE_RECONCILIATION_2026_11_26.md).** Do not use the older counts below as current implementation evidence.
 
 This revision uses the canonical 36-engine / 41-workflow registry, existing 77-row gap CSV and command center. It is not a second inventory, independent code audit or certification. All 77 target IDs remain visible; no capability is marked VERIFIED_IMPLEMENTED by this change. The existing independent 500-case acceptance, persistent staging, security validation and provider authorization gates are separate.
 
