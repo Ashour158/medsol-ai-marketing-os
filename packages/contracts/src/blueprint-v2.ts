@@ -654,9 +654,9 @@ export const TARGET_WORKFLOWS = [
     "name": "Customer insight and feedback research",
     "release": "R4",
     "owner": "MarketingLearningService",
-    "state": "DRAFT_ONLY",
+    "state": "PARTIAL",
     "goal": "Governed customer feedback and reviewed research with cohort boundaries",
-    "blocker": "Draft cohort screening exists; verified source rights and real customer feedback remain"
+    "blocker": "Merged immutable synthetic cohort intake, suppression, maker-checker review and revocation; verified source rights and real customer feedback remain"
   },
   {
     "id": "WF39",

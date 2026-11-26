@@ -1,0 +1,3 @@
+# Tranche 1 WF24 — synthetic price and promotion proposal
+
+The existing MarketingCatalogService and ApprovalService own the proposal and decision. No second product ledger or financial authority is created. The immutable scope binds current active tenant product, exact catalog updatedAt, explicit hypothetical micro-currency assumptions, expiry, quantity, maker and deterministic arithmetic. Separate verified reviewers may approve/reject only the internal scenario; current product state is checked at approval. No catalog changes, actual finance approval, price execution, campaign distribution, or real transactions. Studio plus unit and real PostgreSQL journey coverage included; full CI and independent acceptance required.

@@ -13,8 +13,12 @@ const actor=(role:string):VerifiedIdentity=>({
  email:"offline@example.invalid",subject:"oidc-offline",role
 });
 describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
- it("T03-025 covers all 167 real API method/path decorators in the single permission registry",()=>{
-  expect(endpoints).toHaveLength(167);
+ it("T03-025 covers all 169 real API method/path decorators in the single permission registry",()=>{
+  expect(endpoints).toHaveLength(169);
+  expect(permissionForMarketingRoute('POST','/marketing/products/synthetic-price-proposals')).toBe('MANAGE_CAMPAIGN');
+  expect(permissionForMarketingRoute('GET','/marketing/products/synthetic-price-proposals')).toBe('READ_AUDIT');
+  for(const method of ['GET','POST'])expect(endpoints).toContainEqual({method,pattern:'/marketing/products/synthetic-price-proposals',route:'/marketing/products/synthetic-price-proposals'});
+  expect(hasMarketingPermission(actor('MARKETING_SPECIALIST'),'MANAGE_CAMPAIGN')).toBe(false);
   expect(permissionForMarketingRoute('POST','/marketing/performance/experiments')).toBe('MANAGE_CAMPAIGN');
   expect(permissionForMarketingRoute('GET','/marketing/performance/experiments/fixture-acceptance')).toBe('READ_AUDIT');
   expect(permissionForMarketingRoute('POST','/marketing/performance/submissions/id-acceptance/qualification')).toBe('SUBMIT_EVIDENCE');
@@ -50,7 +54,7 @@ describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
  it("T03-027 fails closed for unregistered and genuinely external publishing routes",()=>{
   for(const path of ["/marketing/email/send","/marketing/publications/publish",
    "/marketing/audience/export","/marketing/integrations/oauth/token",
-   "/marketing/approvals/override","/marketing/users/impersonate"]){
+   "/marketing/approvals/override","/marketing/users/impersonate","/marketing/products/synthetic-price-proposals/apply"]){
    for(const method of ["POST","DELETE"])
     expect(()=>permissionForMarketingRoute(method,path),method+" "+path).toThrow("permission registry");
   }

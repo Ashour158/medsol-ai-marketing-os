@@ -5,6 +5,7 @@ import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
 import {SYNTHETIC_LEAD_REVIEW,currentSyntheticLeadTarget,matchSyntheticQualification} from './synthetic-lead-qualification.js';
 import {SYNTHETIC_EXPERIMENT,readSyntheticExperiment,validateSyntheticExperimentApproval} from './synthetic-experiment.js';
+import {SYNTHETIC_PRICING,readPriceProposal,validatePriceProposalApproval} from './synthetic-price-proposal.js';
 import {communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
@@ -119,6 +120,14 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
      throw new ForbiddenException('Independent OIDC synthetic lead review required');
     await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,
      email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
+   }
+   if(a.objectType===SYNTHETIC_PRICING){
+    const scope=readPriceProposal(a);
+    if(cmd.approverUserId===scope.requestedBy||!reviewer.oidcSubject)
+     throw new ForbiddenException('Independent OIDC synthetic pricing review required');
+    await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,
+     email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
+    if(cmd.decision==='APPROVED')await validatePriceProposalApproval(tx,a,new Date());
    }
    if(a.objectType===SYNTHETIC_EXPERIMENT){
     const scope=readSyntheticExperiment(a);

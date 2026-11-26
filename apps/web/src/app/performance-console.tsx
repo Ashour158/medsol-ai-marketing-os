@@ -5,6 +5,7 @@ import {reviewedCommercialEvidenceCsv,saveOfflineCsv,type CommercialEvidenceMani
 import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
 import SyntheticConversionLab from "./synthetic-conversion-lab";
 import SyntheticExperimentStudio from "./synthetic-experiment-studio";
+import SyntheticPricingStudio from "./synthetic-pricing-studio";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
 type MonetarySummary={status:string;matchedGroups:number;incompleteGroups:number;currencyConflictGroups:number;unknownCurrencyRows:number;currencies:{currency:string;matchedGroups:number;reportedSpendMicros:string;reportedRevenueMicros:string;grossProfitMatchedGroups:number;reportedGrossProfitMicros:string|null}[]};
@@ -186,6 +187,7 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
      })}>Review performance evidence</button>
    </div>
   </div>}
+  <SyntheticPricingStudio enabled={enabled}/>
   <SyntheticConversionLab enabled={enabled}/>
   {campaignId&&<SyntheticExperimentStudio key={campaignId} enabled={enabled} campaignId={campaignId}/>}
   {error&&<p role="alert" style={{color:"#991b1b",marginTop:10}}>{error}</p>}
