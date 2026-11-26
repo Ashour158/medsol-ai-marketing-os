@@ -67,7 +67,10 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
   // The single added T5B audited context-preview route extends the original
   // 145-route authenticated inventory. All routes must stay BFF-allowlisted.
-  expect(endpoints).toHaveLength(160);
+  expect(endpoints).toHaveLength(161);
+  expect(endpoints).toContainEqual({method:"POST",
+   template:"/marketing/performance/submissions/:id/qualification",
+   path:"/marketing/performance/submissions/id-acceptance/qualification"});
   expect(endpoints).toContainEqual({method:"GET",
    template:"/marketing/journeys/:id/dossier",
    path:"/marketing/journeys/id-acceptance/dossier"});
