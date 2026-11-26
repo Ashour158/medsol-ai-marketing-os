@@ -1,6 +1,6 @@
 import type {Prisma} from '@prisma/client';
 import type {OfflineCampaignStage} from '@medsol/contracts';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService,withMarketingTenant } from './prisma.service.js';
 
 @Injectable()
@@ -19,25 +19,40 @@ export class MarketingReadService {
    });
   }
   /** Trusted tenant-scoped catalogue lookup used by the Brain; not regulatory verification. */
-  async brainAuthorityContext(organizationId: string, input: {productId?:unknown;objectiveId?:unknown}) {
-    const productId=input.productId;
-    const objectiveId=input.objectiveId;
-    if((productId!==undefined&&typeof productId!=='string')||
-       (objectiveId!==undefined&&typeof objectiveId!=='string'))throw new BadRequestException('Invalid authority reference');
-    const [product,objective]=await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
-      productId?tx.marketingProduct.findFirst({
-       where:{id:productId,organizationId,lifecycle:'ACTIVE'},
-       select:{id:true,code:true,name:true,vendor:true,lifecycle:true}
-      }):Promise.resolve(null),
-      objectiveId?tx.marketingObjective.findFirst({
-       where:{id:objectiveId,organizationId,status:'ACTIVE'},
-       select:{id:true,name:true,description:true,status:true}
-      }):Promise.resolve(null)
-    ]));
-    if(productId&&!product)throw new NotFoundException('Active product not found in tenant catalogue');
-    if(objectiveId&&!objective)throw new NotFoundException('Active objective not found in tenant catalogue');
-    return {source:'TENANT_MARKETING_CATALOG',product,objective,
-      declarationsVerified:true,scientificClaimsVerified:false,regulatoryApprovalVerified:false};
+  async brainAuthorityContext(organizationId: string, input: {productId?:unknown;objectiveId?:unknown;campaignId?:unknown}) {
+    const valid=(v:unknown)=>v===undefined||(typeof v==='string'&&v.length>0&&v.length<=128&&/^[A-Za-z0-9_-]+$/.test(v));
+    if(!valid(input.productId)||!valid(input.objectiveId)||!valid(input.campaignId))
+      throw new BadRequestException('Invalid authority reference');
+    return withMarketingTenant(this.db,organizationId,async tx=>{
+      let productId=input.productId as string|undefined;
+      let objectiveId=input.objectiveId as string|undefined;
+      const campaign=typeof input.campaignId==='string'?await tx.campaign.findFirst({
+        where:{id:input.campaignId,organizationId},
+        select:{id:true,brandId:true,objectiveId:true,productId:true}
+      }):null;
+      if(input.campaignId&&!campaign)throw new NotFoundException('Campaign not found in tenant');
+      if(campaign){
+        if((objectiveId!==undefined&&objectiveId!==campaign.objectiveId)||
+           (productId!==undefined&&productId!==campaign.productId))
+          throw new ConflictException('Brain catalogue reference differs from stored campaign scope');
+        objectiveId=campaign.objectiveId;
+        productId=campaign.productId??undefined;
+      }
+      const [product,objective]=await Promise.all([
+        productId?tx.marketingProduct.findFirst({
+          where:{id:productId,organizationId,lifecycle:'ACTIVE'},
+          select:{id:true,code:true,name:true,vendor:true,lifecycle:true}
+        }):Promise.resolve(null),
+        objectiveId?tx.marketingObjective.findFirst({
+          where:{id:objectiveId,organizationId,status:'ACTIVE'},
+          select:{id:true,name:true,description:true,status:true}
+        }):Promise.resolve(null)
+      ]);
+      if(productId&&!product)throw new NotFoundException('Active product not found in tenant catalogue');
+      if(objectiveId&&!objective)throw new NotFoundException('Active objective not found in tenant catalogue');
+      return {source:'TENANT_MARKETING_CATALOG',campaign,product,objective,
+        declarationsVerified:true,scientificClaimsVerified:false,regulatoryApprovalVerified:false};
+    });
   }
   async overview(organizationId: string) {
     const [campaigns, objectives, products, workflows, pendingApprovals, recentAgents] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([

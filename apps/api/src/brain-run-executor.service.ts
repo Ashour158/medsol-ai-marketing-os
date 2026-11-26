@@ -28,7 +28,9 @@ export class BrainRunExecutorService {
      throw new ConflictException('Brand Master version mismatched authoritative approved record');
    const performanceContext=this.performance&&typeof command.campaignId==='string'?
      await this.performance.summary(organizationId,command.campaignId):null;
-   const trustedInput={...command,brandMasterVersion:brandMaster?'v'+brandMaster.version:undefined,
+   const trustedInput={...command,
+     ...(authorityContext?.campaign?{objectiveId:authorityContext.campaign.objectiveId,productId:authorityContext.campaign.productId??undefined}:{}),
+     brandMasterVersion:brandMaster?'v'+brandMaster.version:undefined,
      // A free-text consent reference is NOT proof of opt-in; no active CRM consent authority is integrated.
      consentReference:undefined};
    const citedTrends=trendBrief?.topics.slice(0,5).map(x=>({topic:x.topic,sector:x.sector,status:x.status,evidence:x.evidence.slice(0,3)}))??[];

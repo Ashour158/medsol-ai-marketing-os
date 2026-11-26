@@ -128,6 +128,13 @@ describe.skipIf(!enabled)('R3-X two-tenant cross-owner PostgreSQL staging accept
  });
  it('T01-033 cross-tenant objective cannot be admitted as agent authority',async()=>{
   await expect(reads.brainAuthorityContext(b,{objectiveId})).rejects.toThrow(/not found/i);
+  await expect(reads.brainAuthorityContext(b,{campaignId})).rejects.toThrow(/not found/i);
+  const other=await withMarketingTenant(db as any,a,tx=>tx.marketingObjective.create({data:{organizationId:a,name:'Unrelated same-tenant objective',description:'Must not enter this campaign'}}));
+  await expect(reads.brainAuthorityContext(a,{campaignId,objectiveId:other.id})).rejects.toThrow(/stored campaign scope/i);
+  const own=await reads.brainAuthorityContext(a,{campaignId});
+  expect(own).toMatchObject({campaign:{id:campaignId,brandId,objectiveId,productId:null},objective:{id:objectiveId},product:null,scientificClaimsVerified:false});
+  const product=await withMarketingTenant(db as any,a,tx=>tx.marketingProduct.create({data:{organizationId:a,code:'R3X-'+randomUUID(),name:'Unrelated synthetic product'}}));
+  await expect(reads.brainAuthorityContext(a,{campaignId,productId:product.id})).rejects.toThrow(/stored campaign scope/i);
  });
  it('T01-034 foreign tenant cannot observe approved scientific brand master',async()=>{
   expect(await brand.active(b)).toBeNull();
