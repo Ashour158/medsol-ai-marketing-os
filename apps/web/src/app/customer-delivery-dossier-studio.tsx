@@ -167,6 +167,14 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
       <p>Window capped; counts unavailable to prevent incomplete evidence being presented as totals.</p>}
      <p>Zero real leads and CRM writes. Historical records do not establish current consent. Separate owner snapshots are not atomic.</p>
     </section>}
+    {p.commercial.combinedCommercial&&<section aria-label="Reported same-record commercial cohorts" style={{border:"1px solid #cbd5e1",borderRadius:8,padding:12,marginTop:12,fontSize:12}}>
+     <strong>Combined commercial evidence · reported values only</strong>
+     <p>{p.commercial.combinedCommercial.status.replaceAll("_"," ")} · {p.commercial.combinedCommercial.matchedGroups} matched / {p.commercial.combinedCommercial.excludedGroups} excluded groups</p>
+     {p.commercial.combinedCommercial.currencies.map(c=><div key={c.currency} style={{borderTop:"1px solid #e2e8f0",paddingTop:8}}>
+      <strong>{c.currency}</strong> · {c.qualifiedLeads} reported qualified leads · spend {c.reportedSpendMicros} micro-units · revenue {c.reportedRevenueMicros} micro-units · reported revenue/spend {c.reportedRevenueToSpendRatio??"unavailable"} · cost/qualified lead {c.spendMicrosPerQualifiedLead??"unavailable"} micro-units
+     </div>)}
+     <p>No verified revenue, ROI, causal attribution, or currency conversion. Amounts are expressed in millionths of the named currency.</p>
+    </section>}
     <h3 style={{fontSize:16,marginTop:18}}>Offline gates requiring work</h3>
     {dossier.missingOfflineGates.length?
      <ol>{dossier.missingOfflineGates.map(x=>{

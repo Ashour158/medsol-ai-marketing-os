@@ -1,3 +1,4 @@
+import {z} from 'zod';
 /** Shared, read-only arithmetic over the existing reviewed commercial manifest.
  * Exact source-record identity comes from MarketingPerformanceService, not a
  * second ledger. This is descriptive evidence, never causal attribution.
@@ -70,4 +71,46 @@ export function combinedReviewedCommercial(manifest:CombinedCommercialManifest){
  }));
  return{...base,matchedGroups,excludedGroups,invalidGrossProfitGroups,currencies,
   status:matchedGroups===0?'NO_COMPLETE_COMBINED_GROUPS' as const:excludedGroups?'PARTIAL_COMBINED_MATCH' as const:'EXACT_COMBINED_MATCH' as const};
+}
+
+/** Bounded public aggregate, no raw record identity or source/contact data.
+ * Validate the same canonical arithmetic before any operator export. */
+const totalString=z.string().regex(/^(0|[1-9][0-9]{0,29})$/);
+const groupCount=z.number().int().min(0).max(1000);
+const combinedSummarySchema=z.object({
+ status:z.enum(['ROW_LIMIT_EXCEEDED','NO_COMPLETE_COMBINED_GROUPS','PARTIAL_COMBINED_MATCH','EXACT_COMBINED_MATCH']),
+ sourceDigest:z.string().regex(/^sha256:[a-f0-9]{64}$/).nullable(),
+ matchedGroups:groupCount,excludedGroups:groupCount,invalidGrossProfitGroups:groupCount,
+ independentVerification:z.literal(false),attributionValidated:z.literal(false),revenueVerified:z.literal(false),
+ roiValidated:z.literal(false),fxConversionPerformed:z.literal(false),externalEffectsAuthorized:z.literal(false),
+ currencies:z.array(z.object({
+  currency:z.string().regex(/^[A-Z]{3}$/),matchedGroups:groupCount.min(1),impressions:totalString,clicks:totalString,
+  leads:totalString,qualifiedLeads:totalString,reportedSpendMicros:totalString,reportedRevenueMicros:totalString,
+  reportedGrossProfitMicros:totalString.nullable(),grossProfitMatchedGroups:groupCount,
+  spendMicrosPerLead:totalString.nullable(),spendMicrosPerQualifiedLead:totalString.nullable(),
+  reportedRevenueToSpendRatio:z.string().regex(/^(0|[1-9][0-9]{0,29})\.[0-9]{4}$/).nullable()
+ }).strict()).max(1000)
+}).strict();
+export type CombinedCommercialSummary=ReturnType<typeof combinedReviewedCommercial>;
+export function validateCombinedCommercialSummary(raw:unknown):CombinedCommercialSummary{
+ const parsed=combinedSummarySchema.safeParse(raw);
+ if(!parsed.success)throw Error('Invalid combined commercial dossier');
+ const s=parsed.data;
+ const matched=s.currencies.reduce((n,c)=>n+c.matchedGroups,0);
+ if(matched!==s.matchedGroups||s.matchedGroups+s.excludedGroups>1000||s.invalidGrossProfitGroups>s.excludedGroups||
+  new Set(s.currencies.map(c=>c.currency)).size!==s.currencies.length||
+  (s.status==='ROW_LIMIT_EXCEEDED'?(s.sourceDigest!==null||matched!==0||s.excludedGroups!==0):
+   s.sourceDigest===null||s.status!==(matched===0?'NO_COMPLETE_COMBINED_GROUPS':s.excludedGroups?'PARTIAL_COMBINED_MATCH':'EXACT_COMBINED_MATCH')))
+  throw Error('Invalid combined commercial dossier scope');
+ for(const c of s.currencies){
+  const i=BigInt(c.impressions),k=BigInt(c.clicks),l=BigInt(c.leads),q=BigInt(c.qualifiedLeads),
+   spend=BigInt(c.reportedSpendMicros),revenue=BigInt(c.reportedRevenueMicros);
+  if(i<k||k<l||l<q||c.grossProfitMatchedGroups>c.matchedGroups||
+   (c.grossProfitMatchedGroups===c.matchedGroups)!==(c.reportedGrossProfitMicros!==null)||
+   (c.reportedGrossProfitMicros!==null&&BigInt(c.reportedGrossProfitMicros)>revenue)||
+   c.spendMicrosPerLead!==unit(spend,l)||c.spendMicrosPerQualifiedLead!==unit(spend,q)||
+   c.reportedRevenueToSpendRatio!==decimal(revenue,spend))
+   throw Error('Invalid combined commercial dossier arithmetic');
+ }
+ return s as CombinedCommercialSummary;
 }

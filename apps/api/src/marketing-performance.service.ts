@@ -189,7 +189,7 @@ export class MarketingPerformanceService{
   const monetaryReconciliation=reconcileReviewedMonetaryCohorts(cohortRows);
   const evidenceManifest=reviewedCommercialEvidenceManifest(organizationId,campaignId,cohortRows);
   return{organizationId,campaign,...metrics,sourceRecordReconciliation:reconcileReviewedFunnelCohorts(cohortRows),
-   monetaryReconciliation,evidenceManifest,combinedCommercialReconciliation:combinedReviewedCommercial(evidenceManifest),
+   monetaryReconciliation,evidenceManifest:{...evidenceManifest,organizationId,campaignId},combinedCommercialReconciliation:combinedReviewedCommercial(evidenceManifest),
    independentlyVerified:false,spendUnit:'micro currency units'};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
