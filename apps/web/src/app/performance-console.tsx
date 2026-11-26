@@ -1,12 +1,13 @@
 "use client";
 import {useState} from "react";
+import type {combinedReviewedCommercial} from "@medsol/contracts";
 import {reviewedCommercialEvidenceCsv,saveOfflineCsv,type CommercialEvidenceManifest} from "../lib/offline-evidence-csv";
 import OfflineRevenueScenarioStudio from "./offline-revenue-scenario-studio";
 import SyntheticConversionLab from "./synthetic-conversion-lab";
 type Campaign={id:string;name:string;code:string};
 type Observation={id:string;campaignId:string;metricKey:string;value:string;status:string;sourceReference:string;submittedBy:string};
 type MonetarySummary={status:string;matchedGroups:number;incompleteGroups:number;currencyConflictGroups:number;unknownCurrencyRows:number;currencies:{currency:string;matchedGroups:number;reportedSpendMicros:string;reportedRevenueMicros:string;grossProfitMatchedGroups:number;reportedGrossProfitMicros:string|null}[]};
-type PerformanceSummary={organizationId:string;evidenceManifest?:CommercialEvidenceManifest;monetaryReconciliation?:MonetarySummary;status:string;campaign:{id:string;name:string};totals:Record<string,string>;
+type PerformanceSummary={combinedCommercialReconciliation?:ReturnType<typeof combinedReviewedCommercial>;organizationId:string;evidenceManifest?:CommercialEvidenceManifest;monetaryReconciliation?:MonetarySummary;status:string;campaign:{id:string;name:string};totals:Record<string,string>;
  derived:{ctrPercent:number|null;clickToLeadPercent:number|null;spendMicrosPerLead:string|null;
  leadQualificationPercent:number|null;spendMicrosPerQualifiedLead:string|null};
  warnings:string[];cohortAligned:false;roiValidated:false;revenueVerified:false;
@@ -111,6 +112,18 @@ export default function PerformanceConsole({enabled}:{enabled:boolean}){
        <p>Reported gross profit: {row.reportedGrossProfitMicros??"Not supplied"} micro units ({row.grossProfitMatchedGroups} groups)</p>
       </div>)}
       <small>Human-reviewed source reports only. No cross-currency total, FX, finance verification, attributed revenue or verified ROI.</small>
+     </section>}
+     {summary.combinedCommercialReconciliation&&<section aria-label="Combined commercial source-record reconciliation" style={{margin:"12px 0",padding:10,border:"1px solid #cbd5e1",borderRadius:7,background:"#fff"}}>
+      <strong>Source-matched funnel and reported returns</strong>
+      <p>{summary.combinedCommercialReconciliation.status.replaceAll("_"," ")} · {summary.combinedCommercialReconciliation.matchedGroups} complete groups · {summary.combinedCommercialReconciliation.excludedGroups} excluded · {summary.combinedCommercialReconciliation.invalidGrossProfitGroups} invalid gross profit</p>
+      {summary.combinedCommercialReconciliation.currencies.map(row=><div key={row.currency} style={{borderTop:"1px solid #e2e8f0",padding:"8px 0"}}>
+       <strong>{row.currency} · {row.matchedGroups} complete source records</strong>
+       <p>Impressions {row.impressions} · clicks {row.clicks} · leads {row.leads} · qualified {row.qualifiedLeads}</p>
+       <p>Reported spend {row.reportedSpendMicros} · revenue {row.reportedRevenueMicros} · gross profit {row.reportedGrossProfitMicros??"Incomplete evidence"} (micro units)</p>
+       <p>Spend per lead {row.spendMicrosPerLead??"Undefined"} · per qualified lead {row.spendMicrosPerQualifiedLead??"Undefined"} (micro units)</p>
+       <p>Reported revenue / spend {row.reportedRevenueToSpendRatio??"Undefined"} ×</p>
+      </div>)}
+      <small>Same-record, same-currency evidence only. Ratios are truncated to four decimals; unit costs to whole micro units. No causal attribution, actual ROI, FX or finance certification.</small>
      </section>}
      {summary.evidenceManifest&&<div style={{marginTop:12}}>
       <p>Reviewed evidence rows: {summary.evidenceManifest.rowCount??"Bound exceeded"} · unsigned source fingerprint only</p>
