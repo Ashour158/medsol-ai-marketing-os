@@ -469,6 +469,10 @@ jobs:
             dependency-audit.stderr
             dependency-audit.exitcode
 
+      - name: Block Alpha candidate on high or critical audit findings or missing scanner evidence
+        if: always()
+        run: node scripts/quality/alpha-dependency-gate.mjs
+
   alpha-packaging:
     name: Alpha offline image packaging rehearsal
     runs-on: ubuntu-latest
