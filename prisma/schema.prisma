@@ -70,6 +70,8 @@ model Organization {
   workflowSteps WorkflowStepExecution[]
   learningSignals LearningSignal[]
   marketWatches MarketingResearchWatch[]
+  conversionForms MarketingConversionForm[]
+  conversionSubmissions MarketingConversionSubmission[]
   knowledgeDocuments KnowledgeDocument[]
   knowledgeChunks KnowledgeChunk[]
   knowledgeRelations KnowledgeRelation[]
@@ -203,6 +205,7 @@ model Campaign {
   @@index([organizationId,status])
   @@index([organizationId,brandId])
   metricObservations MarketingMetricObservation[]
+  conversionForms MarketingConversionForm[]
 }
 model Approval {
   id String @id @default(cuid())
@@ -226,6 +229,7 @@ model Approval {
   workflow WorkflowExecution? @relation(fields:[organizationId,workflowExecutionId],references:[organizationId,id],onDelete:Restrict)
   creativeAssetRevision CreativeAssetRevision? @relation(fields:[organizationId,creativeAssetRevisionId],references:[organizationId,id],onDelete:Restrict)
   publications CampaignPublication[]
+  conversionForms MarketingConversionForm[]
   @@unique([organizationId,id])
   @@index([organizationId,objectType,objectId])
   @@index([organizationId,decision])
@@ -568,6 +572,7 @@ model Brand {
   syntheticAudienceContacts MarketingSyntheticContact[]
   emailSimulations MarketingEmailSimulation[]
   socialCommunityCases SocialCommunityCase[]
+  conversionForms MarketingConversionForm[]
   @@unique([organizationId,slug])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -688,6 +693,7 @@ model MarketingSyntheticContact {
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict,map:"MarketingSyntheticContact_org_fk")
   brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict,map:"MarketingSyntheticContact_org_brand_fk")
   consentEvents MarketingSyntheticConsent[]
+  conversionSubmissions MarketingConversionSubmission[]
   @@unique([organizationId,id])
   @@unique([organizationId,brandId,syntheticRecipientRef],map:"SyntheticContact_tenant_brand_ref_uq")
   @@index([organizationId,brandId,createdAt])
@@ -1191,4 +1197,49 @@ model MarketingResearchWatch {
  @@unique([organizationId,id])
  @@unique([organizationId,topic,sector])
  @@index([organizationId,status,nextDueAt],map:"MarketingResearchWatch_due_idx")
+}
+
+
+// WF32/WF33: immutable internal form drafts and anonymous synthetic submissions.
+// Approval is owned by ApprovalService; contacts and opt-in remain existing synthetic authority.
+model MarketingConversionForm {
+ id String @id @default(cuid())
+ organizationId String
+ campaignId String
+ brandId String
+ campaignVersion Int
+ formKey String
+ headline String
+ cta String
+ contentDigest String
+ approvalId String
+ createdBy String
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ campaign Campaign @relation(fields:[organizationId,campaignId],references:[organizationId,id],onDelete:Restrict)
+ brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+ approval Approval @relation(fields:[organizationId,approvalId],references:[organizationId,id],onDelete:Restrict)
+ submissions MarketingConversionSubmission[]
+ @@unique([organizationId,id])
+ @@unique([organizationId,formKey])
+ @@index([organizationId,campaignId,createdAt],map:"ConversionForm_campaign_idx")
+}
+model MarketingConversionSubmission {
+ id String @id @default(cuid())
+ organizationId String
+ formId String
+ contactId String
+ requestKey String
+ consentEventId String
+ payloadDigest String
+ outcome String
+ createdBy String
+ createdAt DateTime @default(now())
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ form MarketingConversionForm @relation(fields:[organizationId,formId],references:[organizationId,id],onDelete:Restrict)
+ contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,requestKey])
+ @@unique([organizationId,formId,contactId],map:"ConversionSubmission_form_contact_uq")
+ @@index([organizationId,formId,createdAt],map:"ConversionSubmission_form_idx")
 }
