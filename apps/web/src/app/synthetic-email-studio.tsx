@@ -291,8 +291,8 @@ export default function SyntheticEmailStudio({identity}:{identity:Identity|null}
    <label><input type="checkbox" checked={rewardConfirmed} onChange={e=>setRewardConfirmed(e.target.checked)}/> Fictional only; no monetary entitlement.</label>
    <p><button style={btn} disabled={busy||!selectedContact||!rewardConfirmed||!rewardEvent||!rewardExpiry||!campaignId||!brandId} onClick={()=>void run(async()=>{
     await call("audience/loyalty",{contactId:selectedContact,brandId,campaignId,sourceEventKey:rewardEvent,kind:rewardKind,points:Number(rewardPoints),expiresAt:new Date(rewardExpiry+"T23:59:59Z").toISOString(),fixtureOnly:true});
-    setRewardResult(await call("audience/loyalty/"+encodeURIComponent(selectedContact)));
-   })}>Request independent reward review</button>{" "}<button style={btn} disabled={busy||!selectedContact} onClick={()=>void run(async()=>setRewardResult(await call("audience/loyalty/"+encodeURIComponent(selectedContact))))}>Read fictional balance</button></p>
+    setRewardResult(await call("audience/loyalty/"+encodeURIComponent(selectedContact)) as NonNullable<typeof rewardResult>);
+   })}>Request independent reward review</button>{" "}<button style={btn} disabled={busy||!selectedContact} onClick={()=>void run(async()=>setRewardResult(await call("audience/loyalty/"+encodeURIComponent(selectedContact)) as NonNullable<typeof rewardResult>))}>Read fictional balance</button></p>
    {rewardResult?.contactId===selectedContact&&<><p role="status">Approved fictional balance: {rewardResult.balance} points.</p><ul>{rewardResult.entries.map(e=><li key={e.approvalId}>{e.kind} {e.points} · {e.sourceEventKey}</li>)}</ul><p>Pending reviews</p><ul>{rewardResult.pending.map(e=><li key={e.approvalId}>{e.input.kind} {e.input.points} · {e.expired?"expired":"pending"} · {e.approvalId}</li>)}</ul></>}
   </section>
  </details>;
