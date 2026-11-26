@@ -6,11 +6,11 @@ import {Prisma} from '@prisma/client';
  * tenant/permission/approval/consent check and immutable-key lookup reruns.
  */
 export async function retryAbortedSyntheticConversion<T>(operation:()=>Promise<T>):Promise<T>{
- for(let attempt=0;attempt<3;attempt++){
+ for(let attempt=0;attempt<5;attempt++){
   try{return await operation();}
   catch(e){
-   if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034'&&attempt<2){
-    await new Promise<void>(resolve=>setTimeout(resolve,12*(attempt+1)));
+   if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034'&&attempt<4){
+    await new Promise<void>(resolve=>setTimeout(resolve,40*2**attempt));
     continue;
    }
    throw e;
