@@ -108,7 +108,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered source and deterministic SVG plus verified synthetic PNG exist; layered release rendition, multiformat production and external editor remain"
+    "blocker": "Persistent layered source, deterministic SVG, derived PNG lineage, byte verification and independent comparison review exist; production release, multiformat and external editor remain"
   },
   {
     "id": "E12",
@@ -135,7 +135,7 @@ export const TARGET_ENGINES = [
     "release": "R1",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Immutable DAM, independently reviewed rights and PNG verification, layered source and parent lineage exist; layered release rendition and multimedia remain"
+    "blocker": "Immutable DAM, layered source, derived PNG lineage, exact byte verification and independent comparison review exist; production release and multimedia remain"
   },
   {
     "id": "E15",
@@ -297,7 +297,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered title/body/accent and deterministic rendition lineage exist; multimodal brief and separately verified release render jobs remain"
+    "blocker": "Persistent layered title/body/accent, deterministic SVG and derived PNG verification/review exist; multimodal brief and production render jobs remain"
   },
   {
     "id": "E33",
@@ -385,7 +385,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Creative production with editable source, verified raster and rendition lineage",
-    "blocker": "Persistent structured editable source and deterministic SVG with immutable lineage exist; separately verified layered release rendition remains"
+    "blocker": "Persistent editable source, derived PNG lineage, byte verification and independent rights review exist; production release and multimedia remain"
   },
   {
     "id": "WF07",
@@ -497,7 +497,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Brief to layered editable design, verified render and independent rights review",
-    "blocker": "Persisted layered source and deterministic SVG plus immutable parent lineage exist; verified release rendition and multimedia remain"
+    "blocker": "Persisted layered source, deterministic SVG, derived PNG lineage and independent comparison review exist; production rendition and multimedia remain"
   },
   {
     "id": "WF20",
