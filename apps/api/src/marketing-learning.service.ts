@@ -5,12 +5,16 @@ function watchInput(raw:unknown,keys:readonly string[]){
   throw new BadRequestException('Invalid bounded watch input');
  return raw as Record<string,unknown>;
 }
+export function reviewedWatchWorkerConfigured(){return process.env.MARKETING_BRAIN_WORKER_ENABLED==='true'&&process.env.MARKETING_REVIEWED_WATCH_WORKER_ENABLED==='true';}
 function watchView(row:MarketingResearchWatch,now:Date){
  return{watchId:row.id,topic:row.topic,sector:row.sector,intervalHours:row.intervalHours,
   status:row.status,version:row.version,nextDueAt:row.nextDueAt.toISOString(),
   lastEvaluatedAt:row.lastEvaluatedAt?.toISOString()??null,lastEvaluation:row.lastEvaluation,
   due:row.status==='ACTIVE'&&row.nextDueAt<=now,
-  externalAcquisitionEnabled:false,independentVerification:false,automaticExecutionEnabled:false};
+  externalAcquisitionEnabled:false,independentVerification:false,
+  automaticEvaluationAuthorized:row.automaticAuthorizedBy!==null,
+  automaticExecutionEnabled:row.automaticAuthorizedBy!==null&&reviewedWatchWorkerConfigured(),
+  workerConfigured:reviewedWatchWorkerConfigured()};
 }
 import {agentContentRisks,safeForAgentEvidence} from './agent-content-firewall.js';
 import {parseRetrievalCases,evaluationMetrics,feedbackDigest} from './knowledge-learning-evaluation.js';
@@ -876,13 +880,13 @@ export class MarketingLearningService {
    await assertActorPermissionInTenantTransaction(tx,identity,'READ_AUDIT');
    const now=new Date(),rows=await tx.marketingResearchWatch.findMany({where:{organizationId:org},
     orderBy:[{nextDueAt:'asc'},{id:'asc'}],take:100});
-   return{watches:rows.map(x=>watchView(x,now)),externalAcquisitionEnabled:false,automaticExecutionEnabled:false};
+   return{watches:rows.map(x=>watchView(x,now)),externalAcquisitionEnabled:false,automaticExecutionEnabled:reviewedWatchWorkerConfigured()};
   });
  }
  async transitionReviewedWatch(org:string,identity:VerifiedIdentity,idInput:unknown,raw:unknown){
   const id=this.knowledgeId(idInput,'watch ID'),r=watchInput(raw,['action','expectedVersion']);
   if(typeof r.expectedVersion!=='number'||!Number.isSafeInteger(r.expectedVersion)||r.expectedVersion<1||
-    !['EVALUATE_DUE','PAUSE','RESUME'].includes(String(r.action)))
+    !['EVALUATE_DUE','PAUSE','RESUME','ENABLE_AUTOMATION','DISABLE_AUTOMATION'].includes(String(r.action)))
    throw new BadRequestException('Valid watch action and expected revision required');
   if(!identity||identity.organizationId!==org)throw new ForbiddenException('Verified tenant watch manager required');
   try{return await this.knowledgeTx(org,async tx=>{
@@ -892,13 +896,33 @@ export class MarketingLearningService {
    if(row.version!==r.expectedVersion)throw new ConflictException('Watch revision changed');
    const now=new Date();
    let changes:Prisma.MarketingResearchWatchUpdateManyMutationInput;
-   if(r.action==='PAUSE'||r.action==='RESUME'){
+   if(r.action==='ENABLE_AUTOMATION'||r.action==='DISABLE_AUTOMATION'){
+    const enabled=r.action==='ENABLE_AUTOMATION';
+    if(enabled===!!row.automaticAuthorizedBy)throw new ConflictException('Watch automation authorization already in requested state');
+    changes={automaticAuthorizedBy:enabled?identity.userId:null};
+   }else if(r.action==='PAUSE'||r.action==='RESUME'){
     if((r.action==='PAUSE'&&row.status!=='ACTIVE')||(r.action==='RESUME'&&row.status!=='PAUSED'))
      throw new ConflictException('Invalid watch status transition');
     changes={status:r.action==='PAUSE'?'PAUSED':'ACTIVE',
      ...(r.action==='RESUME'?{nextDueAt:now}:{})};
    }else{
     if(row.status!=='ACTIVE'||row.nextDueAt>now)throw new ConflictException('Active watch is not due');
+    changes=await this.evaluateReviewedWatch(tx,org,row,now);
+   }
+   const changed=await tx.marketingResearchWatch.updateMany({where:{organizationId:org,id,version:row.version},
+    data:{...changes,version:{increment:1}}});
+   if(changed.count!==1)throw new ConflictException('Watch revision changed');
+   const next=await tx.marketingResearchWatch.findFirstOrThrow({where:{organizationId:org,id}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,
+    action:'REVIEWED_WATCH_'+String(r.action),objectType:'MarketingResearchWatch',objectId:id,correlationId:id,
+    after:{version:next.version,status:next.status,nextDueAt:next.nextDueAt.toISOString(),
+     automaticEvaluationAuthorized:next.automaticAuthorizedBy!==null,
+     evaluation:r.action==='EVALUATE_DUE'?next.lastEvaluation:null,externalAcquisitionEnabled:false} as Prisma.InputJsonValue}});
+   return watchView(next,now);
+  });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034')
+   throw new ConflictException('Concurrent watch action; refresh before retry');throw e;}
+ }
+ private async evaluateReviewedWatch(tx:Prisma.TransactionClient,org:string,row:MarketingResearchWatch,now:Date):Promise<Prisma.MarketingResearchWatchUpdateManyMutationInput>{
     // Query the exact watch topic/sector BEFORE applying the limit. Never infer
     // disappearance from the global recent-200 registry window.
     const signals=await tx.learningSignal.findMany({where:{organizationId:org,status:'REVIEWED',
@@ -919,20 +943,58 @@ export class MarketingLearningService {
      lastObservedAt:topic?.lastObservedAt??null,freshness:topic?.freshness??'NO_ELIGIBLE_EVIDENCE',
      independentVerification:false,marketShareVerified:false,marketSizingVerified:false,
      externalAcquisitionEnabled:false,asOf:now.toISOString()};
-    changes={lastSignalIds:ids,lastEvaluation:evaluation,lastEvaluatedAt:now,
+    return{lastSignalIds:ids,lastEvaluation:evaluation,lastEvaluatedAt:now,
      nextDueAt:new Date(now.getTime()+row.intervalHours*3600000)};
+ }
+
+ /** Called only by the existing opted-in worker; no HTTP route and no network.
+  * Manager's persisted authorization is revalidated against current tenant IAM;
+  * the actual evaluation is audited as SYSTEM, never a fabricated human session. */
+ async runDueReviewedWatches(org:string){
+  if(!reviewedWatchWorkerConfigured())return{evaluated:0,paused:0,conflicted:0,failed:0,enabled:false};
+  const candidates=await this.knowledgeTx(org,tx=>tx.marketingResearchWatch.findMany({
+   where:{organizationId:org,status:'ACTIVE',automaticAuthorizedBy:{not:null},nextDueAt:{lte:new Date()}},
+   orderBy:[{nextDueAt:'asc'},{id:'asc'}],take:5,select:{id:true,version:true}}));
+  let evaluated=0,paused=0,conflicted=0,failed=0;
+  for(const candidate of candidates){
+   try{
+    const result=await this.knowledgeTx(org,async tx=>{
+     const row=await tx.marketingResearchWatch.findFirst({where:{organizationId:org,id:candidate.id}});
+     const now=new Date();
+     if(!row||row.version!==candidate.version||row.status!=='ACTIVE'||!row.automaticAuthorizedBy||row.nextDueAt>now)return 'CONFLICT';
+     const sponsor=await tx.user.findFirst({where:{organizationId:org,id:row.automaticAuthorizedBy,disabledAt:null}});
+     let pauseReason:string|null=null;
+     if(!sponsor?.oidcSubject)pauseReason='AUTHORIZATION_REVOKED';
+     else try{
+      await assertActorPermissionInTenantTransaction(tx,{organizationId:org,userId:sponsor.id,
+       role:sponsor.role,email:sponsor.email,subject:sponsor.oidcSubject},'DECIDE_APPROVAL');
+     }catch(e){if(e instanceof ForbiddenException)pauseReason='AUTHORIZATION_REVOKED';else throw e;}
+     let changes:Prisma.MarketingResearchWatchUpdateManyMutationInput;
+     if(pauseReason)changes={status:'PAUSED',automaticAuthorizedBy:null};
+     else try{changes=await this.evaluateReviewedWatch(tx,org,row,now);}
+     catch(e){
+      if(!(e instanceof ConflictException))throw e;
+      pauseReason='EVIDENCE_WINDOW_EXCEEDED';changes={status:'PAUSED'};
+     }
+     const changed=await tx.marketingResearchWatch.updateMany({where:{organizationId:org,id:row.id,version:row.version},
+      data:{...changes,version:{increment:1}}});
+     if(changed.count!==1)return 'CONFLICT';
+     const next=await tx.marketingResearchWatch.findFirstOrThrow({where:{organizationId:org,id:row.id}});
+     await tx.auditEvent.create({data:{organizationId:org,actorType:'SYSTEM',actorId:'market-watch-scheduler',
+      action:pauseReason?'REVIEWED_WATCH_AUTOMATION_PAUSED':'REVIEWED_WATCH_AUTOMATIC_EVALUATION',
+      objectType:'MarketingResearchWatch',objectId:row.id,correlationId:row.id,
+      after:{version:next.version,status:next.status,reason:pauseReason,
+       nextDueAt:next.nextDueAt.toISOString(),evaluation:pauseReason?null:next.lastEvaluation,
+       externalAcquisitionEnabled:false} as Prisma.InputJsonValue}});
+     return pauseReason?'PAUSED':'EVALUATED';
+    });
+    if(result==='EVALUATED')evaluated++;else if(result==='PAUSED')paused++;else conflicted++;
+   }catch(e){
+    if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034')conflicted++;
+    else failed++;
    }
-   const changed=await tx.marketingResearchWatch.updateMany({where:{organizationId:org,id,version:row.version},
-    data:{...changes,version:{increment:1}}});
-   if(changed.count!==1)throw new ConflictException('Watch revision changed');
-   const next=await tx.marketingResearchWatch.findFirstOrThrow({where:{organizationId:org,id}});
-   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,
-    action:'REVIEWED_WATCH_'+String(r.action),objectType:'MarketingResearchWatch',objectId:id,correlationId:id,
-    after:{version:next.version,status:next.status,nextDueAt:next.nextDueAt.toISOString(),
-     evaluation:r.action==='EVALUATE_DUE'?next.lastEvaluation:null,externalAcquisitionEnabled:false} as Prisma.InputJsonValue}});
-   return watchView(next,now);
-  });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034')
-   throw new ConflictException('Concurrent watch action; refresh before retry');throw e;}
+  }
+  return{evaluated,paused,conflicted,failed,enabled:true};
  }
  async trendBrief(organizationId:string,sector?:string){
   const normalized=typeof sector==='string'&&sector.trim()?sector.trim().slice(0,120):undefined;

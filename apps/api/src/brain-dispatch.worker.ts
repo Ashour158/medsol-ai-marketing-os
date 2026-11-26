@@ -6,6 +6,7 @@ import { BrainHandoffConsumer, BRAIN_INTERNAL_EVENTS } from './brain-handoff-con
 import {MarketingWorkerHealthService} from './marketing-worker-health.service.js';
 import {MarketingIncidentResponseService,INCIDENT_ALERT_EVENT} from './marketing-incident-response.service.js';
 import {MarketingIncidentWebhookTransport} from './marketing-incident-webhook.transport.js';
+import {MarketingLearningService,reviewedWatchWorkerConfigured} from './marketing-learning.service.js';
 
 /**
  * Optional polling scheduler. Run only on explicitly opted-in workers.
@@ -24,13 +25,16 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
  // Round-robin through canonical Organization tenants without ever querying
  // protected BrainRun rows outside their transaction-local tenant context.
  private tenantScanCursor:string|null=null;
+ private watchTenantCursor:string|null=null;
+ private watchBusy=false;
  private busy = false;
  private stopping = false;
  constructor(private readonly db:PrismaService, private readonly executor:BrainRunExecutorService,
   @Optional() private readonly outbox?:OutboxPublisherService,
   @Optional() private readonly handoffs?:BrainHandoffConsumer,
   @Optional() private readonly workerHealth?:MarketingWorkerHealthService,
-  @Optional() private readonly incidentResponses?:MarketingIncidentResponseService){}
+  @Optional() private readonly incidentResponses?:MarketingIncidentResponseService,
+  @Optional() private readonly learning?:MarketingLearningService){}
  private async deliverBrainEvents():Promise<void>{
    if(this.outbox&&this.handoffs&&process.env.MARKETING_BRAIN_EVENT_DELIVERY_ENABLED!=='false')
      await this.outbox.publishBatch(this.handoffs,25,BRAIN_INTERNAL_EVENTS);
@@ -97,11 +101,34 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
     externalAlertsEnabled:!!this.alertTransport};
   }finally{this.incidentBusy=false;}
  }
+ /** Existing worker owns cadence; learning domain owns watch state and audit.
+  * No new timer, external source, credential, model or user impersonation. */
+ async pulseReviewedWatches(){
+  if(this.stopping||!reviewedWatchWorkerConfigured()||!this.learning||this.watchBusy)
+   return {status:'DISABLED_OR_BUSY',evaluated:0,paused:0,failed:0};
+  this.watchBusy=true;
+  let evaluated=0,paused=0,failed=0;
+  try{
+   const tenants=await this.db.organization.findMany({where:this.watchTenantCursor?{id:{gt:this.watchTenantCursor}}:{},
+    orderBy:{id:'asc'},take:10,select:{id:true}});
+   if(!tenants.length)this.watchTenantCursor=null;
+   for(const tenant of tenants){
+    this.watchTenantCursor=tenant.id;
+    try{const r=await this.learning.runDueReviewedWatches(tenant.id);evaluated+=r.evaluated;paused+=r.paused;failed+=r.failed;}
+    catch{failed++;}
+   }
+   return{status:'OBSERVED',evaluated,paused,failed};
+  }finally{this.watchBusy=false;}
+ }
  async tick():Promise<{claimed:boolean;runId?:string;status:string}>{
   if(this.stopping)return {claimed:false,status:'STOPPING'};
   if(this.busy)return {claimed:false,status:'BUSY'};
   this.busy=true;
   try{
+   if(reviewedWatchWorkerConfigured()){
+    try{const watch=await this.pulseReviewedWatches();if(watch.failed)this.log.warn('Reviewed watch evaluation failures: '+watch.failed);}
+    catch{this.log.warn('Reviewed watch scan failed; brain work continues');}
+   }
    const tenants=await this.db.organization.findMany({
     where:this.tenantScanCursor?{id:{gt:this.tenantScanCursor}}:{},
     orderBy:{id:'asc'},take:50,select:{id:true}

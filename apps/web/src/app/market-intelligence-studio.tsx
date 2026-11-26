@@ -18,7 +18,7 @@ type Brief={organizationId:string;asOf:string;processed:number;
 type PersistentWatch={watchId:string;topic:string;sector:string;intervalHours:number;
  status:string;version:number;nextDueAt:string;lastEvaluatedAt:string|null;due:boolean;
  lastEvaluation:null|{status:string;evidenceCount:number;addedCount:number;removedCount:number;freshness:string};
- externalAcquisitionEnabled:false;automaticExecutionEnabled:false;independentVerification:false};
+ externalAcquisitionEnabled:false;automaticExecutionEnabled:boolean;automaticEvaluationAuthorized:boolean;workerConfigured:boolean;independentVerification:false};
 const shell={background:"#fff",padding:20,borderRadius:12,
  border:"1px solid #dbe4ed",marginTop:18};
 const control={padding:"9px 12px",border:"1px solid #cbd5e1",
@@ -51,10 +51,10 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
   return value;
  }
  async function loadWatches(){
-  const value=await watchCall("") as {watches:PersistentWatch[];automaticExecutionEnabled:false;externalAcquisitionEnabled:false};
-  if(value.automaticExecutionEnabled!==false||value.externalAcquisitionEnabled!==false||
+  const value=await watchCall("") as {watches:PersistentWatch[];automaticExecutionEnabled:boolean;externalAcquisitionEnabled:false};
+  if(typeof value.automaticExecutionEnabled!=="boolean"||value.externalAcquisitionEnabled!==false||
    !Array.isArray(value.watches)||value.watches.some(x=>x.independentVerification!==false||
-   x.externalAcquisitionEnabled!==false||x.automaticExecutionEnabled!==false))
+   x.externalAcquisitionEnabled!==false||typeof x.automaticExecutionEnabled!=="boolean"||typeof x.automaticEvaluationAuthorized!=="boolean"||typeof x.workerConfigured!=="boolean"))
    throw Error("Unexpected watch provenance");
   setPersistent({scope,rows:value.watches});
  }
@@ -102,7 +102,7 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
    color:"white",cursor:"pointer"}}>{busy?"Loading…":"Refresh reviewed market intelligence"}</button>
   {canManage&&<section aria-label="Persistent reviewed-evidence watches" style={{border:"1px solid #dbe4ed",borderRadius:8,padding:12,marginTop:16}}>
    <h4 style={{margin:"0 0 8px"}}>Durable market watch registry</h4>
-   <p style={{fontSize:12}}>Configure an exact topic and sector. Due evaluations compare reviewed evidence IDs in PostgreSQL. No autonomous scheduler or external source acquisition is active.</p>
+   <p style={{fontSize:12}}>Configure an exact topic and sector. Due evaluations compare reviewed evidence IDs in PostgreSQL. Optional automatic due evaluation is authorized per watch and requires an explicitly configured internal worker. No external source acquisition. Worker configuration is not proof of runtime health.</p>
    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
     <label style={{fontSize:12}}>Watch topic<input style={{...control,display:"block"}} maxLength={180} value={watchTopic} onChange={e=>setWatchTopic(e.target.value)}/></label>
     <label style={{fontSize:12}}>Watch sector<input style={{...control,display:"block"}} maxLength={120} value={watchSector} onChange={e=>setWatchSector(e.target.value)}/></label>
@@ -119,10 +119,11 @@ export default function MarketIntelligenceStudio({identity}:{identity:Identity})
    {watchError&&<p role="alert" style={{color:"#b91c1c"}}>{watchError}</p>}
    {persistent?.scope===scope&&persistent.rows.map(row=><article key={row.watchId} style={{borderTop:"1px solid #e2e8f0",padding:"10px 0",fontSize:12}}>
     <strong>{row.topic} · {row.sector} · {row.status}</strong>
-    <p>Version {row.version} · {row.due?"Due for manual evaluation":"Not due"} · next: {row.nextDueAt}</p>
+    <p>Version {row.version} · {row.due?"Due for evaluation":"Not due"} · next: {row.nextDueAt}</p>
+    <p>Automatic evaluation: {row.automaticEvaluationAuthorized?(row.workerConfigured?"Authorized · worker configured":"Authorized · worker not configured"):"Not authorized"}</p>
     {row.lastEvaluation&&<p>{row.lastEvaluation.status} · reviewed records {row.lastEvaluation.evidenceCount} · added {row.lastEvaluation.addedCount} · removed {row.lastEvaluation.removedCount} · {row.lastEvaluation.freshness}</p>}
     <div style={{display:"flex",gap:8}}>
-     {([["EVALUATE_DUE","Evaluate due watch",row.due],["PAUSE","Pause watch",row.status==="ACTIVE"],["RESUME","Resume watch",row.status==="PAUSED"]] as const).filter(x=>x[2]).map(([action,label])=><button type="button" key={action} style={control} disabled={watchBusy} onClick={()=>void runWatch(async()=>{
+     {([["EVALUATE_DUE","Evaluate due watch",row.due],["PAUSE","Pause watch",row.status==="ACTIVE"],["RESUME","Resume watch",row.status==="PAUSED"],["ENABLE_AUTOMATION","Authorize automatic evaluation",!row.automaticEvaluationAuthorized],["DISABLE_AUTOMATION","Revoke automatic evaluation",row.automaticEvaluationAuthorized]] as const).filter(x=>x[2]).map(([action,label])=><button type="button" key={action} style={control} disabled={watchBusy} onClick={()=>void runWatch(async()=>{
       await watchCall("/"+encodeURIComponent(row.watchId)+"/transition",{action,expectedVersion:row.version});await loadWatches();
      })}>{label}</button>)}
     </div>
