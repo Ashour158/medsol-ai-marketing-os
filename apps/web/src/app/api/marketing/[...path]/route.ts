@@ -124,6 +124,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "objectives" && (path.length !== 1 || !["GET", "POST"].includes(request.method))) ||
       (resource === "products" && !((path.length===1&&request.method==="GET")||(path.length===2&&id==="synthetic-price-proposals"&&["GET","POST"].includes(request.method)))) ||
       (resource === "campaigns" && !(
+        (path.length===3&&!!id&&action==="channel-plans"&&["GET","POST"].includes(request.method))||
         (request.method === "GET" && (path.length === 1 || (path.length === 2 && !!id))) ||
         (request.method === "POST" && (path.length === 1 ||
           (path.length === 2 && id === "transition")))

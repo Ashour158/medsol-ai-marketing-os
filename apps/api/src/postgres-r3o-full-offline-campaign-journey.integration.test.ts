@@ -315,6 +315,23 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    const stale=await catalog.proposeSyntheticPrice(org,conversionIdentity,{...pricing,proposalKey:'fixture-'+randomUUID()});
    await withMarketingTenant(db,org,tx=>tx.marketingProduct.update({where:{id:product.id},data:{name:'Updated synthetic catalog product',updatedAt:new Date(Date.now()+1000)}}));
    await expect(decideConversion(stale.approvalId)).rejects.toThrow('Product changed');
+   const claimDoc=await learning.ingestKnowledge(org,conversionIdentity,{sourceKey:'fixture-channel-'+randomUUID(),title:'Synthetic communications evidence',text:'Disposable fixture evidence for internal marketing communications only. No verified scientific claims.',sourceUrl:'https://example.invalid/channel-fixture',expiresAt:later(15),accessMode:'REVIEWERS_ONLY'});
+   await learning.reviewKnowledge(org,identity,claimDoc.id,'REVIEW','Separate reviewer accepted synthetic source for internal rehearsal only');
+   const channelInput={requestKey:'fixture-'+randomUUID(),kind:'COMMUNICATIONS',channel:'PRESS_RELEASE',headline:'Research event rehearsal',body:'Internal offline research event draft only.',sourceIds:[claimDoc.id],expiresAt:later(7),fixtureOnly:true,regulatedClaim:false,currency:null,budgetMicros:null};
+   const prPlan=await campaigns.proposeChannelPlan(org,conversionIdentity,campaignId,channelInput);
+   expect(prPlan).toMatchObject({decision:'PENDING',distributionAuthorized:false,claimVerification:false,professionalReviewVerified:false});
+   expect(await campaigns.proposeChannelPlan(org,conversionIdentity,campaignId,channelInput)).toMatchObject({approvalId:prPlan.approvalId,replayed:true});
+   await expect(campaigns.proposeChannelPlan(org,conversionIdentity,campaignId,{...channelInput,body:'Changed draft'})).rejects.toThrow('Immutable');
+   await expect(approval.approve({organizationId:org,approvalId:prPlan.approvalId,approverUserId:conversionAuthor,commandId:randomUUID(),correlationId:randomUUID(),decision:'APPROVED',rationale:'Self review prohibited'})).rejects.toThrow('Independent');
+   await decideConversion(prPlan.approvalId);
+   const paid=await campaigns.proposeChannelPlan(org,conversionIdentity,campaignId,{...channelInput,requestKey:'fixture-'+randomUUID(),kind:'PAID_MEDIA',channel:'SEARCH_ADS',currency:'EGP',budgetMicros:'100000000'});
+   expect(paid).toMatchObject({budgetAuthorized:false,actualMediaSpendMicros:'0',distributionAuthorized:false});
+   await decideConversion(paid.approvalId);
+   const invalidated=await campaigns.proposeChannelPlan(org,conversionIdentity,campaignId,{...channelInput,requestKey:'fixture-'+randomUUID()});
+   await learning.revokeKnowledge(org,identity,claimDoc.id,'Withdraw source before exact independent channel approval');
+   await expect(decideConversion(invalidated.approvalId)).rejects.toThrow('Current independently reviewed source');
+   expect((await campaigns.channelPlans(org,identity,campaignId)).plans.filter(p=>p.decision==='APPROVED')).toHaveLength(2);
+   await expect(campaigns.channelPlans(other,identity,campaignId)).rejects.toThrow('Verified tenant');
    expect(JSON.stringify(dossier)).not.toContain(contact.contactId);
    await expect(reads.offlineJourney(other,campaignId)).rejects.toThrow('not found');
 
