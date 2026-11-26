@@ -114,7 +114,12 @@ test('T01-025 failed foreign campaign lookup retains only explicitly loaded tena
 test('T01-026 switching to another campaign clears prior asset and approval affordances',async({page})=>{
  await login(page);await studio(page);await journey(page);await creative(page);
  await expect(page.getByText(/Revision revision-e2e/)).toBeVisible();
+ await expect(page.getByText(/Workflow: workflow-e2e/)).toBeVisible();
+ await page.getByRole('button',{name:'Run governed 13-agent offline brain'}).click();
+ await expect(page.getByText(/Brain ledger: brain-e2e/)).toBeVisible();
  await journey(page,'campaign-alt-e2e');
+ await expect(page.getByText(/Workflow: workflow-e2e/)).toHaveCount(0);
+ await expect(page.getByText(/Brain ledger: brain-e2e/)).toHaveCount(0);
  await expect(page.getByText(/Revision revision-e2e/)).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Prepare governed publication intent'})).toBeDisabled();
  await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('Separate tenant campaign fixture');
@@ -172,7 +177,10 @@ test('T04-007 persisted campaign timeline rehydrates after a fresh browser page'
  await login(page);await studio(page);await createCampaign(page);
  await page.reload();
  await page.getByRole('button',{name:'Load authenticated workspace'}).click();
- await studio(page);await journey(page);
+ await studio(page);
+ await page.getByRole('combobox',{name:'Choose campaign from workspace portfolio'}).selectOption('campaign-e2e');
+ await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('campaign-e2e');
  await expect(page.getByText(/Workflow: workflow-e2e/)).toBeVisible();
 });
 
