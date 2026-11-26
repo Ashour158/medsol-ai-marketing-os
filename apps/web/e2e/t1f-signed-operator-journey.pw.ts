@@ -187,6 +187,15 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  });
  expect(report.items.find((x:{id:string})=>x.id===campaignId))
   .toMatchObject({state:'SIMULATION_COMPLETE',missingGates:[]});
+ // Alpha operator must be able to resume a persisted campaign after a refresh
+ // without copying IDs, using the already authorized workspace portfolio.
+ await page.reload();
+ await page.getByRole('button',{name:'Load authenticated workspace'}).click();
+ await studio(page);
+ await page.getByRole('combobox',{name:'Choose campaign from workspace portfolio'}).selectOption(campaignId);
+ await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText(campaignId);
+ await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('APPROVED');
 });
 test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creative permissions',async({page})=>{
  await signIn(page,'admin');await studio(page);
