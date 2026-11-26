@@ -4,11 +4,13 @@ import {discussionTriageCsv,saveOfflineCsv,type DiscussionTriageExport}
  from "../lib/offline-evidence-csv";
 
 type Identity={organizationId:string;userId:string;role:string}|null;
+type CaseTiming={policy:'INTERNAL_ADVISORY_V1';targetMinutes:number;dueAt:string;asOf:string;elapsedMinutes:number;status:string;externalNotificationAuthorized:false};
+type QueueTiming={policy:'INTERNAL_ADVISORY_V1';asOf:string;activeCount:number;overdueCount:number;byPriority:{priority:string;count:number;overdue:number;targetMinutes:number}[];externalNotificationAuthorized:false};
 type CommunityCase={caseId:string;brandId:string;discussionId:string;disposition:string;
  escalations:string[];priority:string;status:string;version:number;createdBy:string;
  assignedTo:string|null;closedBy:string|null;specialistApprovalVerified:false;
  reviewRound:number|null;internalSpecialistReviewComplete:boolean;specialistReviews:{escalation:string;approvalId:string|null;decision:string}[];
- externalEffectsAuthorized:false;externalResolutionVerified:false;syntheticOnly:true};
+ externalEffectsAuthorized:false;externalResolutionVerified:false;syntheticOnly:true;timing?:CaseTiming};
 const field={padding:"9px 11px",borderRadius:8,border:"1px solid #cbd5e1",
  background:"#fff",width:"100%",boxSizing:"border-box" as const};
 const btn={padding:"9px 13px",border:0,borderRadius:8,
@@ -25,7 +27,7 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
  const [brandId,setBrandId]=useState("");
- const [queue,setQueue]=useState<{scope:string;cases:CommunityCase[];windowCapped:boolean}|null>(null);
+ const [queue,setQueue]=useState<{scope:string;cases:CommunityCase[];windowCapped:boolean;queueTiming?:QueueTiming}|null>(null);
  const [caseNotice,setCaseNotice]=useState("");
  const scope=identity?JSON.stringify([identity.organizationId,identity.userId,brandId]):"";
  const currentQueue=queue?.scope===scope?queue:null;
@@ -40,11 +42,16 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
   return value;
  }
  async function refreshQueue(){
-  const r=await caseRequest("?brandId="+encodeURIComponent(brandId)) as {cases:CommunityCase[];windowCapped:boolean;externalEffectsAuthorized:false};
+  const r=await caseRequest("?brandId="+encodeURIComponent(brandId)) as {cases:CommunityCase[];windowCapped:boolean;externalEffectsAuthorized:false;queueTiming?:QueueTiming};
   if(r.externalEffectsAuthorized!==false||!Array.isArray(r.cases)||r.cases.some(x=>x.brandId!==brandId||
     x.syntheticOnly!==true||x.externalEffectsAuthorized!==false||x.externalResolutionVerified!==false||
     x.specialistApprovalVerified!==false||!Array.isArray(x.specialistReviews)||typeof x.internalSpecialistReviewComplete!=="boolean"))throw Error("Invalid synthetic case scope");
-  setQueue({scope,cases:r.cases,windowCapped:r.windowCapped});
+  if(r.queueTiming&&(r.queueTiming.policy!=='INTERNAL_ADVISORY_V1'||r.queueTiming.externalNotificationAuthorized!==false||
+    !Number.isSafeInteger(r.queueTiming.activeCount)||!Number.isSafeInteger(r.queueTiming.overdueCount)||
+    r.queueTiming.overdueCount<0||r.queueTiming.activeCount<r.queueTiming.overdueCount||
+    !Array.isArray(r.queueTiming.byPriority)||r.cases.some(x=>x.timing?.policy!=='INTERNAL_ADVISORY_V1'||x.timing.externalNotificationAuthorized!==false)))
+   throw Error("Invalid internal advisory timing scope");
+  setQueue({scope,cases:r.cases,windowCapped:r.windowCapped,queueTiming:r.queueTiming});
  }
  async function runCase(task:()=>Promise<void>){
   setBusy(true);setError("");setCaseNotice("");
@@ -140,9 +147,16 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
     {caseNotice&&<p role="status">{caseNotice}</p>}
     {currentQueue&&<>
      <p style={{fontSize:12}}>{currentQueue.cases.length} cases · {currentQueue.windowCapped?"First 100 shown":"Current bounded queue"}</p>
+     {currentQueue.queueTiming&&<div aria-label="Internal advisory case targets" style={{fontSize:12,border:"1px solid #cbd5e1",borderRadius:6,padding:10}}>
+      <strong>{currentQueue.queueTiming.activeCount} active · {currentQueue.queueTiming.overdueCount} overdue</strong>
+      <p>Snapshot: {currentQueue.queueTiming.asOf} · Internal advisory targets only, not contractual SLAs. No automatic notifications or external actions.</p>
+      {currentQueue.queueTiming.byPriority.map(p=><div key={p.priority}>{p.priority} · {p.count} active · {p.overdue} overdue · {p.targetMinutes} min target</div>)}
+      <p>Active cases appear first, ordered by risk and oldest creation. Reopening does not reset age.</p>
+     </div>}
      {currentQueue.cases.map(row=><article key={row.caseId} style={{borderTop:"1px solid #e2e8f0",padding:"10px 0",fontSize:12}}>
       <strong>{row.discussionId} · {row.priority} · {row.status}</strong>
       <p>Version {row.version} · {row.assignedTo===identity.userId?"Assigned to you":row.assignedTo?"Assigned":"Unassigned"} · {row.escalations.join(", ")||"No rule-based escalation"}</p>
+      {row.timing&&<p style={{color:row.timing.status==="OVERDUE"?"#991b1b":"#475569"}}>Internal target: {row.timing.status.replaceAll("_"," ")} · {row.timing.elapsedMinutes} min elapsed · due {row.timing.dueAt}</p>}
       {row.specialistReviews.length>0&&<div style={{margin:"8px 0"}}>
        <strong>Independent internal review round {row.reviewRound}</strong>
        {row.specialistReviews.map(review=><div key={review.escalation} style={{padding:"5px 0"}}>
