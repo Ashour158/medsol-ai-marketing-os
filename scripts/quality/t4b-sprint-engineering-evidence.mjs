@@ -40,9 +40,9 @@ export function verifySprintEvidence(entries,run){
   e[id]=source.data;
  }
  if(e.rls.status!=="DISPOSABLE_CI_INVENTORY_PASSED"||
-    e.rls.tenantTableCount!==46||e.rls.forceRlsTenantTableCount!==46||
+    e.rls.tenantTableCount!==47||e.rls.forceRlsTenantTableCount!==47||
     e.rls.uncoveredTenantTableCount!==0)
-  fail("actual 46-table FORCE RLS census absent");
+  fail("actual 47-table FORCE RLS census absent");
  if(e.staging.verdict!=="OFFLINE_DISPOSABLE_TEST_ALLOWED"||
     e.staging.actualExternalPublishAndEmailAllowed!==false||
     e.staging.productionReady!==false)
