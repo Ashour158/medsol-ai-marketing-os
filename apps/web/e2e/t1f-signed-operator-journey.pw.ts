@@ -92,6 +92,36 @@ async function independentCampaignApproval(page:Page,id:string){
 }
 test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social, email and learning journey',async({page})=>{
  const creator=await signIn(page,'admin');expect(creator.organizationId).toBe('r3y-tenant-a');
+ // Exercise actual profile intake and independent review before the campaign.
+ const businessName='Alpha proteomics '+uid();
+ const knowledge=page.getByRole('region',{name:'R3-H knowledge and learning fabric'});
+ const profileForm=knowledge.getByRole('group',{name:'Structured business discovery · manual source'});
+ for(const [label,value] of Object.entries({
+  'Business name':businessName,'Industry':'Life sciences','Offerings':'Proteomics reagents and instruments',
+  'Audience':'Research laboratories','Territories':'Egypt','Differentiators':'Technical training and support'
+ }))await profileForm.getByRole('textbox',{name:label,exact:true}).fill(value);
+ await profileForm.getByRole('textbox',{name:'Business source HTTPS URL'}).fill('https://example.invalid/alpha-profile');
+ await profileForm.getByLabel('Business profile expiry').fill(new Date(Date.now()+30*86400000).toISOString().slice(0,10));
+ await profileForm.getByRole('checkbox',{name:/I confirm authorized manual business information/}).check();
+ await profileForm.getByRole('checkbox',{name:/Permit the designated brand/}).check();
+ await profileForm.getByRole('button',{name:'Submit business profile to quarantine'}).click();
+ const profileRow=()=>knowledge.getByRole('row').filter({hasText:'Business profile · '+businessName});
+ await expect(profileRow()).toContainText('QUARANTINED');
+ const docs=await success(page,'learning/knowledge');
+ const doc=docs.find((x:any)=>x.businessProfile?.name===businessName);
+ expect(doc).toMatchObject({status:'QUARANTINED',profileAuthoritative:false});
+ const lookup={agentId:'MKT-BRAND-001',query:businessName+' proteomics reagents'};
+ expect((await success(page,'learning/knowledge/agent-context-preview',lookup)).results.some((x:any)=>x.documentId===doc.id)).toBe(false);
+ expect((await api(page,'learning/knowledge/'+doc.id+'/review',{decision:'REVIEW',reason:'Maker may not review own fixture profile'})).status).toBeGreaterThanOrEqual(400);
+ await switchIdentity(page,'reviewer');
+ await knowledge.getByLabel('Decision or revocation rationale').fill('Independent review of disposable business profile');
+ await profileRow().getByRole('button',{name:'Review (other admin)'}).click();
+ await expect(profileRow()).toContainText('REVIEWED');
+ await switchIdentity(page,'admin');
+ expect((await success(page,'learning/knowledge/agent-context-preview',lookup)).results.some((x:any)=>x.documentId===doc.id)).toBe(true);
+ expect((await success(page,'learning/knowledge/agent-context-preview',{...lookup,agentId:'MKT-CRM-001'})).results.some((x:any)=>x.documentId===doc.id)).toBe(false);
+ expect((await success(page,'tenancy/brands')).some((x:any)=>x.id===brand)).toBe(true);
+ expect((await success(page,'brand/active')).status).toBe('APPROVED');
  await studio(page);const campaignId=await create(page,'r3y-alpha-product');
  expect((await success(page,'journeys/'+campaignId)).campaign.productId).toBe('r3y-alpha-product');
  await page.getByRole('combobox',{name:'Product for next campaign (optional)'}).selectOption('');
