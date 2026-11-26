@@ -31,6 +31,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (path.length===4&&id==="runs"&&!!action&&operation==="tick"&&request.method==="POST")
       )) ||
       (resource === "audience" && !(
+        (path.length===2&&id==="message-rehearsals"&&["GET","POST"].includes(request.method))||
         (path.length===2&&id==="synthetic-contacts"&&
           (request.method==="GET"||request.method==="POST")) ||
         (path.length===4&&id==="synthetic-contacts"&&!!action&&

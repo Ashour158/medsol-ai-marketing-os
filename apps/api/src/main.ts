@@ -98,7 +98,9 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Get('marketing/media/evidence') mediaEvidenceList(@Req() req:any){return this.verifiedMedia.list(req.identity.organizationId)}
  @Get('marketing/media/evidence/:id') mediaEvidence(@Req() req:any,@Param('id') id:string){return this.verifiedMedia.get(req.identity.organizationId,id)}
  @Post('marketing/media/evidence/:id/revoke') revokeMediaEvidence(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.verifiedMedia.revoke(req.identity.organizationId,req.identity.userId,id,b?.reason)}
- @Get('marketing/audience/synthetic-contacts') syntheticAudienceList(@Req() req:any){return this.syntheticEmail.listSyntheticContacts(req.identity.organizationId,req.identity,req.query?.brandId)}
+ @Get('marketing/audience/synthetic-contacts') syntheticAudienceList(@Req() req:any){return this.syntheticEmail.listSyntheticContacts(req.identity.organizationId,req.identity,req.query?.brandId,req.query?.channel)}
+ @Get('marketing/audience/message-rehearsals') listMessageRehearsals(@Req() req:any){return this.syntheticEmail.listMessageRehearsals(req.identity.organizationId,req.identity)}
+ @Post('marketing/audience/message-rehearsals') rehearseMessage(@Req() req:any,@Body() b:any){return this.syntheticEmail.rehearseMessage(req.identity.organizationId,req.identity,b)}
  @Post('marketing/audience/synthetic-contacts') createSyntheticAudienceContact(@Req() req:any,@Body() b:any){return this.syntheticEmail.createSyntheticContact(req.identity.organizationId,req.identity,b)}
  @Post('marketing/audience/synthetic-contacts/:id/consent') syntheticConsent(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.syntheticEmail.recordSyntheticConsent(req.identity.organizationId,req.identity,id,b)}
  @Get('marketing/email/simulations') emailSimulationList(@Req() req:any){return this.syntheticEmail.listEmailSimulations(req.identity.organizationId,req.identity)}
