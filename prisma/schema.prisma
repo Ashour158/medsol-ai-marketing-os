@@ -711,6 +711,7 @@ model MarketingSyntheticConsent {
   createdAt DateTime @default(now())
   organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict,map:"MarketingSyntheticConsent_org_fk")
   contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict,map:"MarketingSyntheticConsent_org_contact_fk")
+  conversionSubmissions MarketingConversionSubmission[]
   @@unique([organizationId,id])
   @@unique([organizationId,contactId,evidenceRef],map:"SyntheticConsent_tenant_contact_ref_uq")
   @@unique([organizationId,contactId,sequence])
@@ -1238,6 +1239,7 @@ model MarketingConversionSubmission {
  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
  form MarketingConversionForm @relation(fields:[organizationId,formId],references:[organizationId,id],onDelete:Restrict)
  contact MarketingSyntheticContact @relation(fields:[organizationId,contactId],references:[organizationId,id],onDelete:Restrict)
+ consentEvent MarketingSyntheticConsent @relation(fields:[organizationId,consentEventId],references:[organizationId,id],onDelete:Restrict)
  @@unique([organizationId,id])
  @@unique([organizationId,requestKey])
  @@unique([organizationId,formId,contactId],map:"ConversionSubmission_form_contact_uq")
