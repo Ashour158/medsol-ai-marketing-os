@@ -108,7 +108,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered source, deterministic SVG, derived PNG lineage, byte verification and independent comparison review exist; production release, multiformat and external editor remain"
+    "blocker": "Immutable editable source, timed motion storyboard, animated SVG, local silent WebM draft export and independent scene review; persistent video readback candidate, independent video decoding, audio, production formats and external editors remain."
   },
   {
     "id": "E12",
@@ -135,7 +135,7 @@ export const TARGET_ENGINES = [
     "release": "R1",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Immutable DAM, layered source, derived PNG lineage, exact byte verification and independent comparison review exist; production release and multimedia remain"
+    "blocker": "Immutable DAM, verified derived PNG, timed motion storyboard and independent scene comparison; persistent video byte-readback candidate and production release remain."
   },
   {
     "id": "E15",
@@ -297,7 +297,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered title/body/accent, deterministic SVG and derived PNG verification/review exist; multimodal brief and production render jobs remain"
+    "blocker": "Persistent editable source, timed motion storyboard and deterministic per-scene render; multimodal source ingestion and production render remain."
   },
   {
     "id": "E33",
@@ -385,7 +385,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Creative production with editable source, verified raster and rendition lineage",
-    "blocker": "Persistent editable source, derived PNG lineage, byte verification and independent rights review exist; production release and multimedia remain"
+    "blocker": "Editable still/motion source, derived PNG verification and independent scene review, local animated SVG/WebM draft export; persistent video candidate and production release remain."
   },
   {
     "id": "WF07",
@@ -497,7 +497,7 @@ export const TARGET_WORKFLOWS = [
     "owner": "Creative & DAM",
     "state": "PARTIAL",
     "goal": "Brief to layered editable design, verified render and independent rights review",
-    "blocker": "Persisted layered source, deterministic SVG, derived PNG lineage and independent comparison review exist; production rendition and multimedia remain"
+    "blocker": "Persistent editable source, timed storyboard, per-scene advisory and independent review; production rendition and multimodal brief ingestion remain."
   },
   {
     "id": "WF20",
@@ -555,7 +555,7 @@ export const TARGET_WORKFLOWS = [
     "release": "R4",
     "owner": "Loyalty & Retention",
     "state": "PARTIAL",
-    "blocker": "Channel-specific synthetic retention, renewal and win-back rehearsals; loyalty/reward ledger, actual customer lifecycle and financial liability remain."
+    "blocker": "Channel-specific retention, renewal and win-back rehearsal plus immutable independently approved fictional earning/redemption ledger, duplicate and balance controls; real customer rewards, liability and verified lifecycle remain."
   },
   {
     "id": "WF27",
