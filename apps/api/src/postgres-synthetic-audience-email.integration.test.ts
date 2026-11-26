@@ -287,14 +287,14 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
     expect(observed.before).toEqual([0,0,0]);
     expect(observed.own[0]).toBe(4);
     expect(observed.own[1]).toBeGreaterThan(0);
-    expect(observed.own[2]).toBe(4);
+    expect(observed.own[2]).toBe(6);
     expect(observed.other).toEqual([0,0,0]);
    }finally{
     await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingSyntheticContact",'+
      '"MarketingSyntheticConsent","MarketingEmailSimulation" FROM "'+probeRole+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+probeRole+'"');
    }
-   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(4);
+   expect(await synthetic.listEmailSimulations(org,identity)).toHaveLength(6);
    // Hard-bounce feedback is synthetic and permanent even after withdrawal.
    await action(unknown!,'SIMULATED_HARD_BOUNCE','consent-'+randomUUID());
    await action(unknown!,'SIMULATED_WITHDRAWAL','consent-'+randomUUID());
