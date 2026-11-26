@@ -19,7 +19,8 @@ export function readBrainMap(plan:unknown,roster:unknown){
  if(seen.size!==agents.length)return null;
  const handoffs:Record<string,string[]>={};
  for(const [id,to] of Object.entries(plan.handoffs)){if(!seen.has(id)||!strings(to)||to.some(t=>!seen.has(t)))return null;handoffs[id]=to;}
- return {agents,byId,plan:{stages,handoffs} as Plan};
+ const controls:Record<string,boolean>={};if(record(plan.controls))for(const [key,value] of Object.entries(plan.controls)){if(typeof value==="boolean")controls[key]=value;}
+ return {agents,byId,plan:{stages,handoffs,controls} as Plan};
 }
 export default function AlphaBrainMap({plan,roster,run,authenticated,onNavigate}:{
  plan:unknown;roster:unknown;run:unknown;authenticated:boolean;onNavigate:(id:string)=>void
@@ -40,6 +41,7 @@ export default function AlphaBrainMap({plan,roster,run,authenticated,onNavigate}
    <div className="alpha-grid"><div><strong>Capabilities</strong><ul>{(strings(a.capabilities)?a.capabilities:[]).map(c=><li key={c}>{c.replaceAll("_"," ")}</li>)}</ul></div><div><strong>Incoming handoffs</strong><ul>{incoming.map(k=><li key={k}>{data.byId.get(k)?.name}</li>)}</ul>{!incoming.length&&<p className="alpha-subtle">None declared</p>}</div><div><strong>Outgoing handoffs</strong><ul>{outgoing.map(k=><li key={k}>{data.byId.get(k)?.name}</li>)}</ul>{!outgoing.length&&<p className="alpha-subtle">None declared</p>}</div></div>
    <div className="alpha-status-row"><span className="alpha-subtle">Checkpoint: {known.get(id)?.status??"No inspected checkpoint"}</span><button type="button" onClick={()=>onNavigate("agent-studio")}>Signed agent configuration</button><button type="button" onClick={()=>onNavigate("knowledge")}>Knowledge & evidence</button><button type="button" onClick={()=>onNavigate("memory")}>Scoped memory</button></div>
   </div>
+   <div className="alpha-grid" style={{marginTop:12}} aria-label="Brain controls returned by the plan API">{Object.entries(data.plan.controls??{}).map(([key,value])=><div className="alpha-stat" key={key}><span>{key.replace(/([A-Z])/g," $1")}</span><div style={{fontWeight:700}}>{value?"Required / enabled in plan":"Not enabled in plan"}</div></div>)}</div>
   <div className="alpha-notice" style={{marginTop:12}}><strong>Trigger and execution boundaries:</strong> manual queued Brain execution, optional worker dispatch, reviewed-watch scheduling and signed offline workflow nodes. External triggers are not active. Worker health and incident evidence are available in operations.</div>
   <button style={{marginTop:10}} type="button" onClick={()=>onNavigate("workflow-studio")}>Open bounded workflow builder</button>
  </section>
