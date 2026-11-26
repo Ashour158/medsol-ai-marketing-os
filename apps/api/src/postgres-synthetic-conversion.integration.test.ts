@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
+import {MarketingPerformanceService} from './marketing-performance.service.js';
 import {SyntheticConversionService} from './synthetic-conversion.service.js';
 import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.js';
 import {ApprovalService} from './approval.service.js';
@@ -128,6 +129,55 @@ describe('T1 durable conversion form and synthetic lead handoff',()=>{
     });expect(counts).toEqual([[0,0],[1,4],[0,0]]);
    }finally{await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingConversionForm","MarketingConversionSubmission" FROM "'+role+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+role+'"');}
+   // Use the existing form/submission ledger, not generated outcome rows.
+   const experiments=new MarketingPerformanceService(db as any);
+   const variant=await service.create(org,author,{...input,formKey:'fixture-'+randomUUID(),headline:'Alternative synthetic consultation'});
+   await decide(variant.approvalId,reviewer.userId);
+   const ids:string[]=[];
+   for(let i=0;i<6;i++){
+    const c=await email.createSyntheticContact(org,author,{brandId});
+    await consent(c.contactId,'SIMULATED_OPT_IN');ids.push(c.contactId);
+   }
+   const experimentInput={experimentKey:'fixture-'+randomUUID(),campaignId:campaign.campaignId,
+    formAId:form.formId,formBId:variant.formId,contactIds:ids.slice(0,4),endsAt:new Date(Date.now()+86400000).toISOString()};
+   await expect(experiments.proposeExperiment(org,author,{...experimentInput,contactIds:[ids[0],ids[1],ids[2],other.contactId]})).rejects.toThrow('same-brand');
+   await expect(experiments.proposeExperiment(org,author,{...experimentInput,contactIds:[ids[0],ids[0],ids[1],ids[2]]})).rejects.toThrow('Duplicate');
+   const experiment=await experiments.proposeExperiment(org,author,experimentInput);
+   expect(experiment).toMatchObject({decision:'PENDING',assignedCount:4,syntheticOnly:true,externalEffectsAuthorized:false});
+   expect(await experiments.proposeExperiment(org,author,{...experimentInput,contactIds:[...experimentInput.contactIds].reverse()}))
+    .toMatchObject({approvalId:experiment.approvalId,replayed:true});
+   await expect(experiments.proposeExperiment(org,author,{...experimentInput,formAId:variant.formId,formBId:form.formId})).rejects.toThrow('different immutable');
+   expect(await experiments.experimentReport(org,author,experimentInput.experimentKey)).toMatchObject({results:null,decision:'PENDING'});
+   await expect(experiments.experimentReport(foreign,outsider,experimentInput.experimentKey)).rejects.toThrow('not found');
+   await expect(decide(experiment.approvalId,author.userId)).rejects.toThrow('Independent OIDC experiment');
+   await decide(experiment.approvalId,reviewer.userId);
+   const active=await experiments.experimentReport(org,reviewer,experimentInput.experimentKey);
+   expect(active).toMatchObject({decision:'APPROVED',actualExposureVerified:false,causalLiftValidated:false,
+    results:{arms:[{arm:'A',assigned:2,recordedAssignedFormSubmissions:0},{arm:'B',assigned:2,recordedAssignedFormSubmissions:0}]}});
+   const armA=active.assignments.filter(x=>x.arm==='A'),armB=active.assignments.filter(x=>x.arm==='B');
+   const submitArm=(contactId:string,formId:string,formDigest:string)=>service.submit(org,author,formId,{
+    contactId,requestKey:'fixture-'+randomUUID(),formDigest,mockCrmPurposeGranted:true,mockTransport:'ACCEPTED'});
+   await submitArm(armA[0]!.contactId,form.formId,form.contentDigest);
+   // Opposite arm event must not be counted; changed synthetic consent invalidates its old assignment evidence.
+   await submitArm(armB[0]!.contactId,form.formId,form.contentDigest);
+   await consent(armB[1]!.contactId,'SIMULATED_WITHDRAWAL');
+   await consent(armB[1]!.contactId,'SIMULATED_OPT_IN');
+   await submitArm(armB[1]!.contactId,variant.formId,variant.contentDigest);
+   const final=await experiments.experimentReport(org,reviewer,experimentInput.experimentKey);
+   expect(final.results).toMatchObject({status:'CONTAMINATED_SYNTHETIC_EVIDENCE',crossoverContacts:1,changedConsentContacts:1,
+    arms:[{arm:'A',assigned:2,recordedAssignedFormSubmissions:1,recordedSubmissionRatePercent:50},
+     {arm:'B',assigned:2,recordedAssignedFormSubmissions:0,recordedSubmissionRatePercent:0}],
+    actualExposureVerified:false,causalLiftValidated:false,externalEffectsAuthorized:false});
+   await expect(withMarketingTenant(db,org,tx=>tx.approval.update({where:{id:experiment.approvalId},data:{scopeDigest:'sha256:'+'f'.repeat(64)}}))).rejects.toThrow();
+   const secondInput={...experimentInput,experimentKey:'fixture-'+randomUUID(),contactIds:[ids[4]!,ids[5]!,armA[1]!.contactId,ids[0]!]};
+   // Reject contaminated or duplicate prior form evidence, regardless of a new experiment key.
+   await expect(experiments.proposeExperiment(org,author,{...experimentInput,experimentKey:'fixture-'+randomUUID()})).rejects.toThrow('prior submissions');
+   // A fresh pending plan cannot be approved after opt-in withdrawal.
+   const extra:string[]=[];
+   for(let i=0;i<2;i++){const c=await email.createSyntheticContact(org,author,{brandId});await consent(c.contactId,'SIMULATED_OPT_IN');extra.push(c.contactId);}
+   const stale=await experiments.proposeExperiment(org,author,{...secondInput,contactIds:[ids[4]!,ids[5]!,...extra]});
+   await consent(extra[0]!,'SIMULATED_WITHDRAWAL');
+   await expect(decide(stale.approvalId,reviewer.userId)).rejects.toThrow('eligible same-brand');
   }finally{await db.$disconnect();}
- },90000);
+ },120000);
 });

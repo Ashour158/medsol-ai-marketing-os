@@ -1,5 +1,8 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
+import type {VerifiedIdentity} from './oidc-identity.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
+import {SYNTHETIC_EXPERIMENT,normalizeExperimentInput,buildSyntheticExperiment,readSyntheticExperiment,evaluateSyntheticExperiment} from './synthetic-experiment.js';
 import {randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {combinedReviewedCommercial} from '@medsol/contracts';
@@ -14,6 +17,57 @@ function required(value:unknown,name:string,max=500):string{
 @Injectable()
 export class MarketingPerformanceService{
  constructor(private readonly db:PrismaService){}
+ async proposeExperiment(org:string,identity:VerifiedIdentity,raw:unknown){
+  const input=normalizeExperimentInput(raw);
+  if(!identity||identity.organizationId!==org)throw new ForbiddenException('Verified experiment operator required');
+  try{return await withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_CAMPAIGN');
+   const prior=await tx.approval.findMany({where:{organizationId:org,objectType:SYNTHETIC_EXPERIMENT,objectId:input.experimentKey},take:2});
+   if(prior.length){
+    const a=prior[0]!,scope=readSyntheticExperiment(a);
+    if(prior.length!==1||scope.requestedBy!==identity.userId||JSON.stringify(scope.input)!==JSON.stringify(input))
+     throw new ConflictException('Experiment key already has different immutable evidence');
+    return{experimentKey:input.experimentKey,approvalId:a.id,scopeDigest:a.scopeDigest,decision:a.decision,
+     assignedCount:scope.assignments.length,syntheticOnly:true,externalEffectsAuthorized:false,replayed:true};
+   }
+   const now=Date.now(),end=Date.parse(input.endsAt);
+   if(end<=now||end>now+30*86400000)throw new BadRequestException('Experiment end must be within the next 30 days');
+   const exact=await buildSyntheticExperiment(tx,org,identity.userId,input);
+   const a=await tx.approval.create({data:{id:randomUUID(),organizationId:org,objectType:SYNTHETIC_EXPERIMENT,
+    objectId:input.experimentKey,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',
+    requestedBy:identity.userId,scopeDigest:exact.scopeDigest,scope:exact.scope,scopeExpiresAt:new Date(input.endsAt)}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,
+    action:'SYNTHETIC_EXPERIMENT_PROPOSED',objectType:SYNTHETIC_EXPERIMENT,objectId:input.experimentKey,
+    correlationId:a.id,after:{scopeDigest:exact.scopeDigest,assignedCount:exact.scope.assignments.length,externalEffectsAuthorized:false}}});
+   return{experimentKey:input.experimentKey,approvalId:a.id,scopeDigest:exact.scopeDigest,decision:a.decision,
+    assignedCount:exact.scope.assignments.length,syntheticOnly:true,externalEffectsAuthorized:false,replayed:false};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
+  catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
+   throw new ConflictException('Concurrent synthetic experiment; refresh exact key');throw e;}
+ }
+ async experimentReport(org:string,identity:VerifiedIdentity,experimentKey:unknown){
+  if(typeof experimentKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(experimentKey))
+   throw new BadRequestException('Invalid fixture experiment key');
+  if(!identity||identity.organizationId!==org)throw new ForbiddenException('Verified experiment reader required');
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'READ_AUDIT');
+   const plans=await tx.approval.findMany({where:{organizationId:org,objectType:SYNTHETIC_EXPERIMENT,objectId:experimentKey},take:2});
+   if(plans.length!==1)throw new NotFoundException('Exact synthetic experiment not found');
+   const a=plans[0]!,scope=readSyntheticExperiment(a);
+   const approved=a.decision==='APPROVED'&&!!a.decidedAt&&!!a.decidedBy&&a.decidedBy!==a.requestedBy;
+   const ended=Date.parse(scope.input.endsAt)<=Date.now();
+   const reportBase={experimentKey,approvalId:a.id,scopeDigest:a.scopeDigest,decision:a.decision,approvedAt:approved?a.decidedAt!.toISOString():null,
+    campaignId:scope.input.campaignId,formAId:scope.input.formAId,formBId:scope.input.formBId,endsAt:scope.input.endsAt,
+    assignments:scope.assignments.map(({contactId,arm})=>({contactId,arm})),windowEnded:ended,syntheticOnly:true,
+    actualExposureVerified:false,causalLiftValidated:false,realLeadsVerified:false,externalEffectsAuthorized:false};
+   if(!approved)return{...reportBase,results:null};
+   const rows=await tx.marketingConversionSubmission.findMany({where:{organizationId:org,
+    formId:{in:[scope.input.formAId,scope.input.formBId]},contactId:{in:scope.input.contactIds},
+    createdAt:{gte:a.decidedAt!,lte:new Date(scope.input.endsAt)}},select:{contactId:true,formId:true,consentEventId:true,createdAt:true},take:201});
+   if(rows.length>200)throw new ConflictException('Synthetic experiment evidence bound exceeded');
+   return{...reportBase,results:evaluateSyntheticExperiment(scope,a.decidedAt!,rows)};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
+ }
  async ingest(organizationId:string,actorId:string,raw:{
    campaignId?:unknown;sourceSystem?:unknown;sourceRecordId?:unknown;metricKey?:unknown;
    value?:unknown;observedAt?:unknown;sourceReference?:unknown;currency?:unknown
