@@ -110,6 +110,23 @@ describe('R2H synthetic-only consent, suppression, audience and email pipeline',
      complaintSuppressed:1,missingConsent:1,actualMessagesSent:0,
      verifiedProviderReceipts:0,realConsentVerified:false,
      externalEffectsAuthorized:false,automaticRetryAllowed:false}});
+   const messaging={...audience,requestKey:'message-'+randomUUID(),channel:'WHATSAPP',purpose:'RETENTION_CHECK_IN',scenario:'OUTCOME_UNKNOWN',fixtureOnly:true};
+   expect(await synthetic.rehearseMessage(org,identity,messaging)).toMatchObject({status:'BLOCKED',syntheticEligible:0,actualMessagesSent:0});
+   await synthetic.recordSyntheticConsent(org,identity,eligible!,{channel:'WHATSAPP',action:'SIMULATED_OPT_IN',requestKey:'channel-'+randomUUID()});
+   await synthetic.recordSyntheticConsent(org,identity,withdrawn!,{channel:'SMS',action:'SIMULATED_OPT_IN',requestKey:'channel-'+randomUUID()});
+   await expect(synthetic.rehearseMessage(org,identity,messaging)).rejects.toThrow('changed consent');
+   const message={...messaging,requestKey:'message-'+randomUUID()};
+   const rehearsed=await synthetic.rehearseMessage(org,identity,message);
+   expect(rehearsed).toMatchObject({status:'SIMULATED',syntheticEligible:1,virtualOutcomeUnknown:1,actualMessagesSent:0,actualNetworkRequests:0,financialLiabilityCreated:false,realLoyaltyPointsIssued:0,automaticRetryAllowed:false});
+   expect(await synthetic.rehearseMessage(org,identity,message)).toMatchObject({rehearsalId:rehearsed.rehearsalId,replayed:true});
+   await expect(synthetic.rehearseMessage(org,identity,{...message,scenario:'MOCK_ACCEPTED'})).rejects.toThrow('changed consent');
+   expect(await synthetic.rehearseMessage(org,identity,{...message,channel:'SMS',requestKey:'message-'+randomUUID(),scenario:'MOCK_ACCEPTED'})).toMatchObject({syntheticEligible:1,virtualAccepted:1});
+   await synthetic.recordSyntheticConsent(org,identity,eligible!,{channel:'WHATSAPP',action:'SIMULATED_COMPLAINT',requestKey:'channel-'+randomUUID()});
+   await expect(synthetic.recordSyntheticConsent(org,identity,eligible!,{channel:'WHATSAPP',action:'SIMULATED_OPT_IN',requestKey:'channel-'+randomUUID()})).rejects.toThrow('irreversible');
+   expect((await synthetic.listSyntheticContacts(org,identity,brandId,'EMAIL')).find(x=>x.contactId===eligible)).toMatchObject({effectiveSyntheticEligibility:'SYNTHETIC_ELIGIBLE'});
+   expect((await synthetic.listSyntheticContacts(org,identity,brandId,'WHATSAPP')).find(x=>x.contactId===eligible)).toMatchObject({effectiveSyntheticEligibility:'COMPLAINT_SUPPRESSED'});
+   expect((await synthetic.listMessageRehearsals(org,identity)).rehearsals).toHaveLength(3);
+   await expect(synthetic.rehearseMessage(foreign,identity,message)).rejects.toThrow('Verified tenant');
    const replay=await synthetic.simulateEmailJourney(org,identity,audience);
    expect(replay).toMatchObject({simulationId:simulated.simulationId,replayed:true});
    const ambiguous=await synthetic.simulateEmailJourney(org,identity,{
