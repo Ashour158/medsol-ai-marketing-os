@@ -170,7 +170,7 @@ describe.skipIf(!enabled)('T4A actual PostgreSQL offline creative iteration and 
    await expect(creative.reviseOfflineRasterDraft(org,creator,first.assetId,{expectedVersion:5,layeredParentRevisionId:motion.revisionId,layeredSourceDigest:preview.sourceDigest,editableCopy:'Research story\nInternal motion only',pngBase64:png64(55,1080),requestKey:randomUUID(),rightsExpiresAt:future})).rejects.toThrow('Motion storyboard');
    await expect(creative.offlineLayeredPreview(other,motion.revisionId)).rejects.toThrow('not found');
    // Container-header fixture only; deliberately not a decoded video.
-   const webm=Buffer.concat([Buffer.from('1a45dfa3874282847765626d18538067','hex'),Buffer.alloc(120,1)]).toString('base64');
+   const webm=Buffer.concat([Buffer.from('1a45dfa38b428681014282847765626d18538067','hex'),Buffer.alloc(120,1)]).toString('base64');
    const input={expectedVersion:5,parentRevisionId:motion.revisionId,sourceDigest:preview.sourceDigest,videoBase64:webm,requestKey:randomUUID(),rightsExpiresAt:future};
    const video=await creative.saveOfflineMotionVideo(org,creator,first.assetId,input) as {revisionId:string;renditionDigest:string;version:number};
    expect(video).toMatchObject({version:6,videoEncodingVerified:false,releaseAuthorized:false});
