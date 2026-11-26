@@ -104,11 +104,34 @@ export class SocialCommunityCaseService{
   return withMarketingTenant(this.db,org,async tx=>{
    await this.actor(tx,org,identity,'ASSESS');
    await this.brand(tx,org,brandId);
-   const rows=await tx.socialCommunityCase.findMany({where:{organizationId:org,brandId},
-    orderBy:[{updatedAt:'desc'},{id:'asc'}],take:101});
-   return{cases:await this.views(tx,rows.slice(0,100)),windowCapped:rows.length>100,syntheticOnly:true,
-    externalEffectsAuthorized:false};
-  });
+   const asOf=new Date(),scope={organizationId:org,brandId},active={...scope,status:{in:['OPEN','PENDING_REVIEW']}};
+   const priorities=['URGENT','HIGH','NORMAL','LOW'] as const;
+   // Keep canonical persisted SLA deadline; no competing clock or deadline reset.
+   // Aggregate counts cover the entire scoped queue, not just the visible page.
+   const [counts,overdue,escalated,legacy,...groups]=await Promise.all([
+    tx.socialCommunityCase.groupBy({by:['priority'],where:active,_count:{_all:true}}),
+    tx.socialCommunityCase.groupBy({by:['priority'],where:{...active,slaDueAt:{lte:asOf}},_count:{_all:true}}),
+    tx.socialCommunityCase.groupBy({by:['priority'],where:{...active,slaEscalatedAt:{not:null}},_count:{_all:true}}),
+    tx.socialCommunityCase.groupBy({by:['priority'],where:{...active,slaDueAt:null},_count:{_all:true}}),
+    ...priorities.map(priority=>tx.socialCommunityCase.findMany({where:{...active,priority},
+     orderBy:[{slaDueAt:{sort:'asc',nulls:'last'}},{createdAt:'asc'},{id:'asc'}],take:100}))
+   ] as const);
+   const n=(rows:typeof counts,priority:string)=>rows.find(r=>r.priority===priority)?._count._all??0;
+   const byPriority=priorities.map(priority=>({priority,active:n(counts,priority),
+    overdue:n(overdue,priority),escalated:n(escalated,priority),withoutDeadline:n(legacy,priority)}));
+   const sum=(rows:typeof counts)=>rows.reduce((total,r)=>total+r._count._all,0);
+   const activeCount=sum(counts),activeRows=groups.flat().slice(0,100),remaining=100-activeRows.length;
+   const closed=await tx.socialCommunityCase.findMany({where:{...scope,status:'RESOLVED_INTERNAL'},
+    orderBy:[{updatedAt:'desc'},{id:'asc'}],take:remaining+1});
+   const rows=[...activeRows,...closed.slice(0,remaining)];
+   const cases=await this.views(tx,rows);
+   return{cases:cases.map((c,i)=>({...c,slaOverdue:rows[i]!.status!=='RESOLVED_INTERNAL'&&
+     !!rows[i]!.slaDueAt&&rows[i]!.slaDueAt!<=asOf})),
+    windowCapped:activeCount>activeRows.length||closed.length>remaining,syntheticOnly:true,
+    externalEffectsAuthorized:false,queueSummary:{asOf:asOf.toISOString(),activeCount,
+     overdueCount:sum(overdue),escalatedCount:sum(escalated),withoutDeadlineCount:sum(legacy),byPriority,
+     externalNotificationAuthorized:false}};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
  /** Existing worker calls this bounded internal-only scan. No email, webhook
   * or public response is emitted. The case queue and audit are authoritative. */
