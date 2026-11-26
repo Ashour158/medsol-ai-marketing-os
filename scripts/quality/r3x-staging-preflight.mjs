@@ -64,7 +64,7 @@ export function assertDisposableStaging(environment,inventory){
   verdict:'OFFLINE_DISPOSABLE_TEST_ALLOWED',
   releaseVerdict:'NOT_CERTIFIED',
   scope:'GITHUB_CI_ONLY_NO_PRODUCTION_AND_NO_REAL_PROVIDER_ACCOUNTS',
-  database:{host:'localhost',name:'marketing_test',forceRlsTables:46,
+  database:{host:'localhost',name:'marketing_test',forceRlsTables:47,
    uncoveredTables:0,realProductionDatabaseInspected:false},
   externalProviderCredentialsPresent:false,
   actualExternalPublishAndEmailAllowed:false,
