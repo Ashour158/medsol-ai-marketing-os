@@ -87,6 +87,13 @@ export default function AgentReleaseStudio({identity}:{identity:Identity}){
     The canonical identity, risk, permissions and safety boundaries cannot be expanded.
     Edit only allowed restriction fields, then sign the canonical digest externally.
    </p>
+   <div className="alpha-grid" style={{marginBottom:12}} aria-label="Agent release policy overview">
+    {([["modelPolicy","Model policy"],["memoryPolicy","Memory policy"],["defaultRisk","Risk class"],["maxInputBytes","Input budget (bytes)"],["maxOutputTokens","Output budget (tokens)"]] as const).map(([key,label])=><div key={key} className="alpha-stat"><span>{label}</span><div style={{fontWeight:700,overflowWrap:"anywhere"}}>{typeof baseline.manifest[key]==="string"||typeof baseline.manifest[key]==="number"?String(baseline.manifest[key]):"Not supplied"}</div></div>)}
+   </div>
+   <div className="alpha-grid" style={{marginBottom:12}}>
+    {([["capabilities","Canonical capabilities"],["knowledgeKeys","Knowledge scopes"],["skillKeys","Skill scopes"],["toolKeys","Allowed tool keys"]] as const).map(([key,label])=>{const v=baseline.manifest[key];const values=Array.isArray(v)?v.filter(x=>typeof x==="string") as string[]:[];return <div key={key} className="alpha-stage"><strong>{label}</strong>{values.length?<ul>{values.map(x=><li key={x}>{x}</li>)}</ul>:<p className="alpha-subtle">None in baseline</p>}</div>})}
+   </div>
+   <p className="alpha-subtle">Policy cards describe the canonical baseline, not the unsigned draft or installed release configuration. Signed revisions below remain authoritative.</p>
    <label>Proposed signed manifest (strict JSON)
     <textarea style={{...field,minHeight:210,fontFamily:"monospace",fontSize:12}}
      value={draft} onChange={e=>{
