@@ -1170,6 +1170,8 @@ model SocialCommunityCase {
  status String @default("OPEN")
  version Int @default(1)
  reviewRound Int?
+ slaDueAt DateTime?
+ slaEscalatedAt DateTime?
  createdBy String
  assignedTo String?
  closedBy String?
@@ -1181,6 +1183,7 @@ model SocialCommunityCase {
  @@unique([organizationId,id])
  @@unique([organizationId,brandId,discussionId])
  @@index([organizationId,brandId,status,updatedAt],map:"SocialCommunityCase_queue_idx")
+ @@index([organizationId,status,slaDueAt],map:"SocialCommunityCase_sla_due_idx")
 }
 
 

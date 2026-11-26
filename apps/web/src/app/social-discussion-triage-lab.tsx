@@ -7,7 +7,7 @@ type Identity={organizationId:string;userId:string;role:string}|null;
 type CommunityCase={caseId:string;brandId:string;discussionId:string;disposition:string;
  escalations:string[];priority:string;status:string;version:number;createdBy:string;
  assignedTo:string|null;closedBy:string|null;specialistApprovalVerified:false;
- reviewRound:number|null;internalSpecialistReviewComplete:boolean;specialistReviews:{escalation:string;approvalId:string|null;decision:string}[];
+ reviewRound:number|null;slaDueAt:string|null;slaEscalatedAt:string|null;slaOverdue:boolean;slaWorkerConfigured:boolean;internalSpecialistReviewComplete:boolean;specialistReviews:{escalation:string;approvalId:string|null;decision:string}[];
  externalEffectsAuthorized:false;externalResolutionVerified:false;syntheticOnly:true};
 const field={padding:"9px 11px",borderRadius:8,border:"1px solid #cbd5e1",
  background:"#fff",width:"100%",boxSizing:"border-box" as const};
@@ -143,6 +143,9 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
      {currentQueue.cases.map(row=><article key={row.caseId} style={{borderTop:"1px solid #e2e8f0",padding:"10px 0",fontSize:12}}>
       <strong>{row.discussionId} · {row.priority} · {row.status}</strong>
       <p>Version {row.version} · {row.assignedTo===identity.userId?"Assigned to you":row.assignedTo?"Assigned":"Unassigned"} · {row.escalations.join(", ")||"No rule-based escalation"}</p>
+      <p>Internal SLA: {row.slaDueAt?new Date(row.slaDueAt).toISOString():"Legacy case · reopen to start deadline"}
+       {" · "}{row.slaEscalatedAt?"Escalated to internal queue":row.slaOverdue?"Overdue":row.status==="RESOLVED_INTERNAL"?"Closed":"Within review window"}
+       {" · "}{row.slaWorkerConfigured?"Worker configured":"Automatic escalation not configured"}</p>
       {row.specialistReviews.length>0&&<div style={{margin:"8px 0"}}>
        <strong>Independent internal review round {row.reviewRound}</strong>
        {row.specialistReviews.map(review=><div key={review.escalation} style={{padding:"5px 0"}}>
