@@ -1,3 +1,5 @@
 # T1 — offline multimedia motion storyboard
 
 E11/E14/E32/WF06/WF19 extension of existing canonical immutable layered DAM source. Two to four bounded timed scenes, deterministic animated SVG and exact individual still frame digests, per-scene brand literal checks, explicit local preview and animated SVG export. Optional browser-only silent WebM export is labeled unverified and never stored, submitted as a DAM rendition, or released; no external media, audio, model calls or network effects. Still PNG release-rendition path rejects a motion source, and existing layered publication approval barrier remains. Unit and real PostgreSQL cases cover motion timings, stale prior approval, forbidden still conversion and cross-tenant isolation. Full CI required. Persistent independently verified video rendition, audio, external creative editing and production approval remain gaps.
+
+Existing rights review now additionally requires an exact independent source/render/frame digest comparison for motion drafts. The UI presents all still scenes and timings; the audit records the attestation. This does not verify encoded video bytes, legal rights or release eligibility.

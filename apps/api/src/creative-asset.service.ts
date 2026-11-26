@@ -368,12 +368,12 @@ export class CreativeAssetService{
     include:{revisions:{orderBy:{version:'desc'},take:30,select:{
      id:true,version:true,sourceKind:true,renditionDigest:true,
      rightsExpiresAt:true,rightsReviewedBy:true,rightsReviewedAt:true,createdAt:true,
-     sourceRef:true,offlineLayeredSourceDigest:true,offlineLayeredParentRevisionId:true,offlineRenditionParentRevisionId:true,offlineRenditionSourceDigest:true
+     sourceRef:true,offlineLayeredSpec:true,offlineLayeredSourceDigest:true,offlineLayeredParentRevisionId:true,offlineRenditionParentRevisionId:true,offlineRenditionSourceDigest:true
     }}}});
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    const {revisions,...safe}=asset;
-   return{...safe,revisions:revisions.map(({sourceRef,...revision})=>({
-    ...revision,layeredPreviewAvailable:sourceRef.startsWith('internal:creative-source/layered/'),offlinePreviewAvailable:sourceRef.startsWith(
+   return{...safe,revisions:revisions.map(({sourceRef,offlineLayeredSpec,...revision})=>({
+    ...revision,motionDraft:!!offlineLayeredSpec&&typeof offlineLayeredSpec==='object'&&!Array.isArray(offlineLayeredSpec)&&'motion' in offlineLayeredSpec,layeredPreviewAvailable:sourceRef.startsWith('internal:creative-source/layered/'),offlinePreviewAvailable:sourceRef.startsWith(
      'internal:creative-source/offline/')
    })),externalEffectsAuthorized:false};
   });
@@ -435,6 +435,11 @@ export class CreativeAssetService{
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    if(revision.createdBy===reviewerId||asset.createdBy===reviewerId)
     throw new ForbiddenException('Asset creator cannot review own rights');
+   const motion=revision.offlineLayeredSpec?renderOfflineLayeredSpec(revision.offlineLayeredSpec):null;
+   if(motion?.motionFrames){
+    const a=comparison as {motionReviewed?:unknown;sourceDigest?:unknown;renditionDigest?:unknown;frameDigests?:unknown}|undefined;
+    if(asset.version!==revision.version||motion.sourceDigest!==revision.offlineLayeredSourceDigest||motion.renditionDigest!==revision.renditionDigest||a?.motionReviewed!==true||a.sourceDigest!==motion.sourceDigest||a.renditionDigest!==motion.renditionDigest||JSON.stringify(a.frameDigests)!==JSON.stringify(motion.motionFrames.map(f=>f.digest)))throw new ConflictException('Independent exact motion scene comparison required');
+   }
    if(revision.offlineRenditionParentRevisionId){
     const attestation=comparison as {parentRevisionId?:unknown;sourceDigest?:unknown;renditionDigest?:unknown;visuallyCompared?:unknown}|undefined;
     const parent=await tx.creativeAssetRevision.findFirst({where:{id:revision.offlineRenditionParentRevisionId,organizationId,assetId:asset.id}});
@@ -453,6 +458,7 @@ export class CreativeAssetService{
     action:'CREATIVE_RIGHTS_REVIEWED',objectType:'CreativeAssetRevision',objectId:revisionId,
     correlationId:revisionId,after:{reviewerId,reason,rightsExpiresAt:revision.rightsExpiresAt.toISOString(),
      ...(revision.offlineRenditionParentRevisionId?{visualComparisonAttested:true,parentRevisionId:revision.offlineRenditionParentRevisionId,sourceDigest:revision.offlineRenditionSourceDigest,renditionDigest:revision.renditionDigest}:{}),
+     ...(motion?.motionFrames?{motionReviewed:true,sourceDigest:motion.sourceDigest,renditionDigest:motion.renditionDigest,frameDigests:motion.motionFrames.map(f=>f.digest),videoEncodingVerified:false,releaseAuthorized:false}:{}),
      externalEffectsAuthorized:false}}});
    return{revisionId,rightsReviewed:true,externalEffectsAuthorized:false};
   });
