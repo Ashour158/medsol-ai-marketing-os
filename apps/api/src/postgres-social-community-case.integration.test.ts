@@ -42,7 +42,13 @@ describe('T1 durable offline community case lifecycle',()=>{
    await expect(service.create(org,author,{...raw,brandId:otherBrand})).rejects.toThrow('Active tenant brand');
    await expect(service.create(org,author,{...raw,discussionId:'real-provider-id'})).rejects.toThrow('fixture');
    await expect(service.create(org,author,{...raw,customerEmail:'person@example.invalid'})).rejects.toThrow('bounded');
-   expect((await service.list(foreign,outsider,otherBrand)).cases).toEqual([]);
+   const foreignQueue=await service.list(foreign,outsider,otherBrand);
+   expect(foreignQueue.cases).toEqual([]);
+   expect(foreignQueue.queueTiming).toMatchObject({activeCount:0,overdueCount:0,externalNotificationAuthorized:false});
+   const queue=await service.list(org,author,brandId);
+   expect(queue.queueTiming).toMatchObject({activeCount:1,overdueCount:0,policy:'INTERNAL_ADVISORY_V1'});
+   expect(queue.cases[0]?.timing).toMatchObject({status:'WITHIN_TARGET',targetMinutes:240,externalNotificationAuthorized:false});
+   const originalDue=queue.cases[0]!.timing.dueAt;
    const transition=(identity:typeof author,action:string,expectedVersion:number)=>
     service.transition(identity.organizationId,identity,row.caseId,{action,expectedVersion});
    await expect(transition(outsider,'CLAIM',1)).rejects.toThrow('not found');
@@ -68,6 +74,9 @@ describe('T1 durable offline community case lifecycle',()=>{
    expect((await service.list(org,author,brandId)).cases[0]).toMatchObject({internalSpecialistReviewComplete:true});
    expect(await transition(reviewer,'CLOSE_INTERNAL',3)).toMatchObject({version:4,status:'RESOLVED_INTERNAL',
     closedBy:reviewer.userId,specialistApprovalVerified:false,externalResolutionVerified:false});
+   const closedQueue=await service.list(org,author,brandId);
+   expect(closedQueue.queueTiming).toMatchObject({activeCount:0,overdueCount:0});
+   expect(closedQueue.cases[0]?.timing).toMatchObject({status:'CLOSED_BEFORE_TARGET',dueAt:originalDue});
    expect(await transition(reviewer,'REOPEN',4)).toMatchObject({version:5,status:'OPEN',assignedTo:null,closedBy:null});
    // Invalid direct writes cannot bypass the relational state machine.
    await expect(withMarketingTenant(db,org,tx=>tx.socialCommunityCase.update({where:{id:row.caseId},
@@ -79,7 +88,9 @@ describe('T1 durable offline community case lifecycle',()=>{
    expect(audit).toHaveLength(5);
    expect(JSON.stringify(audit)).not.toContain('private-mock-text-marker');
    expect(JSON.stringify(audit)).not.toContain('discussionDigest');
-   expect((await service.list(org,author,brandId)).cases[0]).toMatchObject({version:5,status:'OPEN'});
+   const reopenedQueue=await service.list(org,author,brandId);
+   expect(reopenedQueue.cases[0]).toMatchObject({version:5,status:'OPEN',timing:{dueAt:originalDue}});
+   expect(reopenedQueue.queueTiming).toMatchObject({activeCount:1,overdueCount:0});
    expect(await transition(operator,'CLAIM',5)).toMatchObject({version:6});
    const round2=await transition(operator,'SUBMIT_REVIEW',6);
    expect(round2).toMatchObject({version:7,reviewRound:7,internalSpecialistReviewComplete:false});
