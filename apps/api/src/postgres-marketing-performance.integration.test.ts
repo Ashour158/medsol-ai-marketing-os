@@ -48,6 +48,31 @@ describe.skipIf(!enabled)('PostgreSQL authoritative campaign KPI evidence',()=>{
    expect((await metrics.summary(otherOrganization,campaignB.id)).sourceRecordReconciliation)
     .toMatchObject({matchedGroups:0,matchedTotals:null});
 
+   // Currency-labelled spend is never pooled with another currency or unknown legacy spend.
+   for(const [sourceRecordId,metricKey,value,currency] of [
+    ['mon-egp','spend_micros',1000000,'EGP'],['mon-egp','reported_revenue_micros',5000000,'EGP'],
+    ['mon-usd','spend_micros',2000000,'USD'],['mon-usd','reported_revenue_micros',8000000,'USD']
+   ] as const){
+    const row=await metrics.ingest(organizationId,'submitter',{campaignId:campaignA.id,
+     sourceSystem:'MANUAL_EXPORT',sourceRecordId,metricKey,value,currency,observedAt,sourceReference:'internal:monetary-report'});
+    await metrics.review(organizationId,'independent-reviewer',row.observationId,'Reviewed exact currency-tagged source');
+   }
+   const monetary=await metrics.summary(organizationId,campaignA.id);
+   expect(monetary.totals.spend_micros).toBeUndefined();
+   expect(monetary.monetaryReconciliation).toMatchObject({status:'EXACT_MONETARY_SOURCE_MATCH',matchedGroups:2,
+    currencies:[{currency:'EGP',reportedSpendMicros:'1000000',reportedRevenueMicros:'5000000'},
+     {currency:'USD',reportedSpendMicros:'2000000',reportedRevenueMicros:'8000000'}],
+    revenueVerified:false,roiValidated:false,fxConversionPerformed:false});
+   await expect(metrics.ingest(organizationId,'submitter',{campaignId:campaignA.id,sourceSystem:'MANUAL_EXPORT',
+    sourceRecordId:'mon-egp',metricKey:'spend_micros',value:1000000,currency:'USD',observedAt,
+    sourceReference:'internal:monetary-report'})).rejects.toThrow('conflicting observation');
+   await expect(metrics.ingest(organizationId,'submitter',{campaignId:campaignA.id,sourceSystem:'MANUAL_EXPORT',
+    sourceRecordId:'missing-currency',metricKey:'reported_revenue_micros',value:1,observedAt,
+    sourceReference:'internal:monetary-report'})).rejects.toThrow('currency');
+   await expect(metrics.ingest(organizationId,'submitter',{campaignId:campaignA.id,sourceSystem:'MANUAL_EXPORT',
+    sourceRecordId:'invalid-count',metricKey:'clicks',value:1,currency:'EGP',observedAt,
+    sourceReference:'internal:monetary-report'})).rejects.toThrow('currency');
+   expect((await metrics.summary(otherOrganization,campaignB.id)).monetaryReconciliation.currencies).toEqual([]);
    expect((await metrics.summary(otherOrganization,campaignB.id)).totals).toEqual({});
    await expect(metrics.summary(otherOrganization,campaignA.id)).rejects.toThrow('not found in tenant');
    // A direct write cannot bypass the tenant composite FK on Campaign.
