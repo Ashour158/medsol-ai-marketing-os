@@ -104,11 +104,11 @@ export const TARGET_ENGINES = [
   {
     "id": "E11",
     "name": "Creative Production",
-    "goal": "Editable layered designs, deterministic renders, rendition lineage, multimedia jobs and rights",
+    "goal": "Editable layered designs, deterministic renders, native timeline, multimedia jobs, rendition lineage and rights",
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered source, deterministic SVG, derived PNG lineage, byte verification and independent comparison review exist; production release, multiformat and external editor remain"
+    "blocker": "Bounded offline motion storyboards exist; native timeline, audio, verified video bytes, batch rendering and production release remain"
   },
   {
     "id": "E12",
@@ -131,11 +131,11 @@ export const TARGET_ENGINES = [
   {
     "id": "E14",
     "name": "Digital Asset Management",
-    "goal": "Versioned asset, source, license, editable layers, render provenance and rendition",
+    "goal": "Versioned assets, source, license, editable layers, media provenance and verified rendition",
     "release": "R1",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Immutable DAM, layered source, derived PNG lineage, exact byte verification and independent comparison review exist; production release and multimedia remain"
+    "blocker": "Immutable DAM and still verification exist; motion frame review is not video verification; persistent encoded media, rights and release remain"
   },
   {
     "id": "E15",
@@ -293,11 +293,11 @@ export const TARGET_ENGINES = [
   {
     "id": "E32",
     "name": "Brief & Design Coordination",
-    "goal": "Brief parsing, approved creative tasks, storyboard and editable layered handoff",
+    "goal": "Brief parsing, approved creative tasks, AI-assisted storyboard, motion design and editable timeline handoff",
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered title/body/accent, deterministic SVG and derived PNG verification/review exist; multimodal brief and production render jobs remain"
+    "blocker": "Bounded layered and motion drafts exist; native motion planning, multimodal brief, agent orchestration and production rendering remain"
   },
   {
     "id": "E33",
@@ -384,8 +384,8 @@ export const TARGET_WORKFLOWS = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "goal": "Creative production with editable source, verified raster and rendition lineage",
-    "blocker": "Persistent editable source, derived PNG lineage, byte verification and independent rights review exist; production release and multimedia remain"
+    "goal": "Creative production with editable source, native motion timeline, verified media and rendition lineage",
+    "blocker": "Still and bounded motion drafts exist; encoded video verification, batch jobs and release remain"
   },
   {
     "id": "WF07",
@@ -496,8 +496,8 @@ export const TARGET_WORKFLOWS = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "goal": "Brief to layered editable design, verified render and independent rights review",
-    "blocker": "Persisted layered source, deterministic SVG, derived PNG lineage and independent comparison review exist; production rendition and multimedia remain"
+    "goal": "Brief to editable design and motion storyboard, timeline, verified render and independent rights review",
+    "blocker": "Bounded motion source exists; agentic storyboard, reference analysis, native editing and verified video rendition remain"
   },
   {
     "id": "WF20",
