@@ -663,6 +663,9 @@ model CreativeAssetRevision {
   offlineRasterBase64 String?
   /** Editable text copy; PNG remains a flattened export, never a layered design source. */
   offlineEditableCopy String?
+  offlineLayeredSpec Json?
+  offlineLayeredSourceDigest String?
+  offlineLayeredParentRevisionId String?
   rightsExpiresAt DateTime
   rightsReviewedBy String?
   rightsReviewedAt DateTime?
@@ -673,6 +676,8 @@ model CreativeAssetRevision {
   approvals Approval[]
   publications CampaignPublication[]
   mediaEvidence VerifiedMediaEvidence[]
+  offlineLayeredParent CreativeAssetRevision? @relation("OfflineLayeredLineage",fields:[organizationId,offlineLayeredParentRevisionId],references:[organizationId,id],onDelete:Restrict,map:"CreativeRevision_layered_parent_fk")
+  offlineLayeredChildren CreativeAssetRevision[] @relation("OfflineLayeredLineage")
   @@unique([organizationId,id])
   @@unique([assetId,version])
   @@index([organizationId,assetId,version])
