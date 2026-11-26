@@ -5,7 +5,10 @@ type Asset={id:string;title:string;version:number;brandId:string;revisions:Revis
 const locales=["en-EG","en-GB","en-US","ar-EG","ar-SA","ar-AE","fr-FR","fr-MA"] as const;
 type Locale=typeof locales[number];
 type Spec={format:"SQUARE"|"PORTRAIT";title:string;body:string;accent:string;locale?:Locale};
-type Preview={assetId:string;revisionId:string;version:number;current:boolean;parentRevisionId:string;spec:Spec;
+type Quality={status:'POLICY_UNAVAILABLE'|'REVIEW_FINDINGS'|'NO_LITERAL_FINDINGS';policyScope:'TENANT_MASTER_ONLY';
+ policyVersion:number|null;sourceDigest:string;renditionDigest:string;advisoryOnly:true;prohibitedPhraseMatches:number|null;missingDisclaimers:number|null;
+ accentMatchesTenantPrimary:boolean|null;factualAccuracyVerified:false;accessibilityCertified:false;translationVerified:false;rightsVerified:false;releaseAuthorized:false;externalEffectsAuthorized:false};
+type Preview={quality?:Quality;assetId:string;revisionId:string;version:number;current:boolean;parentRevisionId:string;spec:Spec;
  sourceDigest:string;renditionDigest:string;svgDataUrl:string;offlineOnly:true;releaseAuthorized:false;externalEffectsAuthorized:false};
 const button={background:"#124d83",color:"#fff",padding:"9px 12px",border:0,borderRadius:7,cursor:"pointer"};
 const field={display:"block",width:"100%",padding:8,border:"1px solid #cbd5e1",borderRadius:6,boxSizing:"border-box" as const};
@@ -26,6 +29,10 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
   if(v.offlineOnly!==true||v.releaseAuthorized!==false||v.externalEffectsAuthorized!==false||
     !/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/.test(v.svgDataUrl)||v.revisionId!==id)
    throw Error("Unexpected layered preview provenance");
+  const q=v.quality;
+  if(q&&(q.sourceDigest!==v.sourceDigest||q.renditionDigest!==v.renditionDigest||q.policyScope!=='TENANT_MASTER_ONLY'||q.advisoryOnly!==true||
+   q.factualAccuracyVerified!==false||q.accessibilityCertified!==false||q.translationVerified!==false||q.rightsVerified!==false||q.releaseAuthorized!==false||q.externalEffectsAuthorized!==false))
+   throw Error('Unexpected draft quality scope or authority');
   setPreview(v);return v;
  }
  async function load(){
@@ -71,6 +78,11 @@ export default function PersistentLayeredDesignStudio({enabled,onSaved}:{enabled
   {preview&&<div style={{marginTop:10,fontSize:12}}>
    <img src={preview.svgDataUrl} alt="Stored deterministic editable design preview; unapproved" style={{maxWidth:"100%",width:300,border:"1px solid #cbd5e1"}}/>
    <p>Version {preview.version} · parent {preview.parentRevisionId} · locale {preview.spec.locale??"unspecified"} · source {preview.sourceDigest}</p>
+   <aside aria-label="Stored draft content quality advisory" style={{padding:8,border:'1px solid #cbd5e1',marginBottom:8}}>
+    <strong>Tenant-master content quality advisory · stored revision only</strong>
+    {preview.quality&&preview.quality.status!=='POLICY_UNAVAILABLE'?<p>Policy v{preview.quality.policyVersion} · {preview.quality.status.replaceAll('_',' ')} · prohibited phrase matches: {preview.quality.prohibitedPhraseMatches} · missing disclaimer phrases: {preview.quality.missingDisclaimers} · tenant accent: {preview.quality.accentMatchesTenantPrimary?'matches':'differs'}</p>:<p>Approved tenant policy unavailable; no quality conclusion.</p>}
+    <p>Literal checks only, not brand-specific, factual, translation, accessibility or rights validation. No release authority.</p>
+   </aside>
    <button type="button" style={button} disabled={busy||!preview.current} onClick={()=>void run(async()=>{
     const fresh=await loadPreview(preview.revisionId);
     if(!fresh.current||fresh.renditionDigest!==preview.renditionDigest)throw Error("Design changed; refresh before export");
