@@ -212,6 +212,7 @@ export class CreativeAssetService{
     if(!current||current.id!==parentId||!current.offlineLayeredSpec||current.offlineLayeredSourceDigest!==parentDigest)
      throw new ConflictException('Current exact layered parent required');
     const design=renderOfflineLayeredSpec(current.offlineLayeredSpec);
+    if(design.spec.motion)throw new ConflictException('Motion storyboard cannot be flattened into a still release rendition');
     if(design.sourceDigest!==parentDigest||design.renditionDigest!==current.renditionDigest||copy!==`${design.spec.title}\n${design.spec.body}`.trim())
      throw new ConflictException('Layered source or copy changed');
     const bytes=Buffer.from(v.pngBase64 as string,'base64');
@@ -322,6 +323,7 @@ export class CreativeAssetService{
     quality,brandId:asset.brandId,parentRevisionId:revision.offlineLayeredParentRevisionId,
     spec:design.spec,sourceDigest:design.sourceDigest,renditionDigest:design.renditionDigest,
     svgDataUrl:'data:image/svg+xml;base64,'+Buffer.from(design.svg,'utf8').toString('base64'),
+    ...(design.motionFrames?{motionFrames:design.motionFrames.map(f=>({seconds:f.seconds,digest:f.digest,svgDataUrl:'data:image/svg+xml;base64,'+Buffer.from(f.svg,'utf8').toString('base64')})),motionDurationSeconds:design.motionFrames.reduce((n,f)=>n+f.seconds,0),motionOnly:true,videoEncodingVerified:false}:{}),
     offlineOnly:true,rightsVerified:false,releaseAuthorized:false,externalEffectsAuthorized:false};
   });
  }

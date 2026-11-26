@@ -157,6 +157,13 @@ describe.skipIf(!enabled)('T4A actual PostgreSQL offline creative iteration and 
    const next=await creative.submitForApproval(org,creator,candidate.revisionId,{channel:'SOCIAL',destinationRef:'internal:connected-destination/inert',audienceRef:'internal:audience-snapshot/closed',policyVersion:'v1',scheduledAt:later(7),expiresAt:later(9)});
    await approvals.approve({organizationId:org,approvalId:next.approvalId,approverUserId:reviewer,decision:'APPROVED',commandId:randomUUID(),correlationId:randomUUID(),rationale:'Fixture offline rendition decision'});
    expect(await creative.reviewApprovalState(org,next.approvalId)).toMatchObject({humanDecisionValid:true,externallyExecutable:false});
+   const motion=await creative.appendOfflineLayeredDraft(org,creator,first.assetId,{parentRevisionId:candidate.revisionId,expectedVersion:4,requestKey:randomUUID(),rightsExpiresAt:future,spec:{format:'SQUARE',title:'Research story',body:'Internal motion only',accent:'#164c7c',motion:{openingSeconds:3,scenes:[{title:'Second scene',body:'Internal follow-up',seconds:4}]}}}) as {revisionId:string};
+   const preview=await creative.offlineLayeredPreview(org,motion.revisionId);
+   expect(preview).toMatchObject({version:5,motionOnly:true,motionDurationSeconds:7,videoEncodingVerified:false,releaseAuthorized:false,externalEffectsAuthorized:false});
+   expect(preview.motionFrames?.map(f=>f.seconds)).toEqual([3,4]);
+   expect(await creative.reviewApprovalState(org,next.approvalId)).toMatchObject({scopeCurrent:false,humanDecisionValid:false});
+   await expect(creative.reviseOfflineRasterDraft(org,creator,first.assetId,{expectedVersion:5,layeredParentRevisionId:motion.revisionId,layeredSourceDigest:preview.sourceDigest,editableCopy:'Research story\nInternal motion only',pngBase64:png64(55,1080),requestKey:randomUUID(),rightsExpiresAt:future})).rejects.toThrow('Motion storyboard');
+   await expect(creative.offlineLayeredPreview(other,motion.revisionId)).rejects.toThrow('not found');
   }finally{await db.$disconnect();}
  },90000);
 });

@@ -32,6 +32,13 @@ describe('Deterministic bounded layered source',()=>{
   for(const locale of ['xx-XX','ar-EG" onload="bad',null])expect(()=>render({...input,locale})).toThrow();
   expect(()=>render({...arabic,title:'A\u202eB'})).toThrow('bidirectional');
  });
+ it('renders deterministic timed motion scenes and preserves exact static frames',()=>{
+  const motion={...input,motion:{openingSeconds:3,scenes:[{title:'Second scene',body:'Research use only',seconds:4}]}};
+  const a=render(motion);expect(a.svg).toContain('dur="7s"');expect(a.svg).toContain('repeatCount="indefinite"');
+  expect(a.motionFrames?.map(f=>f.seconds)).toEqual([3,4]);expect(a.motionFrames?.[0]?.svg).toBe(render(input).svg);
+  expect(render(motion)).toEqual(a);expect(render({...motion,motion:{...motion.motion,openingSeconds:4}}).renditionDigest).not.toBe(a.renditionDigest);
+  for(const m of [{openingSeconds:0,scenes:motion.motion.scenes},{openingSeconds:3,scenes:[{...motion.motion.scenes[0],href:'https://example.org'}]},{openingSeconds:8,scenes:Array(3).fill({title:'A',body:'B',seconds:8})}])expect(()=>render({...input,motion:m})).toThrow();
+ });
  it('rejects external references, executable payload fields, invalid layout and unbounded text',()=>{
   for(const value of [{...input,svg:'<svg/>'},{...input,href:'https://example.org'},
    {...input,accent:'url(https://example.org)'},{...input,format:'VIDEO'},
@@ -55,6 +62,10 @@ describe('Exact revision content quality advisory',()=>{
   const good=check({...input,body:'Research use only'});
   expect(good).toMatchObject({status:'NO_LITERAL_FINDINGS',missingDisclaimers:0,rightsVerified:false,accessibilityCertified:false,externalEffectsAuthorized:false});
   expect(good.sourceDigest).not.toBe(x.sourceDigest);
+ });
+ it('checks all motion scenes and requires disclaimers on each',()=>{
+  const x=check({...input,body:'Research use only',motion:{openingSeconds:3,scenes:[{title:'Guaranteed cure',body:'Missing disclaimer',seconds:4}]}});
+  expect(x).toMatchObject({status:'REVIEW_FINDINGS',prohibitedPhraseMatches:1,missingDisclaimers:1,releaseAuthorized:false});
  });
  it('fails closed on missing or self-approved/malformed policy',()=>{
   for(const p of [null,{...policy,approvedBy:'author'},{...policy,rules:{...policy.rules,primaryColor:'bad'}}])

@@ -23,10 +23,11 @@ export function inspectLayeredDraftQuality(spec:OfflineLayeredSpec,sourceDigest:
   return {...base,status:'POLICY_UNAVAILABLE' as const,policyRevisionId:null,policyVersion:null,
    prohibitedPhraseMatches:null,missingDisclaimers:null,accentMatchesTenantPrimary:null};
  }
- const headline=normalized(spec.title),body=normalized(spec.body);
- const contains=(phrase:string)=>[headline,body].some(copy=>copy.includes(normalized(phrase)));
- const prohibitedPhraseMatches=rules.prohibitedClaims.filter(contains).length;
- const missingDisclaimers=rules.requiredDisclaimers.filter(phrase=>!contains(phrase)).length;
+ const copies=[spec,...(spec.motion?.scenes??[])].map(s=>[normalized(s.title),normalized(s.body)]);
+ const contains=(copy:string[],phrase:string)=>copy.some(c=>c.includes(normalized(phrase)));
+ const prohibitedPhraseMatches=rules.prohibitedClaims.filter(p=>copies.some(c=>contains(c,p))).length;
+ // A required disclaimer must appear on every visible scene.
+ const missingDisclaimers=rules.requiredDisclaimers.filter(p=>copies.some(c=>!contains(c,p))).length;
  const accentMatchesTenantPrimary=spec.accent.toLowerCase()===rules.primaryColor.toLowerCase();
  return {...base,status:prohibitedPhraseMatches||missingDisclaimers||!accentMatchesTenantPrimary?'REVIEW_FINDINGS' as const:'NO_LITERAL_FINDINGS' as const,
   policyRevisionId:policy.id,policyVersion:policy.version,prohibitedPhraseMatches,missingDisclaimers,accentMatchesTenantPrimary};

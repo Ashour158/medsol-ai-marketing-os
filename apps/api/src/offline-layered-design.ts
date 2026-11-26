@@ -9,9 +9,10 @@ function text(value:unknown,max:number){
 }
 export const OFFLINE_DESIGN_LOCALES=['en-EG','en-GB','en-US','ar-EG','ar-SA','ar-AE','fr-FR','fr-MA'] as const;
 export type OfflineDesignLocale=typeof OFFLINE_DESIGN_LOCALES[number];
-export type OfflineLayeredSpec={format:'SQUARE'|'PORTRAIT';title:string;body:string;accent:string;locale?:OfflineDesignLocale};
+export type MotionScene={title:string;body:string;seconds:number};
+export type OfflineLayeredSpec={format:'SQUARE'|'PORTRAIT';title:string;body:string;accent:string;locale?:OfflineDesignLocale;motion?:{openingSeconds:number;scenes:MotionScene[]}};
 export function normalizeOfflineLayeredSpec(raw:unknown):OfflineLayeredSpec{
- if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['format','title','body','accent','locale'].includes(k)))
+ if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['format','title','body','accent','locale','motion'].includes(k)))
   throw Error('Only structured offline design fields allowed');
  const r=raw as Record<string,unknown>;
  if(r.format!=='SQUARE'&&r.format!=='PORTRAIT')throw Error('Supported square or portrait layout required');
@@ -25,6 +26,21 @@ export function normalizeOfflineLayeredSpec(raw:unknown):OfflineLayeredSpec{
   if(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(spec.title+spec.body))
    throw Error('Explicit bidirectional override controls are not allowed in localized drafts');
   spec.locale=r.locale as OfflineDesignLocale;
+ }
+ if(r.motion!==undefined){
+  const m=r.motion as Record<string,unknown>|null;
+  const seconds=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=2&&v<=8;
+  if(!m||typeof m!=='object'||Array.isArray(m)||Object.keys(m).sort().join(',')!=='openingSeconds,scenes'||!seconds(m.openingSeconds)||!Array.isArray(m.scenes)||m.scenes.length<1||m.scenes.length>3)
+   throw Error('Motion draft requires 2–4 bounded scenes');
+  const scenes=m.scenes.map(raw=>{
+   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='body,seconds,title'||!seconds(raw.seconds))throw Error('Invalid exact motion scene');
+   const title=text(raw.title,90),body=text(raw.body,180);
+   if(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(title+body))throw Error('Explicit bidirectional override controls not allowed');
+   return{title,body,seconds:raw.seconds as number};
+  });
+  if(m.openingSeconds+scenes.reduce((n,s)=>n+s.seconds,0)>24)throw Error('Motion draft exceeds 24 seconds');
+  spec.motion={openingSeconds:m.openingSeconds,scenes};
+  if(Buffer.byteLength(JSON.stringify(spec),'utf8')>3300)throw Error('Motion source exceeds storage limit');
  }
  return spec;
 }
@@ -40,8 +56,8 @@ function wrap(value:string,width:number):string[]{
 }
 /** Pure deterministic renderer. No arbitrary SVG/HTML, fonts, image URLs,
  * network, scripts, CSS or remote asset references are accepted. */
-export function renderOfflineLayeredSpec(raw:unknown){
- const spec=normalizeOfflineLayeredSpec(raw),height=spec.format==='PORTRAIT'?1350:1080;
+function renderStill(spec:OfflineLayeredSpec){
+ const height=spec.format==='PORTRAIT'?1350:1080;
  const titleLines=wrap(spec.title,23),bodyLines=wrap(spec.body,45);
  const rtl=spec.locale?.startsWith('ar-')===true;
  const direction=spec.locale?' direction="'+(rtl?'rtl':'ltr')+'" unicode-bidi="embed" text-anchor="start"':'';
@@ -58,5 +74,21 @@ export function renderOfflineLayeredSpec(raw:unknown){
  // Avoid silent text loss: reject content that cannot fit the selected canvas.
  if(240+titleLines.length*70+(bodyLines.length-1)*45>height-115)
   throw Error('Design text does not fit selected canvas; use portrait or shorten the copy');
- return{spec,sourceDigest:hash(JSON.stringify(spec)),renditionDigest:hash(svg),svg};
+ return svg;
+}
+export function renderOfflineLayeredSpec(raw:unknown){
+ const spec=normalizeOfflineLayeredSpec(raw);
+ if(!spec.motion){const svg=renderStill(spec);return{spec,sourceDigest:hash(JSON.stringify(spec)),renditionDigest:hash(svg),svg,motionFrames:undefined};}
+ const {motion,...opening}=spec;
+ const frames=[{spec:opening,seconds:motion.openingSeconds},...motion.scenes.map(s=>({spec:{...opening,title:s.title,body:s.body},seconds:s.seconds}))].map(f=>({seconds:f.seconds,svg:renderStill(f.spec)}));
+ const duration=frames.reduce((n,f)=>n+f.seconds,0),height=spec.format==='PORTRAIT'?1350:1080;
+ let elapsed=0;const boundaries=[0,...frames.map(f=>{elapsed+=f.seconds;return elapsed;})];
+ const times=boundaries.map(t=>(t/duration).toFixed(7).replace(/0+$/,'').replace(/\.$/,'')).join(';');
+ const content=frames.map((f,i)=>{
+  const inner=f.svg.slice(f.svg.indexOf('>')+1,-6).replace(/id="([^"]+)"/g,(_,id)=>'id="scene-'+i+'-'+id+'"');
+  const values=boundaries.map((_,j)=>j===i?'1':'0');values[values.length-1]=i===0?'1':'0';
+  return '<g opacity="'+(i===0?1:0)+'">'+inner+'<animate attributeName="opacity" calcMode="discrete" values="'+values.join(';')+'" keyTimes="'+times+'" dur="'+duration+'s" repeatCount="indefinite"/></g>';
+ }).join('');
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="'+height+'" viewBox="0 0 1080 '+height+'">'+content+'</svg>';
+ return{spec,sourceDigest:hash(JSON.stringify(spec)),renditionDigest:hash(svg),svg,motionFrames:frames.map(f=>({seconds:f.seconds,svg:f.svg,digest:hash(f.svg)}))};
 }
