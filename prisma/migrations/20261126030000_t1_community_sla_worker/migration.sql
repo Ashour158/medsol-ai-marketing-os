@@ -18,7 +18,7 @@ BEGIN
  -- System escalation does not alter review round, assignee or status.
  IF OLD."status" IN ('OPEN','PENDING_REVIEW') AND OLD."slaDueAt" IS NOT NULL
   AND OLD."slaEscalatedAt" IS NULL AND NEW."slaEscalatedAt" IS NOT NULL
-  AND NEW."slaEscalatedAt">=OLD."slaDueAt" AND NEW."slaEscalatedAt"<=CURRENT_TIMESTAMP
+  AND NEW."slaEscalatedAt">=OLD."slaDueAt" AND NEW."slaEscalatedAt"<=clock_timestamp()
   AND ROW(NEW."status",NEW."assignedTo",NEW."closedBy",NEW."closedAt",NEW."reviewRound",NEW."slaDueAt")
   IS NOT DISTINCT FROM ROW(OLD."status",OLD."assignedTo",OLD."closedBy",OLD."closedAt",OLD."reviewRound",OLD."slaDueAt")
  THEN RETURN NEW; END IF;
