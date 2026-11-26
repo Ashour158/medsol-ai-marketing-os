@@ -468,3 +468,57 @@ jobs:
             dependency-audit.json
             dependency-audit.stderr
             dependency-audit.exitcode
+
+  alpha-packaging:
+    name: Alpha offline image packaging rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve and capture exact candidate lockfile
+        run: |
+          if test -f pnpm-lock.yaml; then
+            pnpm install --lockfile-only --frozen-lockfile
+          else
+            pnpm install --lockfile-only --no-frozen-lockfile
+          fi
+          sha256sum pnpm-lock.yaml > alpha-lockfile.sha256
+      - name: Build local API and web images with immutable base
+        run: |
+          docker pull node:22-bookworm-slim
+          base="$(docker image inspect node:22-bookworm-slim --format '{{index .RepoDigests 0}}')"
+          [[ "$base" =~ @sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$base" > alpha-base-image.txt
+          for target in api web; do
+            docker build --file infra/staging/Dockerfile --build-arg "NODE_IMAGE=$base" --target "$target" --tag "medsol-alpha-$target:ci" .
+            docker image inspect "medsol-alpha-$target:ci" --format '{{.Id}} {{.Config.User}}' > "alpha-$target-image.txt"
+            test "$(docker image inspect "medsol-alpha-$target:ci" --format '{{.Config.User}}')" = node
+          done
+      - name: Verify compiled artifacts with zero container network
+        run: |
+          docker run --rm --network none --read-only --entrypoint node medsol-alpha-api:ci -e "const fs=require('node:fs'); if(process.getuid()===0||!fs.existsSync('dist/main.js')||!require.resolve('@prisma/client')||process.env.MARKETING_EXTERNAL_EFFECTS_ENABLED!=='false')process.exit(1)"
+          docker run --rm --network none --read-only --entrypoint node medsol-alpha-web:ci -e "const fs=require('node:fs'); if(process.getuid()===0||!fs.existsSync('.next/BUILD_ID')||!require.resolve('next')||process.env.MARKETING_REAL_EMAIL_ENABLED!=='false')process.exit(1)"
+          printf '%s\n' 'PACKAGING_ONLY_NOT_DEPLOYED_NOT_CERTIFIED' > alpha-packaging-status.txt
+      - name: Preserve local build provenance and candidate lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: medsol-alpha-packaging-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            pnpm-lock.yaml
+            alpha-lockfile.sha256
+            alpha-base-image.txt
+            alpha-api-image.txt
+            alpha-web-image.txt
+            alpha-packaging-status.txt
