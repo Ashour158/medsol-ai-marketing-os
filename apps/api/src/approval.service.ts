@@ -39,6 +39,8 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
    const reviewer=await tx.user.findFirst({where:{id:cmd.approverUserId,organizationId:cmd.organizationId,disabledAt:null}});
    if(!reviewer || !['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','CMO'].includes(reviewer.role.toUpperCase()))throw new ForbiddenException('Approver lacks authorized marketing approval role');
    if(a.objectType===COMMUNITY_REVIEW_OBJECT){
+    // Serialize decisions against case reopening; stale reviews cannot win a race.
+    await tx.$queryRaw`SELECT "id" FROM "SocialCommunityCase" WHERE "organizationId"=${cmd.organizationId} AND "id"=${a.objectId} FOR UPDATE`;
     const row=await tx.socialCommunityCase.findFirst({where:{organizationId:cmd.organizationId,id:a.objectId,status:'PENDING_REVIEW'}});
     if(!row||!communityReviewMatches(row,a))
      throw new ConflictException('Current exact community review round required');
