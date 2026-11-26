@@ -55,8 +55,8 @@ export function assertDisposableStaging(environment,inventory){
     inventory?.releaseVerdict!=='NOT_CERTIFIED'||
     inventory?.status!=='DISPOSABLE_CI_INVENTORY_PASSED'||
     inventory?.uncoveredTenantTableCount!==0||
-    inventory?.tenantTableCount!==46||
-    inventory?.forceRlsTenantTableCount!==46)
+    inventory?.tenantTableCount!==47||
+    inventory?.forceRlsTenantTableCount!==47)
   bad('same-run real database FORCE RLS census absent or failed');
  return{
   schema:'medsol-r3x-disposable-staging-preflight-v1',
