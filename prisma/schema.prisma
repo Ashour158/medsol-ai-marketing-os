@@ -1242,6 +1242,7 @@ model MarketingConversionSubmission {
  consentEventId String
  payloadDigest String
  outcome String
+ protocolEvidence Json?
  createdBy String
  createdAt DateTime @default(now())
  organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)

@@ -4,6 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
+import {parseCrmFixtureScenario,rehearseSyntheticCrmProtocol} from './synthetic-crm-protocol.js';
 const digest=(v:unknown[])=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 function object(v:unknown,keys:readonly string[]){
  if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k)))
@@ -30,7 +31,7 @@ const formView=(r:MarketingConversionForm,decision:string)=>({
  approvalDecision:decision,syntheticOnly:true,publicFormHosted:false,externalEffectsAuthorized:false
 });
 const submissionView=(r:MarketingConversionSubmission)=>({
- submissionId:r.id,formId:r.formId,contactId:r.contactId,outcome:r.outcome,
+ submissionId:r.id,formId:r.formId,contactId:r.contactId,outcome:r.outcome,protocolEvidence:r.protocolEvidence,
  syntheticOnly:true,realConsentVerified:false,actualLeadsCreated:0,crmHandoffsExecuted:0,
  automaticRetryAuthorized:false,externalEffectsAuthorized:false
 });
@@ -95,10 +96,10 @@ export class SyntheticConversionService{
  async submit(org:string,identity:VerifiedIdentity,formIdInput:unknown,raw:unknown){
   const formId=id(formIdInput,'form'),r=object(raw,['contactId','requestKey','formDigest','mockCrmPurposeGranted','mockTransport']);
   const contactId=id(r.contactId,'synthetic contact'),requestKey=fixture(r.requestKey);
-  if(typeof r.formDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(r.formDigest)||r.mockCrmPurposeGranted!==true||
-     !['ACCEPTED','REJECTED','OUTCOME_UNKNOWN'].includes(String(r.mockTransport)))
+  if(typeof r.formDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(r.formDigest)||r.mockCrmPurposeGranted!==true)
    throw new BadRequestException('Exact form digest, explicit mock CRM purpose and known mock transport required');
-  const payloadDigest=digest(['medsol-synthetic-submission-v1',org,formId,contactId,r.formDigest,r.mockTransport]);
+  let scenario;try{scenario=parseCrmFixtureScenario(r.mockTransport);}catch{throw new BadRequestException('Known mock CRM transport required');}
+  const payloadDigest=digest(['medsol-synthetic-submission-v1',org,formId,contactId,r.formDigest,scenario]);
   try{return await this.transaction(org,identity,'SUBMIT_EVIDENCE',async tx=>{
    const prior=await tx.marketingConversionSubmission.findUnique({where:{organizationId_requestKey:{organizationId:org,requestKey}}});
    if(prior){
@@ -120,12 +121,14 @@ export class SyntheticConversionService{
    const latest=await tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId},orderBy:{sequence:'desc'}});
    const suppressed=await tx.marketingSyntheticConsent.findFirst({where:{organizationId:org,contactId,action:{in:['SIMULATED_HARD_BOUNCE','SIMULATED_COMPLAINT']}}});
    if(latest?.action!=='SIMULATED_OPT_IN'||suppressed)throw new ConflictException('Current synthetic opt-in and no suppression required');
-   const outcome=r.mockTransport==='ACCEPTED'?'MOCK_ACCEPTED':r.mockTransport==='REJECTED'?'MOCK_REJECTED':'OUTCOME_UNKNOWN';
+   const protocolEvidence=rehearseSyntheticCrmProtocol({organizationId:org,brandId:form.brandId,campaignId:form.campaignId,
+    formId,contactId,consentEventId:latest.id,payloadDigest,scenario});
+   const outcome=protocolEvidence.outcome;
    const row=await tx.marketingConversionSubmission.create({data:{id:randomUUID(),organizationId:org,formId,contactId,
-    requestKey,consentEventId:latest.id,payloadDigest,outcome,createdBy:identity.userId}});
+    requestKey,consentEventId:latest.id,payloadDigest,outcome,protocolEvidence,createdBy:identity.userId}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,
     action:'SYNTHETIC_CONVERSION_RECORDED',objectType:'MarketingConversionSubmission',objectId:row.id,
-    correlationId:row.id,after:{formId,outcome,syntheticOnly:true,externalEffectsAuthorized:false,automaticRetryAuthorized:false}}});
+    correlationId:row.id,after:{formId,outcome,protocolEvidence,syntheticOnly:true,externalEffectsAuthorized:false,automaticRetryAuthorized:false}}});
    return{...submissionView(row),replayed:false};
   });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
    throw new ConflictException('Concurrent submission; refresh before retry');throw e;}

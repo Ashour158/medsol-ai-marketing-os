@@ -69,14 +69,24 @@ describe('T1 durable conversion form and synthetic lead handoff',()=>{
    await expect(service.submit(org,author,form.formId,{...submission,mockCrmPurposeGranted:false})).rejects.toThrow('explicit mock CRM');
    await expect(service.submit(org,author,form.formId,{...submission,email:'no@example.invalid'})).rejects.toThrow('Bounded anonymous');
    const result=await service.submit(org,author,form.formId,submission);
-   expect(result).toMatchObject({outcome:'OUTCOME_UNKNOWN',automaticRetryAuthorized:false,crmHandoffsExecuted:0,replayed:false});
+   expect(result).toMatchObject({outcome:'OUTCOME_UNKNOWN',automaticRetryAuthorized:false,crmHandoffsExecuted:0,replayed:false,
+    protocolEvidence:{scenario:'OUTCOME_UNKNOWN',fixtureReadback:'UNAVAILABLE',mockRecordRef:null,actualCrmRequests:0}});
    expect(await service.submit(org,author,form.formId,submission)).toMatchObject({submissionId:result.submissionId,replayed:true});
    await expect(service.submit(org,author,form.formId,{...submission,mockTransport:'ACCEPTED'})).rejects.toThrow('changed evidence');
    await expect(service.submit(org,author,form.formId,{...submission,requestKey:'fixture-'+randomUUID()})).rejects.toThrow('already submitted');
    await consent(contact.contactId,'SIMULATED_WITHDRAWAL');
    expect(await service.submit(org,author,form.formId,submission)).toMatchObject({replayed:true,outcome:'OUTCOME_UNKNOWN',crmHandoffsExecuted:0});
+   for(const scenario of ['DUPLICATE_CALLBACK','READBACK_MISMATCH','RATE_LIMITED'] as const){
+    const fixture=await email.createSyntheticContact(org,author,{brandId});await consent(fixture.contactId,'SIMULATED_OPT_IN');
+    const r=await service.submit(org,author,form.formId,{...submission,contactId:fixture.contactId,
+     requestKey:'fixture-'+randomUUID(),mockTransport:scenario});
+    expect(r).toMatchObject({outcome:scenario==='DUPLICATE_CALLBACK'?'MOCK_ACCEPTED':scenario==='RATE_LIMITED'?'MOCK_REJECTED':'OUTCOME_UNKNOWN',
+     protocolEvidence:{scenario,actualCrmRequests:0,verifiedRemoteReceipts:0,automaticRetryAuthorized:false}});
+    if(scenario==='DUPLICATE_CALLBACK')expect(r.protocolEvidence).toMatchObject({mockCallbacks:2,uniqueMockCallbacks:1,fixtureReadback:'MATCH'});
+    if(scenario==='READBACK_MISMATCH')expect(r.protocolEvidence).toMatchObject({fixtureReadback:'MISMATCH',mockRecordRef:null});
+   }
    const rows=await service.list(org,reviewer,campaign.campaignId);
-   expect(rows.forms).toHaveLength(1);expect(rows.submissions).toHaveLength(1);
+   expect(rows.forms).toHaveLength(1);expect(rows.submissions).toHaveLength(4);
    expect((await service.list(foreign,outsider,campaign.campaignId)).forms).toEqual([]);
    await expect(service.submit(foreign,outsider,form.formId,{...submission,requestKey:'fixture-'+randomUUID()})).rejects.toThrow('not found');
    await expect(withMarketingTenant(db,org,tx=>tx.marketingConversionSubmission.update({where:{id:result.submissionId},
@@ -92,7 +102,7 @@ describe('T1 durable conversion form and synthetic lead handoff',()=>{
      const absent=await count();await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id',${org},true)`;
      const own=await count();await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id',${foreign},true)`;
      return[absent,own,await count()];
-    });expect(counts).toEqual([[0,0],[1,1],[0,0]]);
+    });expect(counts).toEqual([[0,0],[1,4],[0,0]]);
    }finally{await db.$executeRawUnsafe('REVOKE SELECT ON "MarketingConversionForm","MarketingConversionSubmission" FROM "'+role+'"');
     await db.$executeRawUnsafe('DROP ROLE "'+role+'"');}
   }finally{await db.$disconnect();}
