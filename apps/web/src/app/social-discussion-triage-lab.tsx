@@ -7,6 +7,7 @@ type Identity={organizationId:string;userId:string;role:string}|null;
 type CommunityCase={caseId:string;brandId:string;discussionId:string;disposition:string;
  escalations:string[];priority:string;status:string;version:number;createdBy:string;
  assignedTo:string|null;closedBy:string|null;specialistApprovalVerified:false;
+ reviewRound:number|null;internalSpecialistReviewComplete:boolean;specialistReviews:{escalation:string;approvalId:string|null;decision:string}[];
  externalEffectsAuthorized:false;externalResolutionVerified:false;syntheticOnly:true};
 const field={padding:"9px 11px",borderRadius:8,border:"1px solid #cbd5e1",
  background:"#fff",width:"100%",boxSizing:"border-box" as const};
@@ -42,7 +43,7 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
   const r=await caseRequest("?brandId="+encodeURIComponent(brandId)) as {cases:CommunityCase[];windowCapped:boolean;externalEffectsAuthorized:false};
   if(r.externalEffectsAuthorized!==false||!Array.isArray(r.cases)||r.cases.some(x=>x.brandId!==brandId||
     x.syntheticOnly!==true||x.externalEffectsAuthorized!==false||x.externalResolutionVerified!==false||
-    x.specialistApprovalVerified!==false))throw Error("Invalid synthetic case scope");
+    x.specialistApprovalVerified!==false||!Array.isArray(x.specialistReviews)||typeof x.internalSpecialistReviewComplete!=="boolean"))throw Error("Invalid synthetic case scope");
   setQueue({scope,cases:r.cases,windowCapped:r.windowCapped});
  }
  async function runCase(task:()=>Promise<void>){
@@ -142,11 +143,27 @@ export default function SocialDiscussionTriageLab({identity}:{identity:Identity}
      {currentQueue.cases.map(row=><article key={row.caseId} style={{borderTop:"1px solid #e2e8f0",padding:"10px 0",fontSize:12}}>
       <strong>{row.discussionId} · {row.priority} · {row.status}</strong>
       <p>Version {row.version} · {row.assignedTo===identity.userId?"Assigned to you":row.assignedTo?"Assigned":"Unassigned"} · {row.escalations.join(", ")||"No rule-based escalation"}</p>
+      {row.specialistReviews.length>0&&<div style={{margin:"8px 0"}}>
+       <strong>Independent internal review round {row.reviewRound}</strong>
+       {row.specialistReviews.map(review=><div key={review.escalation} style={{padding:"5px 0"}}>
+        {review.escalation} · {review.decision}
+        {manager&&row.status==="PENDING_REVIEW"&&row.createdBy!==identity.userId&&row.assignedTo!==identity.userId&&review.approvalId&&review.decision==="PENDING"&&
+         <button type="button" style={{...btn,marginLeft:8}} disabled={busy} onClick={()=>void runCase(async()=>{
+          const response=await fetch("/api/marketing/approvals/decide",{method:"POST",credentials:"same-origin",cache:"no-store",
+           headers:{"content-type":"application/json"},body:JSON.stringify({organizationId:identity.organizationId,
+            commandId:crypto.randomUUID(),correlationId:crypto.randomUUID(),approvalId:review.approvalId,
+            approverUserId:identity.userId,decision:"APPROVED",rationale:"Independent internal synthetic community risk review; no professional credential assertion"})});
+          const data=await response.json();if(!response.ok)throw Error(typeof data.message==="string"?data.message:"Review rejected");
+          await refreshQueue();setCaseNotice("Independent internal review recorded: "+review.escalation);
+         })}>Approve {review.escalation} (internal only)</button>}
+       </div>)}
+       <small>Internal risk review only. No specialist professional credentials or external resolution verified.</small>
+      </div>}
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
        {([
         ["CLAIM","Claim case",row.status==="OPEN"&&!row.assignedTo],
         ["SUBMIT_REVIEW","Submit internal review",row.status==="OPEN"&&row.assignedTo===identity.userId],
-        ["CLOSE_INTERNAL","Close internally",manager&&row.status==="PENDING_REVIEW"&&row.createdBy!==identity.userId&&row.assignedTo!==identity.userId],
+        ["CLOSE_INTERNAL","Close internally",manager&&row.status==="PENDING_REVIEW"&&row.createdBy!==identity.userId&&row.assignedTo!==identity.userId&&(row.escalations.length===0||row.internalSpecialistReviewComplete)],
         ["REOPEN","Reopen case",manager&&["PENDING_REVIEW","RESOLVED_INTERNAL"].includes(row.status)]
        ] as const).filter(x=>x[2]).map(([action,label])=><button key={action} type="button" style={btn} disabled={busy}
         onClick={()=>void runCase(async()=>{

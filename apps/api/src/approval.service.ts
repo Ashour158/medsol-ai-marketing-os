@@ -3,6 +3,8 @@ import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
 import {randomUUID} from 'node:crypto';
+import {communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
 import {MarketingWorkflowService} from './marketing-workflow.service.js';
 import {offlineDagDigest,verifyOfflineDagSignature,offlineDagTrust}
@@ -12,7 +14,15 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
 
 @Injectable() export class ApprovalService{
  constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService){}
- async listPending(organizationId:string){return withMarketingTenant(this.db,organizationId,tx=>tx.approval.findMany({where:{organizationId,decision:'PENDING'},orderBy:{createdAt:'asc'},select:{id:true,objectType:true,objectId:true,requiredAuthority:true,riskLevel:true,workflowExecutionId:true,scopeDigest:true,scopeExpiresAt:true,createdAt:true}}))}
+ async listPending(organizationId:string){return withMarketingTenant(this.db,organizationId,async tx=>{
+  const pending=await tx.approval.findMany({where:{organizationId,decision:'PENDING'},orderBy:{createdAt:'asc'}});
+  const ids=[...new Set(pending.filter(a=>a.objectType===COMMUNITY_REVIEW_OBJECT).map(a=>a.objectId))];
+  const cases=ids.length?await tx.socialCommunityCase.findMany({where:{organizationId,id:{in:ids},status:'PENDING_REVIEW'}}):[];
+  return pending.filter(a=>a.objectType!==COMMUNITY_REVIEW_OBJECT||cases.some(row=>communityReviewMatches(row,a)))
+   .map(({id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt})=>
+    ({id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt}));
+ })}
+
  private async reconcile(organizationId:string,result:{approvalId:string;decision:string;workflowExecutionId:string|null}){
   if(result.decision==='APPROVED' || result.decision==='APPROVED_WITH_CONDITIONS') await this.workflows.completeAfterApproval(result.workflowExecutionId,organizationId,result);
   if(result.decision==='REJECTED') await this.workflows.blockAfterApprovalRejection(result.approvalId,organizationId,'Rejected by authorized reviewer');
@@ -28,6 +38,19 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
    if(a.requiredAuthority==='AGENT')throw new ForbiddenException('Human authority is required for this approval');
    const reviewer=await tx.user.findFirst({where:{id:cmd.approverUserId,organizationId:cmd.organizationId,disabledAt:null}});
    if(!reviewer || !['ADMIN','SUPER_ADMIN','MARKETING_DIRECTOR','CMO'].includes(reviewer.role.toUpperCase()))throw new ForbiddenException('Approver lacks authorized marketing approval role');
+   if(a.objectType===COMMUNITY_REVIEW_OBJECT){
+    // Serialize decisions against case reopening; stale reviews cannot win a race.
+    await tx.$queryRaw`SELECT "id" FROM "SocialCommunityCase" WHERE "organizationId"=${cmd.organizationId} AND "id"=${a.objectId} FOR UPDATE`;
+    const row=await tx.socialCommunityCase.findFirst({where:{organizationId:cmd.organizationId,id:a.objectId,status:'PENDING_REVIEW'}});
+    if(!row||!communityReviewMatches(row,a))
+     throw new ConflictException('Current exact community review round required');
+    if(cmd.approverUserId===row.createdBy||cmd.approverUserId===row.assignedTo||!reviewer.oidcSubject)
+     throw new ForbiddenException('Independent OIDC community review required');
+    await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,
+     email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
+    if(!await tx.brand.findFirst({where:{organizationId:cmd.organizationId,id:row.brandId,status:'ACTIVE'}}))
+     throw new ConflictException('Active community brand required');
+   }
    if(a.objectType==='BlueprintWorkflowStep'){
     if(!a.workflowExecutionId||a.requestedBy===cmd.approverUserId)
      throw new ForbiddenException('Independent human decision required for pinned DAG step');

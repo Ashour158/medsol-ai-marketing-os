@@ -420,6 +420,12 @@ test('T09-013 social review preview cannot bypass read-only human gate or send r
  await social.getByLabel('Community case brand ID').fill(brandId);
  await social.getByRole('button',{name:'Refresh community case queue'}).click();
  await expect(row).toContainText('PENDING_REVIEW');
+ await expect(row.getByRole('button',{name:'Close internally'})).toHaveCount(0);
+ await row.getByRole('button',{name:'Approve SCIENTIFIC_REVIEW (internal only)'}).click();
+ await expect(row).toContainText('SCIENTIFIC_REVIEW · APPROVED');
+ await expect(row.getByRole('button',{name:'Close internally'})).toHaveCount(0);
+ await row.getByRole('button',{name:'Approve BRAND_REVIEW (internal only)'}).click();
+ await expect(row).toContainText('BRAND_REVIEW · APPROVED');
  await row.getByRole('button',{name:'Close internally'}).click();
  await expect(row).toContainText('RESOLVED_INTERNAL');
  await row.getByRole('button',{name:'Reopen case'}).click();

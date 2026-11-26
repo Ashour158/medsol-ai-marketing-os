@@ -6,6 +6,7 @@ import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {type MarketingPermission} from './marketing-permissions.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
+import {communityReviewScope,communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
 
 const identifier=(raw:unknown,label:string)=>{
  if(typeof raw!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(raw))
@@ -17,10 +18,13 @@ const object=(raw:unknown,allowed:readonly string[])=>{
   throw new BadRequestException('Invalid bounded community case input');
  return raw as Record<string,unknown>;
 };
-const projection=(row:SocialCommunityCase)=>({
+type ReviewProjection={escalation:string;approvalId:string|null;decision:string};
+const projection=(row:SocialCommunityCase,specialistReviews:ReviewProjection[]=[])=>({
  caseId:row.id,brandId:row.brandId,discussionId:row.discussionId,
  disposition:row.disposition,escalations:row.escalations,priority:row.priority,status:row.status,
- version:row.version,createdBy:row.createdBy,assignedTo:row.assignedTo,closedBy:row.closedBy,
+ version:row.version,reviewRound:row.reviewRound,specialistReviews,
+ internalSpecialistReviewComplete:row.reviewRound!==null&&row.escalations.every(e=>specialistReviews.some(r=>r.escalation===e&&r.decision==='APPROVED')),
+ createdBy:row.createdBy,assignedTo:row.assignedTo,closedBy:row.closedBy,
  closedAt:row.closedAt?.toISOString()??null,updatedAt:row.updatedAt.toISOString(),
  syntheticOnly:true as const,externalEffectsAuthorized:false as const,
  specialistApprovalVerified:false as const,externalResolutionVerified:false as const
@@ -39,6 +43,19 @@ export class SocialCommunityCaseService{
   const row=await tx.brand.findFirst({where:{organizationId:org,id:brandId,status:'ACTIVE'},select:{id:true}});
   if(!row)throw new NotFoundException('Active tenant brand not found');
  }
+ private async views(tx:Tx,rows:SocialCommunityCase[]){
+  const digests=rows.flatMap(row=>row.reviewRound?row.escalations.map(e=>communityReviewScope(row,e).scopeDigest):[]);
+  const approvals=digests.length?await tx.approval.findMany({where:{organizationId:rows[0]!.organizationId,
+   objectType:COMMUNITY_REVIEW_OBJECT,scopeDigest:{in:digests}}}):[];
+  return rows.map(row=>projection(row,row.reviewRound?row.escalations.map(escalation=>{
+   const expected=communityReviewScope(row,escalation),matches=approvals.filter(x=>x.scopeDigest===expected.scopeDigest&&communityReviewMatches(row,x));
+   if(matches.length!==1)return{escalation,approvalId:null,decision:'MISSING_OR_AMBIGUOUS'};
+   const a=matches[0]!;
+   const valid=a.decision!=='APPROVED'||!!a.decidedBy&&a.decidedBy!==row.createdBy&&a.decidedBy!==row.assignedTo;
+   return{escalation,approvalId:a.id,decision:valid?a.decision:'INVALID_REVIEWER'};
+  }):[]));
+ }
+ private async view(tx:Tx,row:SocialCommunityCase){return (await this.views(tx,[row]))[0]!;}
  async create(org:string,identity:VerifiedIdentity|undefined,raw:unknown){
   const r=object(raw,['brandId','discussionId','text','moderation']);
   const brandId=identifier(r.brandId,'brand');
@@ -62,7 +79,7 @@ export class SocialCommunityCaseService{
     organizationId_brandId_discussionId:{organizationId:org,brandId,discussionId}}});
    if(existing){
     if(existing.discussionDigest!==discussionDigest)throw new ConflictException('Fixture already has different immutable evidence');
-    return{...projection(existing),replayed:true};
+    return{...await this.view(tx,existing),replayed:true};
    }
    const row=await tx.socialCommunityCase.create({data:{id:randomUUID(),organizationId:org,brandId,
     discussionId,discussionDigest,disposition:triage.disposition,escalations:triage.escalations,
@@ -70,7 +87,7 @@ export class SocialCommunityCaseService{
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:actor,
     action:'SOCIAL_CASE_CREATED',objectType:'SocialCommunityCase',objectId:row.id,
     correlationId:row.id,after:projection(row)}});
-   return{...projection(row),replayed:false};
+   return{...await this.view(tx,row),replayed:false};
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
   catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
    throw new ConflictException('Concurrent fixture creation; refresh and retry same fixture');throw e;}
@@ -82,7 +99,7 @@ export class SocialCommunityCaseService{
    await this.brand(tx,org,brandId);
    const rows=await tx.socialCommunityCase.findMany({where:{organizationId:org,brandId},
     orderBy:[{updatedAt:'desc'},{id:'asc'}],take:101});
-   return{cases:rows.slice(0,100).map(projection),windowCapped:rows.length>100,syntheticOnly:true,
+   return{cases:await this.views(tx,rows.slice(0,100)),windowCapped:rows.length>100,syntheticOnly:true,
     externalEffectsAuthorized:false};
   });
  }
@@ -106,27 +123,38 @@ export class SocialCommunityCaseService{
      changes={assignedTo:actor};break;
     case 'SUBMIT_REVIEW':
      if(row.status!=='OPEN'||row.assignedTo!==actor)throw new ConflictException('Only assigned operator can submit open case');
-     changes={status:'PENDING_REVIEW'};break;
+     changes={status:'PENDING_REVIEW',reviewRound:row.version+1};break;
     case 'CLOSE_INTERNAL':
      if(row.status!=='PENDING_REVIEW'||!row.assignedTo)throw new ConflictException('Case must await review');
      if(actor===row.createdBy||actor===row.assignedTo)throw new ForbiddenException('Independent manager required; no self-closure');
-     // Specialist escalations remain visible, never claimed as professionally
-     // verified. This action only closes internal handling of synthetic evidence.
+     // Existing ApprovalService owns individual decisions. Closure requires
+     // every exact-round independent review, never a professional credential assertion.
+     if(row.escalations.length&&!(await this.view(tx,row)).internalSpecialistReviewComplete)
+      throw new ConflictException('Required independent community reviews not satisfied');
      changes={status:'RESOLVED_INTERNAL',closedBy:actor,closedAt:new Date()};break;
     case 'REOPEN':
      if(!['PENDING_REVIEW','RESOLVED_INTERNAL'].includes(row.status))
       throw new ConflictException('Only pending or internally resolved case can reopen');
-     changes={status:'OPEN',assignedTo:null,closedBy:null,closedAt:null};break;
+     changes={status:'OPEN',assignedTo:null,closedBy:null,closedAt:null,reviewRound:null};break;
     default:throw new BadRequestException('Unknown case action');
    }
    const updated=await tx.socialCommunityCase.updateMany({where:{organizationId:org,id,version:row.version},
     data:{...changes,version:{increment:1}}});
    if(updated.count!==1)throw new ConflictException('Case revision changed; refresh before action');
    const next=await tx.socialCommunityCase.findFirstOrThrow({where:{organizationId:org,id}});
+   if(r.action==='SUBMIT_REVIEW'){
+    for(const escalation of next.escalations){
+     const exact=communityReviewScope(next,escalation);
+     await tx.approval.create({data:{id:randomUUID(),organizationId:org,objectType:COMMUNITY_REVIEW_OBJECT,objectId:id,
+      requiredAuthority:exact.requiredAuthority,riskLevel:next.priority==='URGENT'?'R3':'R2',
+      requestedBy:actor,scopeDigest:exact.scopeDigest,scope:exact.scope}});
+    }
+   }
+   const after=await this.view(tx,next);
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:actor,
     action:'SOCIAL_CASE_'+String(r.action),objectType:'SocialCommunityCase',objectId:id,
-    correlationId:id,before:projection(row),after:projection(next)}});
-   return projection(next);
+    correlationId:id,before:projection(row),after}});
+   return after;
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}
   catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2034')
    throw new ConflictException('Concurrent case action; refresh before retry');throw e;}
