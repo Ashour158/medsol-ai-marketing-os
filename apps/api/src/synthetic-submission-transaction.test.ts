@@ -8,10 +8,10 @@ describe('synthetic conversion transaction abortion',()=>{
   expect(await retryAbortedSyntheticConversion(operation)).toBe('committed');
   expect(operation).toHaveBeenCalledTimes(2);
  });
- it('bounds repeated serialization failures to three attempts',async()=>{
+ it('bounds repeated serialization failures to five attempts',async()=>{
   const aborted=error('P2034'), operation=vi.fn<()=>Promise<never>>().mockRejectedValue(aborted);
   await expect(retryAbortedSyntheticConversion(operation)).rejects.toBe(aborted);
-  expect(operation).toHaveBeenCalledTimes(3);
+  expect(operation).toHaveBeenCalledTimes(5);
  });
  it('does not retry uniqueness conflicts or unknown failures',async()=>{
   for(const failure of [error('P2002'),new Error('unknown outcome')]){
