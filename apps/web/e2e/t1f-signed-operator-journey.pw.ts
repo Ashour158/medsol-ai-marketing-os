@@ -122,7 +122,9 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  expect((await success(page,'learning/knowledge/agent-context-preview',{...lookup,agentId:'MKT-CRM-001'})).results.some((x:any)=>x.documentId===doc.id)).toBe(false);
  expect((await success(page,'tenancy/brands')).some((x:any)=>x.id===brand)).toBe(true);
  expect((await success(page,'brand/active')).status).toBe('APPROVED');
- await studio(page);const campaignId=await create(page,'r3y-alpha-product');
+ await studio(page);
+ await page.getByRole('textbox',{name:'Campaign brief (reviewed as unverified instructions)'}).fill('Prepare an offline evidence-led proteomics reagents campaign for '+businessName+' research laboratories.');
+ const campaignId=await create(page,'r3y-alpha-product');
  expect((await success(page,'journeys/'+campaignId)).campaign.productId).toBe('r3y-alpha-product');
  await page.getByRole('combobox',{name:'Product for next campaign (optional)'}).selectOption('');
  await page.getByRole('button',{name:'Run governed 13-agent offline brain'}).click();
