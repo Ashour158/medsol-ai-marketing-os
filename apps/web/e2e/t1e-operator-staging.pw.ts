@@ -114,7 +114,18 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
 test('T1E-007 signed staging operator drives real offline campaign workflow, no real providers',async({page})=>{
  await login(page);
  await page.locator('summary').filter({hasText:'Integrated Campaign Journey'}).click();
- await page.getByRole('combobox',{name:'Brand',exact:true}).selectOption(brandId);
+ const slug='alpha-brand-'+randomUUID().slice(0,8);
+ const name='Alpha synthetic brand '+slug;
+ const form=page.getByRole('group',{name:'Register a tenant brand'});
+ await form.getByRole('textbox',{name:'New brand name'}).fill(name);
+ await form.getByRole('textbox',{name:'New brand slug'}).fill(slug);
+ await form.getByRole('button',{name:'Register tenant brand'}).click();
+ await expect(page.getByRole('status').filter({hasText:'Tenant brand registered and read back'})).toBeVisible();
+ const registered=await bff(page,'tenancy/brands');
+ expect(registered.status).toBe(200);
+ const createdBrand=registered.data.find((x:any)=>x.slug===slug);
+ expect(createdBrand).toMatchObject({name,status:'ACTIVE'});
+ await page.getByRole('combobox',{name:'Brand',exact:true}).selectOption(createdBrand.id);
  await page.getByRole('textbox',{name:'Marketing objective (name)'})
   .fill('T1E operator scientific campaign '+randomUUID().slice(0,8));
  await page.getByRole('button',{name:'Create objective',exact:true}).first().click();
@@ -126,7 +137,7 @@ test('T1E-007 signed staging operator drives real offline campaign workflow, no 
  const campaignId=await page.getByRole('textbox',{name:'Tenant campaign ID'}).inputValue();
  const journey=await bff(page,'journeys/'+campaignId);
  expect(journey.status).toBe(200);
- expect(journey.data).toMatchObject({campaign:{id:campaignId},
+ expect(journey.data).toMatchObject({campaign:{id:campaignId,brandId:createdBrand.id},
   workflow:{status:'WAITING_APPROVAL'}});
  const budget=await bff(page,'agents/budget');
  expect(budget.status).toBe(200);
