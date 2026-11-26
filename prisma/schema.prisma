@@ -86,6 +86,7 @@ model Organization {
   syntheticAudienceContacts MarketingSyntheticContact[]
   syntheticConsentEvents MarketingSyntheticConsent[]
   emailSimulations MarketingEmailSimulation[]
+  socialCommunityCases SocialCommunityCase[]
   publicationAttempts PublicationAttempt[]
   integrationConnections IntegrationConnection[]
   governedToolRegistrations GovernedToolRegistration[]
@@ -565,6 +566,7 @@ model Brand {
   integrationConnections IntegrationConnection[]
   syntheticAudienceContacts MarketingSyntheticContact[]
   emailSimulations MarketingEmailSimulation[]
+  socialCommunityCases SocialCommunityCase[]
   @@unique([organizationId,slug])
   @@unique([organizationId,id])
   @@index([organizationId,status])
@@ -1137,4 +1139,31 @@ model AgentKnowledgeMemory {
  @@unique([organizationId,agentId,memoryKey])
  @@index([organizationId,agentId,status,expiresAt],map:"AgentMemory_agent_status_expiry_idx")
  @@index([organizationId,documentId,status],map:"AgentMemory_source_status_idx")
+}
+
+
+// E18/E19, WF09/WF10: single offline community case owner. No message body,
+// provider IDs, real customer records, reply executor or verified resolution.
+model SocialCommunityCase {
+ id String @id @default(cuid())
+ organizationId String
+ brandId String
+ discussionId String
+ discussionDigest String
+ disposition String
+ escalations String[] @default([])
+ priority String
+ status String @default("OPEN")
+ version Int @default(1)
+ createdBy String
+ assignedTo String?
+ closedBy String?
+ closedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Restrict)
+ brand Brand @relation(fields:[organizationId,brandId],references:[organizationId,id],onDelete:Restrict)
+ @@unique([organizationId,id])
+ @@unique([organizationId,brandId,discussionId])
+ @@index([organizationId,brandId,status,updatedAt],map:"SocialCommunityCase_queue_idx")
 }

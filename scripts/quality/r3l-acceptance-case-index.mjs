@@ -248,7 +248,7 @@ if(verifiedInCi){
     stage.verdict!=='OFFLINE_DISPOSABLE_TEST_ALLOWED'||
     stage.productionReady!==false||
     stage.actualExternalPublishAndEmailAllowed!==false||
-    stage.database?.forceRlsTables!==46||
+    stage.database?.forceRlsTables!==47||
     pg.preflightEvidenceDigest!==stage.evidenceDigest)
   throw new Error('R3-X cross-engine PostgreSQL execution and staging proofs mismatch');
  postgresExecutionEvidence={runId:pg.runId,actualPassedDatabaseCases:37,

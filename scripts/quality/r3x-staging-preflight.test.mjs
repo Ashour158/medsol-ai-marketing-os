@@ -10,13 +10,13 @@ const census=()=>({
  schema:'medsol-r3n-postgresql-tenant-rls-inventory-v1',
  runId:'123456',releaseVerdict:'NOT_CERTIFIED',
  status:'DISPOSABLE_CI_INVENTORY_PASSED',
- uncoveredTenantTableCount:0,tenantTableCount:46,forceRlsTenantTableCount:46
+ uncoveredTenantTableCount:0,tenantTableCount:47,forceRlsTenantTableCount:47
 });
 test('R3X permits only disposable offline CI and emits no secrets or signoff',()=>{
  const manifest=assertDisposableStaging(base(),census());
  assert.equal(manifest.productionReady,false);
  assert.equal(manifest.externalProviderCredentialsPresent,false);
- assert.equal(manifest.database.forceRlsTables,46);
+ assert.equal(manifest.database.forceRlsTables,47);
  assert.equal(JSON.stringify(manifest).includes('secret'),false);
 });
 test('R3X rejects customer and public network database URLs',()=>{

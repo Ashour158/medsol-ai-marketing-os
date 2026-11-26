@@ -38,6 +38,10 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'READ_AUDIT';
   if(method==='GET'&&/^\/marketing\/journeys\/[A-Za-z0-9_-]+\/dossier$/.test(path))
    return 'READ_AUDIT';
+  if((method==='GET'||method==='POST')&&path==='/marketing/social/cases')
+   return 'ASSESS';
+  if(method==='POST'&&/^\/marketing\/social\/cases\/[A-Za-z0-9_-]+\/transition$/.test(path))
+   return 'ASSESS'; // manager-only actions are additionally checked in the case service
   if(method==='POST'&&path==='/marketing/social/discussions/triage-preview')
    return 'ASSESS';
   if(method==='POST'&&(path==='/marketing/assets/offline-raster'||

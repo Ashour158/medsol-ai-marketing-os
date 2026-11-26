@@ -64,6 +64,7 @@ export class BootstrapAuthGuard implements CanActivate {
       if (!token) throw new Error('MARKETING_BOOTSTRAP_TOKEN must be configured');
       verifyBootstrapRequest(req.headers.authorization, requested, token, organizationId);
       if (req.url?.split('?')[0] === '/marketing/approvals/decide') throw new ForbiddenException('Human approval requires OIDC user authentication');
+      if (req.url?.split('?')[0]?.startsWith('/marketing/social/cases')) throw new ForbiddenException('Community cases require verified OIDC identity');
       if (req.url?.split('?')[0]?.startsWith('/marketing/assets')) throw new ForbiddenException('Creative assets require verified OIDC identity');
       if (req.url?.split('?')[0]?.startsWith('/marketing/publications')) throw new ForbiddenException('Publication intents require verified OIDC identity');
       if (req.url?.split('?')[0]?.startsWith('/marketing/integrations')) throw new ForbiddenException('Platform integrations require verified OIDC identity');
