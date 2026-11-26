@@ -2,9 +2,9 @@ import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotF
 import {Prisma} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
-import {summarizeReviewedCommercialMetrics,reconcileReviewedFunnelCohorts,COHORT_ROW_LIMIT} from './commercial-metric-calculation.js';
+import {summarizeReviewedCommercialMetrics,reconcileReviewedFunnelCohorts,reconcileReviewedMonetaryCohorts,monetaryKeys,COHORT_ROW_LIMIT} from './commercial-metric-calculation.js';
 
-const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads','spend_micros']);
+const METRICS=new Set(['impressions','clicks','engagements','leads','qualified_leads',...monetaryKeys]);
 const SOURCE_SYSTEMS=new Set(['MANUAL_EXPORT','APPROVED_CONNECTOR_EXPORT']);
 function required(value:unknown,name:string,max=500):string{
  if(typeof value!=='string'||!value.trim()||value.trim().length>max)throw new BadRequestException('Invalid '+name);
@@ -15,7 +15,7 @@ export class MarketingPerformanceService{
  constructor(private readonly db:PrismaService){}
  async ingest(organizationId:string,actorId:string,raw:{
    campaignId?:unknown;sourceSystem?:unknown;sourceRecordId?:unknown;metricKey?:unknown;
-   value?:unknown;observedAt?:unknown;sourceReference?:unknown
+   value?:unknown;observedAt?:unknown;sourceReference?:unknown;currency?:unknown
  }){
   const campaignId=required(raw?.campaignId,'campaignId',200);
   const sourceSystem=required(raw?.sourceSystem,'sourceSystem',80);
@@ -28,6 +28,11 @@ export class MarketingPerformanceService{
     throw new BadRequestException('Provide an HTTPS or internal evidence reference');
   if(typeof raw.value!=='number'||!Number.isSafeInteger(raw.value)||raw.value<0||raw.value>1_000_000_000_000)
     throw new BadRequestException('Only bounded nonnegative integer observations are accepted');
+  const money=monetaryKeys.some(k=>k===metricKey);
+  const currency=raw.currency===undefined||raw.currency===null?null:raw.currency;
+  if((currency!==null&&(typeof currency!=='string'||! /^[A-Z]{3}$/.test(currency)))||
+     (!money&&currency!==null)||(money&&metricKey!=='spend_micros'&&currency===null))
+   throw new BadRequestException('Explicit three-letter currency required for reported monetary evidence; forbidden on count metrics');
   const value=BigInt(raw.value);
   const observedAt=new Date(required(raw.observedAt,'observedAt',40));
   if(!Number.isFinite(observedAt.getTime())||observedAt.getTime()>Date.now()+3600000||
@@ -43,7 +48,7 @@ export class MarketingPerformanceService{
     }};
     const existing=await tx.marketingMetricObservation.findUnique({where});
     if(existing){
-     if(existing.campaignId!==campaignId||existing.value!==value||
+     if(existing.campaignId!==campaignId||existing.value!==value||(existing.currency??null)!==currency||
         existing.sourceReference!==sourceReference||
         existing.observedAt.getTime()!==observedAt.getTime())
       throw new ConflictException('Source record reused with conflicting observation');
@@ -51,7 +56,7 @@ export class MarketingPerformanceService{
     }
     const created=await tx.marketingMetricObservation.create({data:{
      id:randomUUID(),organizationId,campaignId,sourceSystem,sourceRecordId,
-     metricKey,value,observedAt,sourceReference,submittedBy:actorId,status:'QUARANTINED'
+     metricKey,value,currency,observedAt,sourceReference,submittedBy:actorId,status:'QUARANTINED'
     }});
     return {observationId:created.id,status:'QUARANTINED',replayed:false};
    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
@@ -66,7 +71,7 @@ export class MarketingPerformanceService{
    const records=await tx.marketingMetricObservation.findMany({
     where:{organizationId,...(campaignId?{campaignId}:{})},
     orderBy:{createdAt:'desc'},take:100,
-    select:{id:true,campaignId:true,metricKey:true,value:true,status:true,sourceSystem:true,
+    select:{id:true,campaignId:true,metricKey:true,value:true,currency:true,status:true,sourceSystem:true,
      sourceRecordId:true,sourceReference:true,observedAt:true,submittedBy:true,reviewedBy:true,
      reviewedAt:true}
    });
@@ -89,7 +94,7 @@ export class MarketingPerformanceService{
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId,
     action:'MARKETING_METRIC_REVIEWED',objectType:'MarketingMetricObservation',
     objectId:observationId,correlationId:observationId,
-    after:{status:'REVIEWED',sourceReference:observed.sourceReference,rationale:reason,
+    after:{status:'REVIEWED',sourceReference:observed.sourceReference,currency:observed.currency??null,rationale:reason,
       independentlyVerified:false}}});
    return{observationId,status:'REVIEWED',independentlyVerified:false,externalEffectsAuthorized:false};
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
@@ -105,10 +110,18 @@ export class MarketingPerformanceService{
    tx.marketingMetricObservation.count({where:{organizationId,campaignId,status:'QUARANTINED'}}),
    tx.marketingMetricObservation.findMany({where:{organizationId,campaignId,status:'REVIEWED'},
     take:COHORT_ROW_LIMIT+1,orderBy:{id:'asc'},select:{sourceSystem:true,sourceRecordId:true,
-     sourceReference:true,observedAt:true,metricKey:true,value:true}})
+     sourceReference:true,observedAt:true,metricKey:true,value:true,currency:true}})
   ]);
-  const metrics=summarizeReviewedCommercialMetrics(rows,pending);
+  // Keep legacy unknown-unit spend descriptive only. Never expose a mixed or
+  // explicit-currency total as the old unspecified-unit aggregate.
+  const hideLegacySpend=cohortRows.length>COHORT_ROW_LIMIT||cohortRows.some(r=>r.metricKey==='spend_micros'&&r.currency!==null);
+  const metrics=summarizeReviewedCommercialMetrics(rows.filter(r=>!r.metricKey.startsWith('reported_')&&
+   !(hideLegacySpend&&r.metricKey==='spend_micros')),pending);
+  if(hideLegacySpend&&rows.some(r=>r.metricKey==='spend_micros'))
+   metrics.warnings.push('CURRENCY_SPEND_REPORTED_SEPARATELY');
+  const monetaryReconciliation=reconcileReviewedMonetaryCohorts(cohortRows);
   return{organizationId,campaign,...metrics,sourceRecordReconciliation:reconcileReviewedFunnelCohorts(cohortRows),
+   monetaryReconciliation,
    independentlyVerified:false,spendUnit:'micro currency units'};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead});
  }
