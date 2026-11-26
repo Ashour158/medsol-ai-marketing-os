@@ -14,6 +14,7 @@ export const WORKSPACE_LINKS:readonly WorkspaceLink[]=[
  {id:'operations',label:'Operations & incidents',category:'Operate'},
  {id:'agent-brain',label:'Agent brain & plans',category:'Intelligence'},
  {id:'agent-studio',label:'Signed Agent Studio',category:'Govern'},
+ {id:'workflow-operations',label:'Workflow execution & recovery',category:'Operate'},
  {id:'workflow-studio',label:'Workflow Studio',category:'Execute'},
  {id:'blueprint-studio',label:'Blueprint Studio',category:'Execute'},
  {id:'market-intelligence',label:'Market intelligence',category:'Intelligence'},
