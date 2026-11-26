@@ -504,6 +504,7 @@ model MarketingMetricObservation {
   sourceRecordId String
   metricKey String
   value BigInt
+  currency String?
   observedAt DateTime
   sourceReference String
   status String @default("QUARANTINED")
