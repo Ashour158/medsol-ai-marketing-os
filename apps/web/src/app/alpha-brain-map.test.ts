@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {readBrainMap} from './alpha-brain-map';
+import {readBrainMap} from '../lib/alpha-brain-map';
 const roster=[{id:'a',name:'A'},{id:'b',name:'B'}];
 const plan={stages:[{stage:'STRATEGY',agents:['a']},{stage:'MEASUREMENT',agents:['b']}],handoffs:{a:['b']}};
 describe('Alpha Brain visualization reads canonical data only',()=>{
