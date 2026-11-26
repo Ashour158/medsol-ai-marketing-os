@@ -13,6 +13,7 @@ import {ApprovalService} from './approval.service.js';
 import {BrainRunLedgerService} from './brain-run-ledger.service.js';
 import {BrainRunExecutorService} from './brain-run-executor.service.js';
 import {MarketingReadService} from './marketing-read.service.js';
+import {MarketingCatalogService} from './marketing-catalog.service.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {BrandMasterService} from './brand-master.service.js';
 import {MarketingPerformanceService} from './marketing-performance.service.js';
@@ -295,6 +296,25 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
      commercial:{roiVerified:false,combinedCommercial:{status:'EXACT_COMBINED_MATCH',matchedGroups:1,currencies:[{currency:'EGP',reportedRevenueToSpendRatio:'3.0000',spendMicrosPerQualifiedLead:'2400000'}]}}},
     signed:false,externalEffectsAuthorized:false
    });
+   const product=await withMarketingTenant(db,org,tx=>tx.marketingProduct.create({data:{organizationId:org,code:'SYNTHETIC-PRICING',name:'Synthetic pricing product'}}));
+   const catalog=new MarketingCatalogService(db as any);
+   const pricing={proposalKey:'fixture-'+randomUUID(),productId:product.id,kind:'PROMOTION',currency:'EGP',basePriceMicros:'100000000',
+    proposedPriceMicros:'80000000',assumedUnitCostMicros:'50000000',quantity:10,expiresAt:later(7),scenarioOnly:true};
+   const proposal=await catalog.proposeSyntheticPrice(org,conversionIdentity,pricing);
+   expect(proposal).toMatchObject({decision:'PENDING',financeApprovalVerified:false,catalogMutationAuthorized:false,
+    arithmetic:{priceChangeBasisPoints:'-2000',proposedScenarioGrossProfitMicros:'300000000',proposedGrossMarginBasisPoints:'3750'}});
+   expect(await catalog.proposeSyntheticPrice(org,conversionIdentity,pricing)).toMatchObject({approvalId:proposal.approvalId,replayed:true});
+   await expect(catalog.proposeSyntheticPrice(org,conversionIdentity,{...pricing,quantity:20})).rejects.toThrow('Immutable');
+   await expect(catalog.proposeSyntheticPrice(org,conversionIdentity,{...pricing,proposalKey:'fixture-'+randomUUID(),productId:'foreign'})).rejects.toThrow('Active tenant product');
+   await expect(approval.approve({organizationId:org,approvalId:proposal.approvalId,approverUserId:conversionAuthor,
+    commandId:randomUUID(),correlationId:randomUUID(),decision:'APPROVED',rationale:'No self-approval for pricing'})).rejects.toThrow('Independent');
+   await decideConversion(proposal.approvalId);
+   expect((await catalog.syntheticPriceProposals(org,identity)).proposals[0]).toMatchObject({approvalId:proposal.approvalId,decision:'APPROVED',financeApprovalVerified:false,catalogMutationAuthorized:false});
+   await expect(catalog.syntheticPriceProposals(other,identity)).rejects.toThrow('Verified tenant');
+   expect(await withMarketingTenant(db,org,tx=>tx.marketingProduct.findFirst({where:{id:product.id,organizationId:org}}))).toEqual(product);
+   const stale=await catalog.proposeSyntheticPrice(org,conversionIdentity,{...pricing,proposalKey:'fixture-'+randomUUID()});
+   await withMarketingTenant(db,org,tx=>tx.marketingProduct.update({where:{id:product.id},data:{name:'Updated synthetic catalog product',updatedAt:new Date(Date.now()+1000)}}));
+   await expect(decideConversion(stale.approvalId)).rejects.toThrow('Product changed');
    expect(JSON.stringify(dossier)).not.toContain(contact.contactId);
    await expect(reads.offlineJourney(other,campaignId)).rejects.toThrow('not found');
 
