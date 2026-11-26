@@ -448,7 +448,7 @@ export class CreativeAssetService{
   return this.scoped(organizationId,async tx=>{
    const revision=await tx.creativeAssetRevision.findFirst({where:{id:revisionId,organizationId}});
    if(!revision)throw new NotFoundException('Asset revision not found in tenant');
-   if(revision.offlineLayeredSpec!==null)throw new ConflictException('Layered draft requires a separately verified release rendition; no publication approval');
+   if(revision.offlineLayeredSpec!=null)throw new ConflictException('Layered draft requires a separately verified release rendition; no publication approval');
    const asset=await tx.creativeAsset.findFirst({where:{id:revision.assetId,organizationId,status:'ACTIVE'}});
    const brand=asset&&await tx.brand.findFirst({where:{
     id:asset.brandId,organizationId,status:'ACTIVE'}});
