@@ -23,6 +23,26 @@
 
 **Specification authority:** This v2.0 target-state blueprint prevails over the earlier v0.9–v1.1 scope where descriptions differ. Existing repository code remains authoritative for current behavior until it is intentionally migrated and tested.
 
+## 26 November 2026 — Tranche 1 scope reconciliation (v2.1 retained)
+
+The typed `packages/contracts/src/blueprint-v2.ts` registry remains canonical. This amendment adds acceptance depth within the existing 36 engines, 41 workflows and 13 studios, rather than multiplying owners or agent identities. The historical chapters below remain the target specification. If implementation status differs from historical wording, consult the typed registry and linked CI for the recorded baseline `0662f9d96f1703b28618ab8783aa4f8d3c8ce551`.
+
+| Existing scope | New mandatory capabilities | Validated baseline | Remaining provider-independent work |
+|---|---|---|---|
+| E11/E14/E32, WF06/WF19 | Layered source, rendition lineage, version-bound QA, rights, multimedia/editor handoff | PNG iteration and offline editable SVG export | Persisted editable source, deterministic renderer and lineage; brief/storyboard and multimedia simulation |
+| E07/E08, WF05 | Editorial calendar, conflicts, time zones, optimal schedule proposals | Existing campaign and publication intent | Durable coordination and schedule optimizer |
+| E17–E19, WF09/WF10 | Normalized synthetic inbox, durable triage, assignment, SLA, specialist review, reply reconciliation | PR #117: case ledger, independent internal closure and reopening | Specialist decisions, escalation timers, normalized inbound event and simulated reply lifecycle |
+| E29–E31, WF16–WF18 | Consent, terminal suppression, authenticated-domain evidence, delivery events, ambiguous transport | PR #114/#116: hard bounce, complaint and provider-shaped feedback, no-send | Domain authentication preflight, normalized receipt and complete simulated provider protocol |
+| E03/E33/E34, WF20/WF21/WF36/WF37 | Permissioned acquisition, durable watch, evidence diffs, due scheduler, alerts, source rights and SEO/AEO | PR #115/#118: structured-data draft, manual due watches | Automated reviewed-evidence evaluation, authorized source adapters, notification/export; no unrestricted crawler |
+| E09, WF32/WF33 | BANT/ICP, immutable form revision, purpose-bound contact, dedupe, mock CRM receipts | PR #115/#119: scoring, form approval, durable mock submission | Controlled hosted test form, separate CRM connector protocol/reconciliation and lead qualification provenance |
+| E20/E21/E22, WF11 | Matched funnel, currency-separated monetary records, ROI caveats and attribution lineage | PR #112/#120: source matches and reported money | Source-backed commercial exports, CRM/finance reconciliation and controlled experiment provenance |
+
+### Open-source adoption policy
+Adopt or adapt individually reviewed permissively licensed components with pinned source, notices, deterministic tests, and existing owner boundaries. MIT MeshPilot SEO and Maestro rubric, MIT Dittofeed event mapping are merged. Chatwoot community lifecycle was inspected, but its code was not copied. Full upstream security audits and third-party dependency rights remain mandatory before wider adoption; copyleft or unresolved terms require separate legal review. No blanket import of competing runtimes or databases. Refer to [OSS selective adoption audit](OSS_SELECTIVE_ADOPTION_AUDIT.md).
+
+### Acceptance boundary
+Tranche 1 requires durable, usable, provider-independent workflows and tests (including negative authorization, failure/recovery, exports and cross-engine simulated journey). Real platform entitlement, real legal consent, verified source/finance outcomes, external UAT, persistent staging, independent 500-case QA and production penetration testing remain separate release gates; they are neither removed from scope nor certified by CI. No real credentials, paid infrastructure, or autonomous external effects are authorized. No capability is advanced to VERIFIED_IMPLEMENTED on the basis of this amendment. Tranche 1 is open.
+
 ---
 # PART I — PRODUCT CONTRACT
 
