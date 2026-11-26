@@ -1,5 +1,6 @@
 "use client";
 import {useEffect,useState} from "react";
+import PersistentLayeredDesignStudio from "./persistent-layered-design-studio";
 import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
 import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
@@ -498,6 +499,11 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
     </div>}
    </div>
 
+   <PersistentLayeredDesignStudio key={identity.organizationId+":"+identity.userId} enabled={manager&&!busy}
+    onSaved={assetId=>{
+     if(creative?.assetId===assetId){setCreative(null);setPreview(null);setVersionHistory([]);setHistoryId("");
+      setHistoricalPreview(null);setCreativeApprovalId("");setPublicationId("");}
+    }}/>
    <div style={section}>
     <h3 style={{marginTop:0}}>5 · Independent rights review and immutable release approval</h3>
     <label style={label}>Rights review rationale
