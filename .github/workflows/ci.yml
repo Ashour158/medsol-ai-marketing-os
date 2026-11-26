@@ -509,6 +509,7 @@ jobs:
         if: always()
         run: |
           node --test scripts/quality/alpha-dependency-gate.test.mjs
+          node --test scripts/quality/alpha-release-decision.test.mjs
           node scripts/quality/alpha-dependency-gate.mjs
 
   alpha-packaging:
