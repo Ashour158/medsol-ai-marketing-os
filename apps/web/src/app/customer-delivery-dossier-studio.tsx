@@ -159,6 +159,14 @@ export default function CustomerDeliveryDossierStudio({identity}:{identity:Ident
       <div style={{fontSize:11,color:"#64748b",marginTop:5}}>{s.state.replaceAll("_"," ")}</div>
      </div>)}
     </div>
+    {p.conversion.syntheticLedger&&<section aria-label="Historical synthetic conversion ledger evidence" style={{border:"1px solid #cbd5e1",borderRadius:8,padding:12,marginTop:12,fontSize:12}}>
+     <strong>Persistent internal conversion and qualification evidence</strong>
+     {p.conversion.syntheticLedger.counts?<><p>{p.conversion.syntheticLedger.counts.forms} form revisions · {p.conversion.syntheticLedger.counts.approvedFormDecisions} historical approved decisions</p>
+      <p>{p.conversion.syntheticLedger.counts.submissions} synthetic submissions: {p.conversion.syntheticLedger.counts.mockAccepted} mock accepted, {p.conversion.syntheticLedger.counts.mockRejected} mock rejected, {p.conversion.syntheticLedger.counts.outcomeUnknown} unknown.</p>
+      <p>{p.conversion.syntheticLedger.counts.protocolRecorded} stored mock protocol records · {p.conversion.syntheticLedger.counts.qualificationReviews} qualification reviews · {p.conversion.syntheticLedger.counts.independentInternalQualificationApprovals} independent internal approvals.</p></>:
+      <p>Window capped; counts unavailable to prevent incomplete evidence being presented as totals.</p>}
+     <p>Zero real leads and CRM writes. Historical records do not establish current consent. Separate owner snapshots are not atomic.</p>
+    </section>}
     <h3 style={{fontSize:16,marginTop:18}}>Offline gates requiring work</h3>
     {dossier.missingOfflineGates.length?
      <ol>{dossier.missingOfflineGates.map(x=>{
