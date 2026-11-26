@@ -112,7 +112,7 @@ export function verifySprintEvidence(entries,run){
   runId:run.id,commit:run.commit,releaseVerdict:"NOT_CERTIFIED",
   evidenceClassification:"ACTUAL_DISPOSABLE_GITHUB_CI_NOT_INDEPENDENT_STAGING_UAT",
   verifiedSameRunEngineeringProofs:specs.length,
-  postgresqlTenantTablesWithForceRls:46,uncoveredTenantTables:0,
+  postgresqlTenantTablesWithForceRls:47,uncoveredTenantTables:0,
   actualPassedIsolatedPostgresqlCases:37,
   actualPassedChromiumCasesAcrossIndependentSuites:browserCases,
   signedOperatorIntegratedJourney:{
