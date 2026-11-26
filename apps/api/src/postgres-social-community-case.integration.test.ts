@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {PrismaClient} from '@prisma/client';
 import {randomUUID} from 'node:crypto';
+import {ApprovalService} from './approval.service.js';
 import {SocialCommunityCaseService} from './social-community-case.service.js';
 import {withMarketingTenant} from './prisma.service.js';
 import {permissionForMarketingRoute} from './marketing-permissions.js';
@@ -27,6 +28,7 @@ describe('T1 durable offline community case lifecycle',()=>{
     {id:brandId,organizationId:org,slug:'community',name:'Test brand',createdBy:author.userId},
     {id:otherBrand,organizationId:foreign,slug:'other',name:'Other brand',createdBy:outsider.userId}]});
    const service=new SocialCommunityCaseService(db as any);
+   const approvals=new ApprovalService(db as any,{completeAfterApproval:async()=>{},blockAfterApprovalRejection:async()=>{}} as any);
    const raw={brandId,discussionId:'fixture-'+randomUUID(),
     text:'Could you explain whether this is a guaranteed clinical cure? private-mock-text-marker'};
    const row=await service.create(org,author,raw);
@@ -52,6 +54,18 @@ describe('T1 durable offline community case lifecycle',()=>{
    expect(await transition(operator,'SUBMIT_REVIEW',2)).toMatchObject({version:3,status:'PENDING_REVIEW'});
    await expect(transition(operator,'CLOSE_INTERNAL',3)).rejects.toThrow('Marketing permission denied');
    await expect(transition(author,'CLOSE_INTERNAL',3)).rejects.toThrow('Independent manager');
+   await expect(transition(reviewer,'CLOSE_INTERNAL',3)).rejects.toThrow('Required independent community reviews');
+   const pending=(await approvals.listPending(org)).filter(a=>a.objectId===row.caseId);
+   expect(pending).toHaveLength(2);
+   const decide=(approvalId:string,who:typeof author,decision:'APPROVED'|'REJECTED'='APPROVED')=>approvals.approve({
+    organizationId:who.organizationId,approvalId,approverUserId:who.userId,commandId:randomUUID(),correlationId:randomUUID(),
+    decision,rationale:'Independent internal synthetic risk review only'});
+   await expect(decide(pending[0]!.id,author)).rejects.toThrow('Independent OIDC community review');
+   await expect(decide(pending[0]!.id,outsider)).rejects.toThrow('not found');
+   await decide(pending[0]!.id,reviewer);
+   await expect(transition(reviewer,'CLOSE_INTERNAL',3)).rejects.toThrow('Required independent community reviews');
+   await decide(pending[1]!.id,reviewer);
+   expect((await service.list(org,author,brandId)).cases[0]).toMatchObject({internalSpecialistReviewComplete:true});
    expect(await transition(reviewer,'CLOSE_INTERNAL',3)).toMatchObject({version:4,status:'RESOLVED_INTERNAL',
     closedBy:reviewer.userId,specialistApprovalVerified:false,externalResolutionVerified:false});
    expect(await transition(reviewer,'REOPEN',4)).toMatchObject({version:5,status:'OPEN',assignedTo:null,closedBy:null});
@@ -66,6 +80,16 @@ describe('T1 durable offline community case lifecycle',()=>{
    expect(JSON.stringify(audit)).not.toContain('private-mock-text-marker');
    expect(JSON.stringify(audit)).not.toContain('discussionDigest');
    expect((await service.list(org,author,brandId)).cases[0]).toMatchObject({version:5,status:'OPEN'});
+   expect(await transition(operator,'CLAIM',5)).toMatchObject({version:6});
+   const round2=await transition(operator,'SUBMIT_REVIEW',6);
+   expect(round2).toMatchObject({version:7,reviewRound:7,internalSpecialistReviewComplete:false});
+   const pending2=(await approvals.listPending(org)).filter(a=>a.objectId===row.caseId);
+   expect(pending2).toHaveLength(2);expect(pending2.every(x=>!pending.some(a=>a.id===x.id))).toBe(true);
+   await expect(transition(reviewer,'CLOSE_INTERNAL',7)).rejects.toThrow('Required independent community reviews');
+   await transition(reviewer,'REOPEN',7);
+   await expect(decide(pending2[0]!.id,reviewer)).rejects.toThrow('Current exact community review round');
+   expect((await approvals.listPending(org)).filter(a=>a.objectId===row.caseId)).toEqual([]);
+
    // Prove RLS with a genuinely unprivileged role, not CI superuser.
    const role='community_probe_'+randomUUID().replaceAll('-','').slice(0,16);
    await db.$executeRawUnsafe('CREATE ROLE "'+role+'" NOLOGIN');
