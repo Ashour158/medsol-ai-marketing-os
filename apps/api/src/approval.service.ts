@@ -113,7 +113,7 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     const master=await tx.brandMasterRevision.findFirst({where:{
      organizationId:cmd.organizationId,status:'APPROVED'},
      orderBy:{version:'desc'},select:{version:true}});
-    if(!revision||!asset||!brand||!master||
+    if(!revision||revision.offlineLayeredSpec!=null||!asset||!brand||!master||
        asset.version!==revision.version||
        revision.rightsReviewedAt===null||revision.rightsExpiresAt<=new Date(scope.scheduledAt)||
        scope.assetId!==asset.id||scope.brandId!==asset.brandId||
