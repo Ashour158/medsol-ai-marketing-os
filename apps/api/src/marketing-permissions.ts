@@ -38,6 +38,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'READ_AUDIT';
   if(method==='GET'&&/^\/marketing\/journeys\/[A-Za-z0-9_-]+\/dossier$/.test(path))
    return 'READ_AUDIT';
+  if(/^\/marketing\/campaigns\/[A-Za-z0-9_-]+\/channel-plans$/.test(path)&&method==='GET')return 'READ_AUDIT';
+  if(/^\/marketing\/campaigns\/[A-Za-z0-9_-]+\/channel-plans$/.test(path)&&method==='POST')return 'MANAGE_CAMPAIGN';
   if(path==='/marketing/products/synthetic-price-proposals'&&method==='POST')return 'MANAGE_CAMPAIGN';
   if(path==='/marketing/products/synthetic-price-proposals'&&method==='GET')return 'READ_AUDIT';
   if(method==='POST'&&path==='/marketing/performance/experiments')return 'MANAGE_CAMPAIGN';
