@@ -7,8 +7,9 @@ import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
 type Brand={id:string;name:string};
+type CampaignChoice={id:string;name:string;code:string;status:string};
 type Journey={
- campaign:{id:string;name:string;brandId:string;status:string;code:string};
+ campaign:{id:string;name:string;brandId:string;status:string;code:string;objectiveId?:string|null};
  workflow:{id:string;status:string;currentStep:string}|null;
  campaignApprovals:Array<{id:string;decision:string;decidedBy:string|null}>;
  brainRuns:Array<{id:string;status:string;steps:Array<{stage:string;agentId:string;status:string}>}>;
@@ -91,7 +92,7 @@ async function shaText(value:string){
 }
 const dateAt=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 
-export default function OfflineCampaignJourneyStudio({identity}:{identity:Identity|null}){
+export default function OfflineCampaignJourneyStudio({identity,campaigns=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[]}){
  const [brands,setBrands]=useState<Brand[]>([]);
  const [brandId,setBrandId]=useState("");
  const [objectiveId,setObjectiveId]=useState("");
@@ -131,6 +132,8 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
  async function refresh(forId=campaignId){
   if(!forId.trim())throw new Error("Select an existing campaign first");
   const r=await api("journeys/"+encodeURIComponent(forId)) as Journey;
+  if(r.campaign.id!==forId||r.offlineSimulationOnly!==true||r.externalEffectsAuthorized!==false)
+   throw new Error("Unexpected campaign timeline scope");
   // A typed lookup is not authoritative until the API has confirmed it.
   // Never mix the previous campaign's approval/creative with a new campaign.
   const switching=r.campaign.id!==campaignId;
@@ -141,8 +144,9 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   }
   setJourney(r);setCampaignId(r.campaign.id);setLookupCampaignId(r.campaign.id);
   setBrandId(r.campaign.brandId);
-  if(r.workflow)setWorkflowId(r.workflow.id);
-  if(r.brainRuns[0])setBrainRunId(r.brainRuns[0].id);
+  setWorkflowId(r.workflow?.id??"");
+  setBrainRunId(r.brainRuns[0]?.id??"");
+  if(switching)setObjectiveId(r.campaign.objectiveId??"");
   if(r.creativeAssets[0]&&(switching||!creative)) {
    const chosen=r.creativeAssets.find(x=>x.publicationLinked)??r.creativeAssets[0];
    // Campaign timeline is authoritative for linked metadata, but does not
@@ -169,7 +173,7 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
   setVersionHistory([]);setHistoryId("");setHistoricalPreview(null);
   setDestinationRef("");
   setCreativeApprovalId("");setSyntheticContacts([]);setPublicationId("");
-  setBrandPolicyVersion("");
+  setBrandPolicyVersion("");setObjectiveId("");setBrandId("");
   if(!identity)return;
   void load().catch(e=>setError(e instanceof Error?e.message:"Unable to load brand context"));
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -248,6 +252,14 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
    {notice&&<p role="status" style={{color:"#166534",fontSize:13}}>{notice}</p>}
    <div style={section}>
     <h3 style={{marginTop:0}}>0 · Resume an existing campaign</h3>
+    {campaigns.length>0&&<label style={label}>Choose campaign from workspace portfolio
+     <select style={input} value={campaigns.some(c=>c.id===lookupCampaignId)?lookupCampaignId:""} disabled={blocked}
+      onChange={e=>setLookupCampaignId(e.target.value)}>
+      <option value="">Choose a campaign</option>
+      {campaigns.map(c=><option key={c.id} value={c.id}>{c.name} · {c.code} · {c.status}</option>)}
+     </select>
+    </label>}
+    <p style={{fontSize:12,color:"#475569"}}>Refresh the command center to update the portfolio, then load the selected timeline. The server checks tenant and access again.</p>
     <label style={label}>Tenant campaign ID
      <input style={input} value={lookupCampaignId} onChange={e=>setLookupCampaignId(e.target.value)}
       placeholder="Paste an approved or in-progress campaign ID"/>
@@ -323,7 +335,8 @@ export default function OfflineCampaignJourneyStudio({identity}:{identity:Identi
     <button style={button} disabled={blocked||!campaignId}
      onClick={()=>void run(async()=>{
       const result=await api("brain/runs",{
-       commandKey:"offline-brain-"+uuid(),campaignId,objectiveId,
+       commandKey:"offline-brain-"+uuid(),campaignId,
+       ...(journey?.campaign.objectiveId?{objectiveId:journey.campaign.objectiveId}:{}),
        requestedOutcome:brief,market:sector
       });
       setBrainRunId(result.id);
