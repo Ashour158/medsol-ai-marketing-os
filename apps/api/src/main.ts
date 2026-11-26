@@ -120,6 +120,12 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
   return this.creativeAssets.reviseOfflineRasterDraft(
    req.identity.organizationId,req.identity.userId,id,b);
  }
+ @Post('marketing/assets/:id/offline-layered-revisions') appendOfflineLayeredDraft(@Req() req:any,@Param('id') id:string,@Body() b:unknown){
+  return this.creativeAssets.appendOfflineLayeredDraft(req.identity.organizationId,req.identity.userId,id,b);
+ }
+ @Get('marketing/assets/revisions/:id/layered-preview') offlineLayeredPreview(@Req() req:any,@Param('id') id:string){
+  return this.creativeAssets.offlineLayeredPreview(req.identity.organizationId,id);
+ }
  @Get('marketing/assets/revisions/:id/offline-preview') offlineRasterPreview(@Req() req:any,@Param('id') id:string){
   return this.creativeAssets.offlinePreview(req.identity.organizationId,id);
  }
