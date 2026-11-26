@@ -1,3 +1,4 @@
+import {renderOfflineLayeredSpec} from './offline-layered-design.js';
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '@prisma/client';
 import {randomUUID,createHash} from 'node:crypto';
@@ -239,6 +240,73 @@ export class CreativeAssetService{
    return{...result,replayed:false};
   });
  }
+ /** New editable source is a new immutable DAM revision, not an approved
+  * reconstruction of a flattened export. Approval and legal rights never inherit. */
+ async appendOfflineLayeredDraft(org:string,actorId:string,assetIdInput:unknown,raw:unknown){
+  const assetId=ident(assetIdInput,'asset'),actor=ident(actorId,'actor');
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).some(k=>!['parentRevisionId','expectedVersion','requestKey','spec','rightsExpiresAt'].includes(k)))
+   throw new BadRequestException('Only structured layered draft fields allowed');
+  const r=raw as Record<string,unknown>,parentRevisionId=ident(r.parentRevisionId,'parent revision'),
+   key=ident(r.requestKey,'layered command key'),expected=r.expectedVersion;
+  if(typeof expected!=='number'||!Number.isSafeInteger(expected)||expected<1||expected>10000)
+   throw new BadRequestException('Current parent revision required');
+  let design:ReturnType<typeof renderOfflineLayeredSpec>;
+  try{design=renderOfflineLayeredSpec(r.spec);}catch(e){throw new BadRequestException(e instanceof Error?e.message:'Invalid layered source');}
+  const expiry=date(r.rightsExpiresAt,'draft review expiry',730);
+  const commandId='offline-layered-'+key,requestDigest='sha256:'+createHash('sha256').update(JSON.stringify([
+   org,assetId,parentRevisionId,expected,design.sourceDigest,expiry.toISOString()
+  ])).digest('hex');
+  try{return await this.scoped(org,async tx=>{
+   const prior=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:org,commandId}}});
+   if(prior){
+    const receipt=prior.response as Record<string,unknown>|null;
+    if(prior.commandType!=='AppendOfflineLayeredDraft'||receipt?.requestDigest!==requestDigest)
+     throw new ConflictException('Layered draft command reused with different evidence');
+    return{...receipt,replayed:true,externalEffectsAuthorized:false};
+   }
+   const asset=await tx.creativeAsset.findFirst({where:{organizationId:org,id:assetId,status:'ACTIVE'}});
+   if(!asset)throw new NotFoundException('Active creative asset not found');
+   if(asset.version!==expected)throw new ConflictException('Current creative revision changed');
+   const brand=await tx.brand.findFirst({where:{organizationId:org,id:asset.brandId,status:'ACTIVE'}});
+   const parent=await tx.creativeAssetRevision.findFirst({where:{organizationId:org,id:parentRevisionId,assetId,version:expected}});
+   if(!brand||!parent||(!parent.offlineRasterBase64&&!parent.offlineLayeredSpec))
+    throw new ConflictException('Current same-asset offline parent and active brand required');
+   const changed=await tx.creativeAsset.updateMany({where:{organizationId:org,id:assetId,version:expected,status:'ACTIVE'},data:{version:{increment:1}}});
+   if(changed.count!==1)throw new ConflictException('Concurrent creative revision');
+   const revisionId=randomUUID();
+   await tx.creativeAssetRevision.create({data:{id:revisionId,organizationId:org,assetId,version:expected+1,
+    sourceKind:'EDITABLE_SOURCE',sourceRef:'internal:creative-source/layered/'+revisionId,
+    renditionDigest:design.renditionDigest,offlineLayeredSpec:design.spec,
+    offlineLayeredSourceDigest:design.sourceDigest,offlineLayeredParentRevisionId:parentRevisionId,
+    rightsExpiresAt:expiry,createdBy:actor}});
+   const receipt={assetId,revisionId,version:expected+1,brandId:asset.brandId,parentRevisionId,requestDigest,
+    sourceDigest:design.sourceDigest,renditionDigest:design.renditionDigest,sourceKind:'EDITABLE_SOURCE',
+    rightsVerified:false,approvalInherited:false,offlineOnly:true,releaseAuthorized:false,externalEffectsAuthorized:false};
+   await tx.commandReceipt.create({data:{organizationId:org,commandId,commandType:'AppendOfflineLayeredDraft',correlationId:revisionId,status:'COMPLETED',response:receipt}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:actor,action:'OFFLINE_LAYERED_DRAFT_APPENDED',
+    objectType:'CreativeAssetRevision',objectId:revisionId,correlationId:revisionId,after:receipt}});
+   return{...receipt,replayed:false};
+  });}catch(e){if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2002','P2034'].includes(e.code))
+   throw new ConflictException('Concurrent layered revision; refresh before retry');throw e;}
+ }
+ async offlineLayeredPreview(org:string,revisionInput:unknown){
+  const id=ident(revisionInput,'revision');
+  return this.scoped(org,async tx=>{
+   const revision=await tx.creativeAssetRevision.findFirst({where:{organizationId:org,id,sourceKind:'EDITABLE_SOURCE'}});
+   if(!revision?.offlineLayeredSpec||!revision.offlineLayeredParentRevisionId)
+    throw new NotFoundException('Offline layered draft not found');
+   const asset=await tx.creativeAsset.findFirst({where:{organizationId:org,id:revision.assetId,status:'ACTIVE'}});
+   if(!asset)throw new NotFoundException('Active creative asset not found');
+   const design=renderOfflineLayeredSpec(revision.offlineLayeredSpec);
+   if(design.sourceDigest!==revision.offlineLayeredSourceDigest||design.renditionDigest!==revision.renditionDigest)
+    throw new ConflictException('Stored source/rendition digest mismatch');
+   return{assetId:asset.id,revisionId:id,version:revision.version,current:asset.version===revision.version,
+    brandId:asset.brandId,parentRevisionId:revision.offlineLayeredParentRevisionId,
+    spec:design.spec,sourceDigest:design.sourceDigest,renditionDigest:design.renditionDigest,
+    svgDataUrl:'data:image/svg+xml;base64,'+Buffer.from(design.svg,'utf8').toString('base64'),
+    offlineOnly:true,rightsVerified:false,releaseAuthorized:false,externalEffectsAuthorized:false};
+  });
+ }
  async offlinePreview(organizationId:string,revisionInput:unknown){
   const id=ident(revisionInput,'revision');
   return this.scoped(organizationId,async tx=>{
@@ -280,12 +348,12 @@ export class CreativeAssetService{
     include:{revisions:{orderBy:{version:'desc'},take:30,select:{
      id:true,version:true,sourceKind:true,renditionDigest:true,
      rightsExpiresAt:true,rightsReviewedBy:true,rightsReviewedAt:true,createdAt:true,
-     sourceRef:true
+     sourceRef:true,offlineLayeredSourceDigest:true,offlineLayeredParentRevisionId:true
     }}}});
    if(!asset)throw new NotFoundException('Asset not found in tenant');
    const {revisions,...safe}=asset;
    return{...safe,revisions:revisions.map(({sourceRef,...revision})=>({
-    ...revision,offlinePreviewAvailable:sourceRef.startsWith(
+    ...revision,layeredPreviewAvailable:sourceRef.startsWith('internal:creative-source/layered/'),offlinePreviewAvailable:sourceRef.startsWith(
      'internal:creative-source/offline/')
    })),externalEffectsAuthorized:false};
   });
@@ -300,6 +368,7 @@ export class CreativeAssetService{
   if(!['EDITABLE_SOURCE','FLATTENED_EXPORT'].includes(sourceKind))
    throw new BadRequestException('Unsupported editable source/export classification');
   const sourceRef=internalRef(input?.sourceRef,'internal:creative-source/','source');
+  if(sourceRef.startsWith('internal:creative-source/layered/'))throw new BadRequestException('Use the canonical layered draft route');
   const renditionDigest=clean(input?.renditionDigest,'SHA-256 digest',72);
   if(!/^sha256:[0-9a-f]{64}$/.test(renditionDigest))
    throw new BadRequestException('Exact rendition SHA-256 is required');
@@ -379,6 +448,7 @@ export class CreativeAssetService{
   return this.scoped(organizationId,async tx=>{
    const revision=await tx.creativeAssetRevision.findFirst({where:{id:revisionId,organizationId}});
    if(!revision)throw new NotFoundException('Asset revision not found in tenant');
+   if(revision.offlineLayeredSpec!=null)throw new ConflictException('Layered draft requires a separately verified release rendition; no publication approval');
    const asset=await tx.creativeAsset.findFirst({where:{id:revision.assetId,organizationId,status:'ACTIVE'}});
    const brand=asset&&await tx.brand.findFirst({where:{
     id:asset.brandId,organizationId,status:'ACTIVE'}});

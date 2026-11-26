@@ -39,6 +39,18 @@ describe('governed marketing performance evidence',()=>{
   await expect(service.ingest('tenant','submitter',input)).resolves.toMatchObject({replayed:true});
   await expect(service.ingest('tenant','submitter',{...input,value:-1})).rejects.toThrow('nonnegative');
  });
+ it('retries only serialization aborts before rechecking exact immutable scope',async()=>{
+  const{db,service}=setup();
+  db.$transaction.mockRejectedValueOnce(Object.assign(new Error('rolled back'),{code:'P2034'}));
+  await expect(service.ingest('tenant','submitter',input)).resolves.toMatchObject({replayed:false,status:'QUARANTINED'});
+  expect(db.marketingMetricObservation.create).toHaveBeenCalledTimes(1);
+  db.$transaction.mockRejectedValueOnce(Object.assign(new Error('rolled back'),{code:'P2034'}));
+  await expect(service.review('tenant','reviewer','obs','Reviewed original source evidence')).resolves.toMatchObject({status:'REVIEWED'});
+  expect(db.auditEvent.create).toHaveBeenCalledTimes(1);
+  db.$transaction.mockRejectedValueOnce(Object.assign(new Error('connection uncertain'),{code:'P1017'}));
+  await expect(service.ingest('tenant','submitter',input)).rejects.toThrow('connection uncertain');
+  expect(db.marketingMetricObservation.create).toHaveBeenCalledTimes(1);
+ });
  it('requires independent human source review',async()=>{
   const{db,service}=setup();
   await expect(service.review('tenant','submitter','obs','Verified source numbers')).rejects.toThrow('Independent');

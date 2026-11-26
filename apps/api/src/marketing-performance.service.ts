@@ -37,7 +37,9 @@ export class MarketingPerformanceService{
   const observedAt=new Date(required(raw.observedAt,'observedAt',40));
   if(!Number.isFinite(observedAt.getTime())||observedAt.getTime()>Date.now()+3600000||
      observedAt.getTime()<Date.now()-3*365*86400000)throw new BadRequestException('Observed date outside allowed range');
-  try{
+  // Retry only a rolled-back serializable DB transaction; no external effect.
+  // Every retry rechecks the full immutable source tuple and tenant scope.
+  for(let attempt=0;attempt<3;attempt++)try{
    return await withMarketingTenant(this.db,organizationId,async tx=>{
     const campaign=await tx.campaign.findFirst({
      where:{id:campaignId,organizationId},select:{id:true}
@@ -61,10 +63,13 @@ export class MarketingPerformanceService{
     return {observationId:created.id,status:'QUARANTINED',replayed:false};
    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   }catch(error){
-   if((error as {code?:string})?.code==='P2002'||(error as {code?:string})?.code==='P2034')
+   const code=(error as {code?:string})?.code;
+   if(code==='P2034'&&attempt<2)continue;
+   if(code==='P2002'||code==='P2034')
     throw new ConflictException('Concurrent duplicate metric import; refresh evidence');
    throw error;
   }
+  throw new ConflictException('Concurrent metric import; retry limit reached');
  }
  list(organizationId:string,campaignId?:string){
   return withMarketingTenant(this.db,organizationId,async tx=>{
@@ -81,7 +86,9 @@ export class MarketingPerformanceService{
  async review(organizationId:string,actorId:string,observationId:string,rationale:string){
   const reason=required(rationale,'review rationale',2000);
   if(reason.length<12)throw new BadRequestException('Detailed review rationale required');
-  return withMarketingTenant(this.db,organizationId,async tx=>{
+  // Only retry a rolled-back serializable transaction; review and audit are atomic.
+  for(let attempt=0;attempt<3;attempt++)try{
+  return await withMarketingTenant(this.db,organizationId,async tx=>{
    const observed=await tx.marketingMetricObservation.findFirst({where:{id:observationId,organizationId}});
    if(!observed)throw new NotFoundException('Metric observation not found in tenant');
    if(observed.status!=='QUARANTINED')throw new ConflictException('Observation already reviewed');
@@ -98,6 +105,11 @@ export class MarketingPerformanceService{
       independentlyVerified:false}}});
    return{observationId,status:'REVIEWED',independentlyVerified:false,externalEffectsAuthorized:false};
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+  }catch(error){
+   if((error as {code?:string})?.code!=='P2034')throw error;
+   if(attempt===2)throw new ConflictException('Concurrent review; refresh evidence');
+  }
+  throw new ConflictException('Concurrent review; retry limit reached');
  }
  async summary(organizationId:string,campaignId:string){
   return withMarketingTenant(this.db,organizationId,async tx=>{

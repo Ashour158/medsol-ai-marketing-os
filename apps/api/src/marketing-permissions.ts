@@ -49,6 +49,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'ASSESS'; // manager-only actions are additionally checked in the case service
   if(method==='POST'&&path==='/marketing/social/discussions/triage-preview')
    return 'ASSESS';
+  if(method==='POST'&&/^\/marketing\/assets\/[A-Za-z0-9_-]+\/offline-layered-revisions$/.test(path))return 'MANAGE_CAMPAIGN';
+  if(method==='GET'&&/^\/marketing\/assets\/revisions\/[A-Za-z0-9_-]+\/layered-preview$/.test(path))return 'READ_PORTFOLIO';
   if(method==='POST'&&(path==='/marketing/assets/offline-raster'||
     /^\/marketing\/assets\/[A-Za-z0-9_-]+\/offline-revisions$/.test(path)))
    return 'MANAGE_CAMPAIGN';

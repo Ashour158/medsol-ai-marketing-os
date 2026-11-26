@@ -278,6 +278,25 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    expect(await db.modelUsage.count({where:{organizationId:org}})).toBe(0);
    expect(await db.publicationAttempt.count({where:{
     organizationId:org,mode:'REMOTE'}})).toBe(0);
+   // A new editable source invalidates the old exact approval and is not
+   // independently reviewed or publishable merely because its parent was.
+   const layeredInput={parentRevisionId:revisionId,expectedVersion:draft.version,requestKey:randomUUID(),
+    rightsExpiresAt:later(60),spec:{format:'SQUARE',title:'Editable scientific draft',body:'Separate source text, no real rights inherited.',accent:'#124d83'}};
+   const layer=await creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,layeredInput) as {revisionId:string;version:number};
+   expect(layer).toMatchObject({version:draft.version+1,parentRevisionId:revisionId,approvalInherited:false,releaseAuthorized:false});
+   const layerPreview=await creatives.offlineLayeredPreview(org,layer.revisionId);
+   expect(layerPreview).toMatchObject({current:true,parentRevisionId:revisionId,releaseAuthorized:false,
+    rightsVerified:false,spec:layeredInput.spec});
+   expect(layerPreview.svgDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+   expect(await creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,layeredInput)).toMatchObject({revisionId:layer.revisionId,replayed:true});
+   await expect(creatives.appendOfflineLayeredDraft(org,creator,draft.assetId,{...layeredInput,spec:{...layeredInput.spec,title:'Changed'}})).rejects.toThrow('different evidence');
+   await expect(creatives.offlineLayeredPreview(other,layer.revisionId)).rejects.toThrow('not found');
+   expect(await creatives.reviewApprovalState(org,scope.approvalId)).toMatchObject({scopeCurrent:false,humanDecisionValid:false});
+   await expect(creatives.submitForApproval(org,creator,layer.revisionId,{channel:'SOCIAL',destinationRef:destination.destinationRef,
+    audienceRef:'internal:audience-snapshot/offline',policyVersion:'v1',scheduledAt:later(2),expiresAt:later(4)})).rejects.toThrow('separately verified release rendition');
+   await expect(withMarketingTenant(db,org,tx=>tx.creativeAssetRevision.update({where:{id:layer.revisionId},
+    data:{offlineLayeredSourceDigest:'sha256:'+'f'.repeat(64)}}))).rejects.toThrow();
+
    await expect(reads.offlineJourney(other,campaignId)).rejects.toThrow('not found');
   }finally{
    // Append-only evidence and RLS deny-delete tables are left in the
