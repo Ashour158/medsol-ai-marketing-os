@@ -48,7 +48,7 @@ export function verifyAlphaDecision(certificate,trust,commit,now=Date.now()){
  if(trust?.schema!=='medsol-external-release-trust-v1'||!Array.isArray(trust.keys)||
     !Array.isArray(certificate.signatures)||certificate.signatures.length!==2)
   block('external trust and two independent signatures required');
- const roles=new Map(),persons=new Set(),keys=new Set();
+ const roles=new Map(),persons=new Set(),keys=new Set(),signingKeys=new Set();
  for(const key of trust.keys){
   if(!key||typeof key.keyId!=='string'||keys.has(key.keyId))block('invalid duplicate trust key');
   keys.add(key.keyId);
@@ -62,7 +62,8 @@ export function verifyAlphaDecision(certificate,trust,commit,now=Date.now()){
      !person(k.personId)||k.personId===p.codeAuthorId||persons.has(k.personId)||
      s.algorithm!=='Ed25519'||typeof s.sig!=='string')block('independent roles and keys required');
   let valid=false;try{const pk=createPublicKey(k.publicKeyPem);
-   valid=pk.asymmetricKeyType==='ed25519'&&verify(null,bytes,pk,Buffer.from(s.sig,'base64'));}catch{}
+   const fingerprint=digest(pk.export({type:'spki',format:'der'}).toString('base64'));
+   if(!signingKeys.has(fingerprint)&&pk.asymmetricKeyType==='ed25519'&&verify(null,bytes,pk,Buffer.from(s.sig,'base64'))){valid=true;signingKeys.add(fingerprint);}}catch{}
   if(!valid)block('invalid Alpha attestation signature');
   roles.set(k.role,k.personId);persons.add(k.personId);
  }
