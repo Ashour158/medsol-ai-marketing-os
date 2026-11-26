@@ -1,3 +1,4 @@
+import type {Prisma} from '@prisma/client';
 import type {OfflineCampaignStage} from '@medsol/contracts';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService,withMarketingTenant } from './prisma.service.js';
@@ -14,6 +15,94 @@ export class MarketingReadService {
    if(!/^[A-Za-z0-9_-]{1,128}$/.test(campaignId))
     throw new BadRequestException('Invalid journey campaign');
    return withMarketingTenant(this.db,organizationId,async tx=>{
+    return readOfflineJourneyInTransaction(tx,organizationId,campaignId);
+   });
+  }
+  /** Trusted tenant-scoped catalogue lookup used by the Brain; not regulatory verification. */
+  async brainAuthorityContext(organizationId: string, input: {productId?:unknown;objectiveId?:unknown}) {
+    const productId=input.productId;
+    const objectiveId=input.objectiveId;
+    if((productId!==undefined&&typeof productId!=='string')||
+       (objectiveId!==undefined&&typeof objectiveId!=='string'))throw new BadRequestException('Invalid authority reference');
+    const [product,objective]=await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
+      productId?tx.marketingProduct.findFirst({
+       where:{id:productId,organizationId,lifecycle:'ACTIVE'},
+       select:{id:true,code:true,name:true,vendor:true,lifecycle:true}
+      }):Promise.resolve(null),
+      objectiveId?tx.marketingObjective.findFirst({
+       where:{id:objectiveId,organizationId,status:'ACTIVE'},
+       select:{id:true,name:true,description:true,status:true}
+      }):Promise.resolve(null)
+    ]));
+    if(productId&&!product)throw new NotFoundException('Active product not found in tenant catalogue');
+    if(objectiveId&&!objective)throw new NotFoundException('Active objective not found in tenant catalogue');
+    return {source:'TENANT_MARKETING_CATALOG',product,objective,
+      declarationsVerified:true,scientificClaimsVerified:false,regulatoryApprovalVerified:false};
+  }
+  async overview(organizationId: string) {
+    const [campaigns, objectives, products, workflows, pendingApprovals, recentAgents] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
+      tx.campaign.count({ where: { organizationId } }),
+      tx.marketingObjective.count({ where: { organizationId, status: 'ACTIVE' } }),
+      tx.marketingProduct.count({ where: { organizationId, lifecycle: 'ACTIVE' } }),
+      tx.workflowExecution.count({ where: { organizationId, status: 'RUNNING' } }),
+      tx.approval.count({ where: { organizationId, decision: 'PENDING' } }),
+      tx.agentExecution.count({ where: { organizationId, status: 'FAILED' } })
+    ]));
+    return { campaigns, activeObjectives: objectives, activeProducts: products, runningWorkflows: workflows, pendingApprovals, failedAgentExecutions: recentAgents };
+  }
+  campaigns(organizationId: string) {
+    return withMarketingTenant(this.db,organizationId,tx=>tx.campaign.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
+      select: { id: true, code: true, name: true, status: true, riskLevel: true, version: true, objectiveId: true, productId: true, brandId: true, updatedAt: true } }));
+  }
+  async campaign(organizationId: string, id: string) {
+    const item = await withMarketingTenant(this.db,organizationId,tx=>tx.campaign.findFirst({ where: { organizationId, id },
+      include: { objective: { select: { id: true, name: true } }, product: { select: { id: true, name: true, code: true } } } }));
+    if (!item) throw new NotFoundException('Campaign not found in tenant');
+    const [approvals, history] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
+      tx.approval.findMany({ where: { organizationId, objectType: 'Campaign', objectId: id }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      tx.auditEvent.findMany({ where: { organizationId, objectType: 'Campaign', objectId: id }, orderBy: { occurredAt: 'desc' }, take: 50 })
+    ]));
+    return { ...item, approvals, history };
+  }
+  objectives(organizationId: string) {
+    return withMarketingTenant(this.db,organizationId,tx=>tx.marketingObjective.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
+      select: { id: true, name: true, description: true, status: true, updatedAt: true } }));
+  }
+  products(organizationId: string) {
+    return withMarketingTenant(this.db,organizationId,tx=>tx.marketingProduct.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
+      select: { id: true, code: true, name: true, vendor: true, lifecycle: true } }));
+  }
+  workflows(organizationId: string) {
+    return withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findMany({ where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 100,
+      select: { id: true, status: true, currentStep: true, correlationId: true, startedAt: true, updatedAt: true } }));
+  }
+  async agentExecution(organizationId: string, id: string) {
+    const item = await withMarketingTenant(this.db,organizationId,tx=>tx.agentExecution.findFirst({
+      where: { organizationId, id },
+      select: { id: true, organizationId: true, agentId: true, correlationId: true, causationId: true, status: true, decision: true, startedAt: true, completedAt: true }
+    }));
+    if (!item) throw new NotFoundException('Agent execution not found in tenant');
+    return item;
+  }
+  async agentOperations(organizationId: string) {
+    const [total, grouped, recent] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
+      tx.agentExecution.count({ where: { organizationId } }),
+      tx.agentExecution.groupBy({ by: ['status'], where: { organizationId }, _count: { _all: true } }),
+      tx.agentExecution.findMany({
+        where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 30,
+        select: { id: true, agentId: true, status: true, correlationId: true, startedAt: true, completedAt: true }
+      })
+    ]));
+    return { total, byStatus: Object.fromEntries(grouped.map(g => [g.status, g._count._all])), recent };
+  }
+  agentExecutions(organizationId: string) {
+    return withMarketingTenant(this.db,organizationId,tx=>tx.agentExecution.findMany({ where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 100,
+      select: { id: true, agentId: true, status: true, correlationId: true, startedAt: true, completedAt: true } }));
+  }
+}
+
+/** Canonical bounded projection reusable inside a caller's fenced transaction. */
+export async function readOfflineJourneyInTransaction(tx:Prisma.TransactionClient,organizationId:string,campaignId:string){
     const campaign=await tx.campaign.findFirst({where:{
      id:campaignId,organizationId
     },select:{id:true,code:true,name:true,brandId:true,objectiveId:true,
@@ -117,87 +206,4 @@ export class MarketingReadService {
      scopeWarning:'Creative drafts are brand-scoped until bound by exact approved publication intent',
      researchWarning:'Research is offline evidence only; synthetic learning remains quarantined'
     };
-   });
-  }
-  /** Trusted tenant-scoped catalogue lookup used by the Brain; not regulatory verification. */
-  async brainAuthorityContext(organizationId: string, input: {productId?:unknown;objectiveId?:unknown}) {
-    const productId=input.productId;
-    const objectiveId=input.objectiveId;
-    if((productId!==undefined&&typeof productId!=='string')||
-       (objectiveId!==undefined&&typeof objectiveId!=='string'))throw new BadRequestException('Invalid authority reference');
-    const [product,objective]=await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
-      productId?tx.marketingProduct.findFirst({
-       where:{id:productId,organizationId,lifecycle:'ACTIVE'},
-       select:{id:true,code:true,name:true,vendor:true,lifecycle:true}
-      }):Promise.resolve(null),
-      objectiveId?tx.marketingObjective.findFirst({
-       where:{id:objectiveId,organizationId,status:'ACTIVE'},
-       select:{id:true,name:true,description:true,status:true}
-      }):Promise.resolve(null)
-    ]));
-    if(productId&&!product)throw new NotFoundException('Active product not found in tenant catalogue');
-    if(objectiveId&&!objective)throw new NotFoundException('Active objective not found in tenant catalogue');
-    return {source:'TENANT_MARKETING_CATALOG',product,objective,
-      declarationsVerified:true,scientificClaimsVerified:false,regulatoryApprovalVerified:false};
-  }
-  async overview(organizationId: string) {
-    const [campaigns, objectives, products, workflows, pendingApprovals, recentAgents] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
-      tx.campaign.count({ where: { organizationId } }),
-      tx.marketingObjective.count({ where: { organizationId, status: 'ACTIVE' } }),
-      tx.marketingProduct.count({ where: { organizationId, lifecycle: 'ACTIVE' } }),
-      tx.workflowExecution.count({ where: { organizationId, status: 'RUNNING' } }),
-      tx.approval.count({ where: { organizationId, decision: 'PENDING' } }),
-      tx.agentExecution.count({ where: { organizationId, status: 'FAILED' } })
-    ]));
-    return { campaigns, activeObjectives: objectives, activeProducts: products, runningWorkflows: workflows, pendingApprovals, failedAgentExecutions: recentAgents };
-  }
-  campaigns(organizationId: string) {
-    return withMarketingTenant(this.db,organizationId,tx=>tx.campaign.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
-      select: { id: true, code: true, name: true, status: true, riskLevel: true, version: true, objectiveId: true, productId: true, brandId: true, updatedAt: true } }));
-  }
-  async campaign(organizationId: string, id: string) {
-    const item = await withMarketingTenant(this.db,organizationId,tx=>tx.campaign.findFirst({ where: { organizationId, id },
-      include: { objective: { select: { id: true, name: true } }, product: { select: { id: true, name: true, code: true } } } }));
-    if (!item) throw new NotFoundException('Campaign not found in tenant');
-    const [approvals, history] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
-      tx.approval.findMany({ where: { organizationId, objectType: 'Campaign', objectId: id }, orderBy: { createdAt: 'desc' }, take: 50 }),
-      tx.auditEvent.findMany({ where: { organizationId, objectType: 'Campaign', objectId: id }, orderBy: { occurredAt: 'desc' }, take: 50 })
-    ]));
-    return { ...item, approvals, history };
-  }
-  objectives(organizationId: string) {
-    return withMarketingTenant(this.db,organizationId,tx=>tx.marketingObjective.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
-      select: { id: true, name: true, description: true, status: true, updatedAt: true } }));
-  }
-  products(organizationId: string) {
-    return withMarketingTenant(this.db,organizationId,tx=>tx.marketingProduct.findMany({ where: { organizationId }, orderBy: { updatedAt: 'desc' }, take: 100,
-      select: { id: true, code: true, name: true, vendor: true, lifecycle: true } }));
-  }
-  workflows(organizationId: string) {
-    return withMarketingTenant(this.db,organizationId,tx=>tx.workflowExecution.findMany({ where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 100,
-      select: { id: true, status: true, currentStep: true, correlationId: true, startedAt: true, updatedAt: true } }));
-  }
-  async agentExecution(organizationId: string, id: string) {
-    const item = await withMarketingTenant(this.db,organizationId,tx=>tx.agentExecution.findFirst({
-      where: { organizationId, id },
-      select: { id: true, organizationId: true, agentId: true, correlationId: true, causationId: true, status: true, decision: true, startedAt: true, completedAt: true }
-    }));
-    if (!item) throw new NotFoundException('Agent execution not found in tenant');
-    return item;
-  }
-  async agentOperations(organizationId: string) {
-    const [total, grouped, recent] = await withMarketingTenant(this.db,organizationId,async tx=>Promise.all([
-      tx.agentExecution.count({ where: { organizationId } }),
-      tx.agentExecution.groupBy({ by: ['status'], where: { organizationId }, _count: { _all: true } }),
-      tx.agentExecution.findMany({
-        where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 30,
-        select: { id: true, agentId: true, status: true, correlationId: true, startedAt: true, completedAt: true }
-      })
-    ]));
-    return { total, byStatus: Object.fromEntries(grouped.map(g => [g.status, g._count._all])), recent };
-  }
-  agentExecutions(organizationId: string) {
-    return withMarketingTenant(this.db,organizationId,tx=>tx.agentExecution.findMany({ where: { organizationId }, orderBy: { startedAt: 'desc' }, take: 100,
-      select: { id: true, agentId: true, status: true, correlationId: true, startedAt: true, completedAt: true } }));
-  }
 }
