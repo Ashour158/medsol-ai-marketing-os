@@ -27,7 +27,7 @@ export const TARGET_ENGINES = [
     "release": "R1",
     "owner": "BrandMasterRevision",
     "state": "PARTIAL",
-    "blocker": "One approved brand rule revision exists; multi-brand, rights and claim lineage absent"
+    "blocker": "Tenant and brand entities plus approved tenant rule revisions; no brand-specific policy and claim-lineage completeness."
   },
   {
     "id": "E03",
@@ -54,7 +54,7 @@ export const TARGET_ENGINES = [
     "release": "R3",
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
-    "blocker": "Lexical Europe PMC ranking only, not hybrid RAG"
+    "blocker": "Bounded local sparse-vector/lexical hybrid ranking, tenant ACL and source evidence; external model and independent acceptance remain."
   },
   {
     "id": "E06",
@@ -90,7 +90,7 @@ export const TARGET_ENGINES = [
     "release": "R4",
     "owner": "MarketingLearningService",
     "state": "PARTIAL",
-    "blocker": "MIT Maestro rubric and durable synthetic form/CRM mock request/readback exist; real qualification lifecycle and independently verified lead evidence remain"
+    "blocker": "Immutable synthetic BANT/ICP review and mock CRM protocol; actual lead/CRM authority remains."
   },
   {
     "id": "E10",
@@ -98,8 +98,8 @@ export const TARGET_ENGINES = [
     "goal": "Versioned copy variants and approvals",
     "release": "R2",
     "owner": "Creative & DAM",
-    "state": "DRAFT_ONLY",
-    "blocker": "Text recommendation only, no copy version record"
+    "state": "PARTIAL",
+    "blocker": "Stored layered title/body variants; standalone copy variant lifecycle and approvals remain."
   },
   {
     "id": "E11",
@@ -125,8 +125,8 @@ export const TARGET_ENGINES = [
     "goal": "Factual, accessibility, rights and brand QA",
     "release": "R2",
     "owner": "BrandMasterService",
-    "state": "DRAFT_ONLY",
-    "blocker": "Some brand review concepts, no asset QA pipeline"
+    "state": "PARTIAL",
+    "blocker": "Stored revision-bound brand-policy advisory checks phrases, disclaimers, accents and contrast; independent factual, accessibility, translation and rights validation remain"
   },
   {
     "id": "E14",
@@ -189,7 +189,7 @@ export const TARGET_ENGINES = [
     "release": "R2",
     "owner": "MarketingPerformanceService",
     "state": "PARTIAL",
-    "blocker": "Exact source-record funnel, same-currency reported monetary reconciliation and scoped evidence manifests/export exist; verified provider and finance sources remain"
+    "blocker": "Same-source funnel and currency evidence/export; verified provider and finance source authority remain."
   },
   {
     "id": "E21",
@@ -198,7 +198,7 @@ export const TARGET_ENGINES = [
     "release": "R4",
     "owner": "MarketingPerformanceService",
     "state": "PARTIAL",
-    "blocker": "Reported same-source currency metrics and synthetic CRM protocol exist; verified causal attribution and actual CRM/finance reconciliation remain"
+    "blocker": "Reported metrics, synthetic CRM and independent qualification; no causal or actual financial reconciliation."
   },
   {
     "id": "E22",
@@ -206,8 +206,8 @@ export const TARGET_ENGINES = [
     "goal": "Controlled experiments and holdout assignment",
     "release": "R4",
     "owner": "MarketingPerformanceService",
-    "state": "DRAFT_ONLY",
-    "blocker": "Experiment plans only"
+    "state": "PARTIAL",
+    "blocker": "PR 137 merged: fixed assignments, exact approved forms, contamination checks, recorded mock outcomes; live assignment/outcome authority absent."
   },
   {
     "id": "E23",
@@ -225,7 +225,7 @@ export const TARGET_ENGINES = [
     "release": "R3",
     "owner": "MarketingWorkflowService",
     "state": "PARTIAL",
-    "blocker": "Fixed lifecycle and Brain sequence, not user-authored graph"
+    "blocker": "Bounded authored signed offline DAG with persisted execution, human gates; general executable orchestration remains."
   },
   {
     "id": "E25",
@@ -234,7 +234,7 @@ export const TARGET_ENGINES = [
     "release": "R1",
     "owner": "ApprovalService",
     "state": "PARTIAL",
-    "blocker": "Exact creative approvals and immutable form approval scopes exist; all remaining external actions require capability-specific binding and verified entitlement"
+    "blocker": "Exact creative/form/qualification/experiment approval evidence; external effects stay blocked."
   },
   {
     "id": "E26",
@@ -252,7 +252,7 @@ export const TARGET_ENGINES = [
     "release": "R3",
     "owner": "GovernedModelService",
     "state": "PARTIAL",
-    "blocker": "Optional OpenAI only, limited billing reconciliation"
+    "blocker": "Multiple transport contracts and policy routing/reconciliation; no live provider entitlement or settled billing."
   },
   {
     "id": "E28",
@@ -260,8 +260,8 @@ export const TARGET_ENGINES = [
     "goal": "Tenant scoped governed MCP and A2A interactions",
     "release": "R3",
     "owner": "AI Operations",
-    "state": "NOT_IMPLEMENTED",
-    "blocker": "No MCP tool gateway or A2A peer registry"
+    "state": "PARTIAL",
+    "blocker": "Signed MCP/A2A metadata lifecycle, scoped approval; no remote execution or peer interaction."
   },
   {
     "id": "E29",
@@ -342,28 +342,32 @@ export const TARGET_WORKFLOWS = [
     "name": "Tenant and agency onboarding",
     "release": "R1",
     "owner": "Tenancy & Commercial",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL",
+    "blocker": "Tenant/brand/agency grant foundation; full customer onboarding and commercial entitlement remain."
   },
   {
     "id": "WF02",
     "name": "Brand intelligence onboarding",
     "release": "R1",
     "owner": "BrandMasterRevision",
-    "state": "PARTIAL"
+    "state": "PARTIAL",
+    "blocker": "Approved tenant brand rules; comprehensive business discovery and brand-specific onboarding remain."
   },
   {
     "id": "WF03",
     "name": "Social account connection",
     "release": "R2",
     "owner": "Social & Community",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent OAuth protocol trials only; actual account connection remains unimplemented."
   },
   {
     "id": "WF04",
     "name": "Marketing strategy",
     "release": "R2",
     "owner": "MarketingWorkflowService",
-    "state": "PARTIAL"
+    "state": "PARTIAL",
+    "blocker": "Canonical strategy brain and campaign workflow; complete strategic planning acceptance remains."
   },
   {
     "id": "WF05",
@@ -388,7 +392,8 @@ export const TARGET_WORKFLOWS = [
     "name": "Content approval",
     "release": "R1",
     "owner": "ApprovalService",
-    "state": "PARTIAL"
+    "state": "PARTIAL",
+    "blocker": "Exact version/rights-bound approvals; external release gates remain."
   },
   {
     "id": "WF08",
@@ -424,35 +429,39 @@ export const TARGET_WORKFLOWS = [
     "owner": "MarketingPerformanceService",
     "state": "PARTIAL",
     "goal": "Reviewed evidence, funnel and currency-separated monetary reconciliation, optimization",
-    "blocker": "Matched source-record reconciliation, same-currency evidence and export manifests exist; independently verified revenue and causal attribution remain"
+    "blocker": "Source-record funnel/currency evidence and exports; verified revenue, causality and independent acceptance remain."
   },
   {
     "id": "WF12",
     "name": "Subscription and offboarding",
     "release": "R1",
     "owner": "Tenancy & Commercial",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent revocable delegation; subscription and complete offboarding workflow not established."
   },
   {
     "id": "WF13",
     "name": "AI provider lifecycle",
     "release": "R3",
     "owner": "GovernedModelService",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent provider contract trials and routing; full provider onboarding/entitlement lifecycle not established."
   },
   {
     "id": "WF14",
     "name": "MCP server lifecycle",
     "release": "R3",
     "owner": "AI Operations",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL",
+    "blocker": "Signed scoped MCP/A2A registration/approval; live server execution lifecycle remains."
   },
   {
     "id": "WF15",
     "name": "Enterprise platform connection",
     "release": "R2",
     "owner": "Integration Hub",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent trial custody; actual enterprise connection/entitlement not established."
   },
   {
     "id": "WF16",
@@ -513,70 +522,80 @@ export const TARGET_WORKFLOWS = [
     "name": "Settings and privilege change",
     "release": "R1",
     "owner": "Identity & Governance",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL",
+    "blocker": "Tenant role create/assign/disable controls; full settings and privilege change acceptance remain."
   },
   {
     "id": "WF23",
     "name": "Brand revision",
     "release": "R1",
     "owner": "BrandMasterRevision",
-    "state": "PARTIAL"
+    "state": "PARTIAL",
+    "blocker": "Versioned tenant master and independent approval; brand-specific policy remains."
   },
   {
     "id": "WF24",
     "name": "Price and promotion proposal",
     "release": "R4",
     "owner": "Product & Pricing Bridge",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent product catalog; price/promotion proposal and finance approval workflow not established."
   },
   {
     "id": "WF25",
     "name": "Product and portfolio lifecycle",
     "release": "R4",
     "owner": "MarketingProduct",
-    "state": "PARTIAL"
+    "state": "PARTIAL",
+    "blocker": "Catalog authority and scoped product linking; complete portfolio lifecycle remains."
   },
   {
     "id": "WF26",
     "name": "Loyalty and retention journey",
     "release": "R4",
     "owner": "Loyalty & Retention",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent synthetic journey; loyalty ledger/retention and financial liability not established."
   },
   {
     "id": "WF27",
     "name": "Agent factory and registration",
     "release": "R3",
     "owner": "AgentRuntime",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Signed canonical agent manifest releases; arbitrary agent factory/registration remains."
   },
   {
     "id": "WF28",
     "name": "Multi-agent team assembly",
     "release": "R3",
     "owner": "BrainRunLedgerService",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Fixed canonical brain sequencing; user-defined team assembly not established."
   },
   {
     "id": "WF29",
     "name": "Workflow design and release",
     "release": "R3",
     "owner": "MarketingWorkflowService",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL",
+    "blocker": "Bounded signed offline workflow design and release; unrestricted execution remains blocked."
   },
   {
     "id": "WF30",
     "name": "Blueprint compilation and deployment",
     "release": "R3",
     "owner": "MarketingWorkflowService",
-    "state": "NOT_IMPLEMENTED"
+    "state": "PARTIAL",
+    "blocker": "Durable virtual compilation and bounded signed offline execution; live deployment not authorized."
   },
   {
     "id": "WF31",
     "name": "Skill and learning release",
     "release": "R3",
     "owner": "SkillReleaseService",
-    "state": "PARTIAL"
+    "state": "PARTIAL",
+    "blocker": "Evaluated skill evidence and release controls; complete runtime rollout/rollback remains."
   },
   {
     "id": "WF32",
@@ -594,21 +613,23 @@ export const TARGET_WORKFLOWS = [
     "owner": "Conversion & Growth",
     "state": "PARTIAL",
     "goal": "BANT/ICP review, consent-gated synthetic CRM handoff and immutable ambiguous outcome",
-    "blocker": "Maestro rubric and durable consent-gated mock CRM request/readback/reconciliation exist; actual CRM and authoritative lead lifecycle remain"
+    "blocker": "Independent synthetic qualification and mock request/readback; actual CRM and lead lifecycle remain."
   },
   {
     "id": "WF34",
     "name": "Paid advertising",
     "release": "R5",
     "owner": "Strategy & Campaign",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent graph safety only; paid media execution not implemented."
   },
   {
     "id": "WF35",
     "name": "Messaging WhatsApp SMS etc",
     "release": "R5",
     "owner": "Email & Messaging",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Adjacent email transport rehearsal; WhatsApp/SMS workflow not established."
   },
   {
     "id": "WF36",
@@ -660,7 +681,8 @@ export const TARGET_WORKFLOWS = [
     "name": "Customer onboarding and value realization",
     "release": "R1",
     "owner": "Tenancy & Commercial",
-    "state": "NOT_IMPLEMENTED"
+    "state": "NOT_IMPLEMENTED",
+    "blocker": "Customer activation acceptance helper; actual onboarding/value realization lifecycle not established."
   }
 ] as const satisfies readonly TargetDomain[];
 export const TARGET_STUDIOS = [
@@ -912,7 +934,7 @@ export type BlueprintInventory={
  releaseGates:typeof RELEASE_GATES;
 };
 export function getBlueprintV2Inventory():BlueprintInventory {
- return {version:'2.1',asOfCommit:'0662f9d96f1703b28618ab8783aa4f8d3c8ce551',
+ return {version:'2.1',asOfCommit:'035d4d556a08eaa37ab75cf1c7446a91c99cb8db',
   targetStateOnly:true,counts:TARGET_COUNTS,engines:TARGET_ENGINES,
   workflows:TARGET_WORKFLOWS,studios:TARGET_STUDIOS,
   brains:TARGET_BRAINS,personas:TARGET_PERSONAS,releaseGates:RELEASE_GATES};
