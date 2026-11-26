@@ -1,0 +1,3 @@
+# T1 — customer onboarding and value review
+
+WF41 uses TenantBrandService, the canonical reviewed business profile, brand policy, provisioned identity, MarketingReadService campaign journey and ApprovalService. Internal value targets are compared against bounded current offline evidence, pinned by scope digest and rechecked at independent review. Historical approved reports do not establish real customer value, activation, entitlement, billing, production readiness, provider authorization or independent security certification. The existing dossier UI exposes review and progress. Unit and real PostgreSQL journey coverage included. Full CI/merge and independent acceptance required.

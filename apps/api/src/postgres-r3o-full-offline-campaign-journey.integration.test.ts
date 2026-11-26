@@ -349,6 +349,21 @@ describe.skipIf(!enabled)('R3-O full actual-PostgreSQL offline campaign journey 
    await tenant.revokeAgency(org,reviewer,partnerGrant.id,'Synthetic partner scope revoked before approval');
    await expect(decideConversion(revokedPartner.approvalId)).rejects.toThrow('Current same-brand read delegation');
    await expect(campaigns.rehearseChannelPlan(org,conversionIdentity,campaignId,invalidated.approvalId,{fixtureOnly:true,scenario:'MOCK_ACCEPTED'})).rejects.toThrow('Independent exact channel');
+   const profileDoc=await learning.ingestKnowledge(org,conversionIdentity,{sourceKey:'business-profile-'+randomUUID(),businessProfile:{name:'Synthetic research organization',industry:'Life sciences',offerings:'Research tools',audience:'Laboratory users',territories:'Egypt',differentiators:'Evidence first'},businessProfileAttested:true,sourceUrl:'https://example.invalid/activation-profile',expiresAt:later(15),accessMode:'REVIEWERS_ONLY'});
+   await learning.reviewKnowledge(org,identity,profileDoc.id,'REVIEW','Independent synthetic business profile review');
+   const activationInput={requestKey:'fixture-'+randomUUID(),brandId,campaignId,profileDocumentId:profileDoc.id,expiresAt:later(7),fixtureOnly:true,
+    targets:{offlineGates:10,reviewedObservations:1,syntheticEmailRuns:1,virtualSocialRuns:1}};
+   const activation=await tenant.requestActivationReview(org,conversionIdentity,activationInput);
+   expect(activation).toMatchObject({decision:'PENDING',value:{offlineGates:{target:10,observed:10,met:true}},realCustomerValueVerified:false,customerActivationAuthorized:false,productionCertified:false,billingAuthorized:false,assessment:{readyForCustomerPilot:false}});
+   expect(await tenant.requestActivationReview(org,conversionIdentity,activationInput)).toMatchObject({approvalId:activation.approvalId,replayed:true});
+   await expect(tenant.requestActivationReview(org,conversionIdentity,{...activationInput,targets:{...activationInput.targets,reviewedObservations:2}})).rejects.toThrow('Immutable activation');
+   await expect(approval.approve({organizationId:org,approvalId:activation.approvalId,approverUserId:conversionAuthor,commandId:randomUUID(),correlationId:randomUUID(),decision:'APPROVED',rationale:'Self review prohibited'})).rejects.toThrow('Independent');
+   await decideConversion(activation.approvalId);
+   const staleActivation=await tenant.requestActivationReview(org,conversionIdentity,{...activationInput,requestKey:'fixture-'+randomUUID()});
+   await learning.revokeKnowledge(org,identity,profileDoc.id,'Revoke profile before activation evidence review');
+   await expect(decideConversion(staleActivation.approvalId)).rejects.toThrow('Current independently reviewed business profile');
+   expect((await tenant.activationReviews(org,identity)).reviews.find(a=>a.approvalId===activation.approvalId)).toMatchObject({decision:'APPROVED',historicalOnly:true,customerActivationAuthorized:false});
+   await expect(tenant.activationReviews(other,identity)).rejects.toThrow('Verified tenant');
    await learning.revokeKnowledge(org,identity,claimDoc.id,'Withdraw source before exact independent channel approval');
    await expect(campaigns.rehearseChannelPlan(org,conversionIdentity,campaignId,unexecuted.approvalId,{fixtureOnly:true,scenario:'MOCK_ACCEPTED'})).rejects.toThrow('Current independently reviewed source');
    expect(await campaigns.rehearseChannelPlan(org,conversionIdentity,campaignId,paid.approvalId,{fixtureOnly:true,scenario:'OUTCOME_UNKNOWN'})).toMatchObject({replayed:true,historicalOnly:true,automaticRetryAuthorized:false});
