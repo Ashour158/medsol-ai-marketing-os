@@ -1,5 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import AlphaExecutiveDashboard from "./alpha-executive-dashboard";
+import AlphaBrainMap from "./alpha-brain-map";
+import { WORKSPACE_LINKS } from "../lib/workspace-navigation";
 import OperationsConsole from "./operations-console";
 import WorkspaceNavigation from "./workspace-navigation";
 import CreativeGovernanceStudio from "./creative-governance-studio";
@@ -26,6 +29,23 @@ class MarketingRequestError extends Error {
 
 type Workflow = { workflowExecutionId?: string; id?: string; status?: string; currentStep?: string; correlationId?: string; output?: unknown; steps?: unknown[] };
 export default function Home() {
+  const [focused,setFocused]=useState("");
+  const [brainRunsLoaded,setBrainRunsLoaded]=useState(false);
+  const [navigationRevision,setNavigationRevision]=useState(0);
+  const focusRoot=focused==="performance"?"operations":["workflow-studio","blueprint-studio","market-intelligence","knowledge","memory","acceptance"].includes(focused)?"agent-brain":focused;
+  const isHidden=(id:string)=>!!focusRoot&&focusRoot!==id;
+  function navigateWorkspace(id:string){
+    if(!WORKSPACE_LINKS.some(x=>x.id===id))return;
+    setFocused(id);setNavigationRevision(n=>n+1);
+  }
+  useEffect(()=>{
+    if(!focused)return;
+    const target=document.getElementById(focused);
+    if(!target)return;
+    let current=target.parentElement;
+    while(current){if(current instanceof HTMLDetailsElement)current.open=true;current=current.parentElement;}
+    target.scrollIntoView({block:"start"});
+  },[focused,navigationRevision]);
   const [organizationId, setOrganizationId] = useState("");
   const [goal, setGoal] = useState("");
   const [objectiveId, setObjectiveId] = useState("");
@@ -132,12 +152,18 @@ export default function Home() {
   const request = { organizationId: organizationId.trim(), requestedOutcome: goal.trim(), ...(objectiveId.trim() ? { objectiveId: objectiveId.trim() } : {}), ...(campaignBrandId.trim()?{brandId:campaignBrandId.trim()}: {}) };
   const buttonStyle = { padding: "11px 16px", background: "#124d83", color: "white", border: 0, borderRadius: 8, cursor: "pointer", fontWeight: 700 as const };
   const fieldStyle = { width: "100%", boxSizing: "border-box" as const, padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, marginTop: 6 };
-  return <main style={{ maxWidth: 1080, margin: "0 auto", padding: "42px 24px", fontFamily: "Arial,sans-serif" }}>
-    <div style={{ color: "#124d83", fontSize: 13, fontWeight: 800, letterSpacing: 2 }}>MEDSOL · AI MARKETING OS</div>
-    <h1 style={{ fontSize: 38, marginBottom: 8 }}>Marketing Command Center</h1>
-    <p style={{ color: "#64748b" }}>Authenticated marketing workspace · human approval remains mandatory for governed campaigns.</p>
-    <WorkspaceNavigation authenticated={Boolean(identity)}/>
-    <section id="identity" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
+  return <main className="alpha-shell">
+    <header className="alpha-header">
+      <div><div className="alpha-brand"><span className="alpha-brand-mark" aria-hidden="true">M</span>MEDSOL · AI MARKETING OS</div>
+      <h1>Marketing Command Center</h1>
+      <p>One workspace for campaign strategy, governed AI agents, creative production and operational intelligence.</p></div>
+      <div className="alpha-environment"><strong>Internal Alpha</strong><br/>Offline simulations · Human approval required</div>
+    </header>
+    <WorkspaceNavigation authenticated={Boolean(identity)} focused={focused} onNavigate={navigateWorkspace} onShowAll={()=>setFocused("")}/>
+    <div className="alpha-content">
+    {focused&&<div className="alpha-focus-bar"><strong>{WORKSPACE_LINKS.find(x=>x.id===focused)?.label}</strong><button type="button" onClick={()=>setFocused("")}>Return to all workspaces</button><span className="alpha-subtle">If a workspace is unavailable, sign in with an authorized role or return to the directory.</span></div>}
+    {!focused&&<AlphaExecutiveDashboard authenticated={!!identity} overview={overview} campaigns={campaigns} runs={brainRunsLoaded?brainRuns:null} approvals={pendingApprovals} approvalUnavailable={approvalInboxUnavailable} busy={busy} onRefresh={()=>void perform(async()=>{await loadDashboard();try{setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);}catch(e){setBrainRuns([]);setBrainRunsLoaded(false);if(!(e instanceof MarketingRequestError&&e.status===403))throw e;}})} onNavigate={navigateWorkspace}/>}
+    <section id="identity" hidden={isHidden("identity")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
       <h2 style={{ marginTop: 0 }}>1. Connect to your organization</h2>
       <p style={{ color: "#64748b", fontSize: 13 }}>Sign in through your organization's identity provider. Sessions use encrypted HTTP-only cookies and authenticated requests are proxied server-side.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -155,22 +181,23 @@ export default function Home() {
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
-    <CampaignReadinessBoard identity={identity}/>
-    <CustomerDeliveryDossierStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/>
-    <div id="journey" style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} campaigns={identity?campaigns:[]} products={identity?products:[]}/></div>
-    <div id="creative" style={{scrollMarginTop:120}}><CreativeGovernanceStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} /></div>
-    <div id="social" style={{scrollMarginTop:120}}><CampaignPublicationStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
-    <div id="email" style={{scrollMarginTop:120}}><SyntheticEmailStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
-    <div id="tool-registry" style={{scrollMarginTop:120}}><GovernedToolRegistryStudio identity={identity}/></div>
-    <div id="agent-studio" style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/></div>
-    <div id="provider-trials" style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
-    <div id="integrations" style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
-    <div id="operations" style={{scrollMarginTop:120}}><OperationsConsole key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
+    <div data-workspace-panel hidden={isHidden("readiness-board")}><CampaignReadinessBoard identity={identity}/></div>
+    <div data-workspace-panel hidden={isHidden("delivery-dossier")}><CustomerDeliveryDossierStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
+    <div id="journey" data-workspace-panel hidden={isHidden("journey")} style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} campaigns={identity?campaigns:[]} products={identity?products:[]}/></div>
+    <div id="creative" data-workspace-panel hidden={isHidden("creative")} style={{scrollMarginTop:120}}><CreativeGovernanceStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} /></div>
+    <div id="social" data-workspace-panel hidden={isHidden("social")} style={{scrollMarginTop:120}}><CampaignPublicationStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
+    <div id="email" data-workspace-panel hidden={isHidden("email")} style={{scrollMarginTop:120}}><SyntheticEmailStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
+    <div id="tool-registry" data-workspace-panel hidden={isHidden("tool-registry")} style={{scrollMarginTop:120}}><GovernedToolRegistryStudio identity={identity}/></div>
+    <div id="agent-studio" data-workspace-panel hidden={isHidden("agent-studio")} style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/></div>
+    <div id="provider-trials" data-workspace-panel hidden={isHidden("provider-trials")} style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
+    <div id="integrations" data-workspace-panel hidden={isHidden("integrations")} style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
+    <div id="operations" data-workspace-panel hidden={isHidden("operations")} style={{scrollMarginTop:120}}><OperationsConsole key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
       identity={identity} onRunSelected={id => {
       setBrainRunId(id);setBrainRunDetail(null);setBrainRecovery(null);
+      if(focused)navigateWorkspace("agent-brain");
       void perform(async()=>setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(id))));
     }} /></div>
-    <section id="portfolio" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="portfolio" hidden={isHidden("portfolio")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>2. Portfolio and operational overview</h2>
       <button style={buttonStyle} disabled={busy} onClick={() => perform(loadDashboard)}>Refresh command center</button>
       {overview && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 12, marginTop: 18 }}>
@@ -209,7 +236,7 @@ export default function Home() {
         {agentDetail !== null && <details open><summary>Selected execution audit trace</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agentDetail, null, 2)}</pre></details>}
       </div>
     </section>
-    <section id="strategy" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="strategy" hidden={isHidden("strategy")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>3. Assess and initiate a campaign</h2>
       <label>Marketing objective<textarea style={{ ...fieldStyle, minHeight: 100 }} value={goal} onChange={e => setGoal(e.target.value)} placeholder="Launch an oncology genomics awareness campaign in Egypt" /></label>
       <label style={{ display: "block", marginTop: 14 }}>Existing marketing objective ID (required to create a campaign)<input style={fieldStyle} value={objectiveId} onChange={e => setObjectiveId(e.target.value)} placeholder="UUID from marketing objectives" /></label>
@@ -221,7 +248,7 @@ export default function Home() {
       </div>
       {assessment !== null && <details open style={{ marginTop: 16 }}><summary>Assessment result</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(assessment, null, 2)}</pre></details>}
     </section>
-    <section id="workflow-operations" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="workflow-operations" hidden={isHidden("workflow-operations")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>4. Monitor and recover workflow</h2>
       <label>Workflow execution ID<input style={fieldStyle} value={workflowId} onChange={e => setWorkflowId(e.target.value)} placeholder="Workflow ID" /></label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
@@ -230,7 +257,7 @@ export default function Home() {
       </div>
       {workflow && <><p><strong>Status:</strong> {workflow.status ?? "Unknown"} · <strong>Step:</strong> {workflow.currentStep ?? "Unknown"}</p><details><summary>Workflow details and checkpoints</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(workflow, null, 2)}</pre></details></>}
     </section>
-    <section id="approvals" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="approvals" hidden={isHidden("approvals")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }}>5. Pending human approvals</h2>
       <p style={{ color: "#64748b" }}>Approval decisions require a verified OIDC user and an authorized marketing role. Shared bootstrap tokens cannot approve.</p>
       <button style={buttonStyle} disabled={busy||!identity} onClick={() => perform(loadApprovalInbox)}>Refresh approval inbox</button>
@@ -249,7 +276,7 @@ export default function Home() {
       </div>}
       {pendingApprovals !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", background: "#f1f5f9", padding: 16, borderRadius: 8 }}>{JSON.stringify(pendingApprovals, null, 2)}</pre>}
     </section>
-    <section id="agent-brain" style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
+    <section id="agent-brain" hidden={isHidden("agent-brain")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 20 }}>
       <h2 style={{ marginTop: 0 }} id="brain-operations">Marketing Brain & Learning Intelligence</h2>
       <p style={{ color: "#64748b" }}>Review all agent stages, evidence quarantine and proposed skills. No automatic skill activation or external publishing.</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -257,6 +284,7 @@ export default function Home() {
         <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={() => perform(async () => setBrainAssessment(await call("brain/assess", {requestedOutcome:goal,correlationId:crypto.randomUUID()})))}>Run 13-agent review</button>
         <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => { const [signals,proposals]=await Promise.all([call("learning/signals"),call("learning/proposals")]);setLearningSignals(signals);setSkillProposals(proposals); })}>Refresh learning intelligence</button>
       </div>
+      <AlphaBrainMap key={identity?identity.organizationId+":"+identity.userId:"signed-out"} plan={brainPlan} roster={agents} run={brainRunDetail} authenticated={!!identity} onNavigate={navigateWorkspace}/>
       <div style={{ marginTop: 20, padding: 16, border: "1px solid #dbe4ed", borderRadius: 10 }}>
         <h3>Durable brain execution operations</h3>
         <p style={{ color: "#64748b", fontSize: 13 }}>Only authorized operators may quarantine runs inactive for more than 15 minutes. Quarantine never retries a possibly completed agent action.</p>
@@ -269,14 +297,14 @@ export default function Home() {
         <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginBottom:14 }}>
           <button style={buttonStyle} disabled={busy || !goal.trim()} onClick={()=>perform(async()=>{
             const created=await call("brain/runs",{commandKey:crypto.randomUUID(),requestedOutcome:goal.trim(),
-              ...(objectiveId?{objectiveId}:{}),...(brainCampaignId?{campaignId:brainCampaignId}:{}),market:"MENA"}) as {id:string};
+              ...(brainCampaignId?{campaignId:brainCampaignId}:objectiveId?{objectiveId}:{}),market:"MENA"}) as {id:string};
             setBrainRunId(created.id);
             setBrainRunDetail(created);
-            setBrainRuns(await call("brain/runs") as typeof brainRuns);
+            setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);
           })}>Create durable 13-agent Brain run</button>
           <span style={{fontSize:12,color:"#64748b",alignSelf:"center"}}>The optional worker automatically dispatches pending runs when enabled.</span>
         </div>
-        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => setBrainRuns(await call("brain/runs") as typeof brainRuns))}>Load persisted brain runs</button>
+        <button style={buttonStyle} disabled={busy} onClick={() => perform(async () => {setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);})}>Load persisted brain runs</button>
         {brainRuns.length > 0 && <label style={{ display: "block", marginTop: 12 }}>Select brain run
           <select style={fieldStyle} value={brainRunId} onChange={e => {setBrainRunId(e.target.value);setBrainRunDetail(null);setBrainRecovery(null);setCancelBrainReason("");setQuarantineReason("");}}>
             <option value="">Select run</option>
@@ -288,7 +316,7 @@ export default function Home() {
           <button style={{...buttonStyle,marginLeft:10}} disabled={busy} onClick={() => perform(async () => setBrainRecovery(await call("brain/runs/" + encodeURIComponent(brainRunId) + "/recovery")))}>Inspect crash-recovery evidence (read-only)</button>
           {brainRuns.find(r=>r.id===brainRunId)?.status==="PENDING"&&<button style={{...buttonStyle,marginLeft:10}} disabled={busy} onClick={()=>perform(async()=>{
             setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(brainRunId)+"/execute",{}));
-            setBrainRuns(await call("brain/runs") as typeof brainRuns);
+            setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);
           })}>Execute pending run (synchronous)</button>}
 
           {canManageBrain&&brainRuns.find(r=>r.id===brainRunId)?.status==="PENDING"&&<div style={{marginTop:12}}>
@@ -299,7 +327,7 @@ export default function Home() {
               if(!window.confirm("Cancel this unclaimed run? Already running work cannot be cancelled here."))return;
               await call("brain/runs/"+encodeURIComponent(brainRunId)+"/cancel",{reason:cancelBrainReason.trim()});
               setBrainRunDetail(await call("brain/runs/"+encodeURIComponent(brainRunId)));
-              setBrainRuns(await call("brain/runs") as typeof brainRuns);
+              setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);
               setBrainRecovery(null);setCancelBrainReason("");
             })}>Cancel queued Brain run</button>
           </div>}
@@ -313,7 +341,7 @@ export default function Home() {
               if (!window.confirm("Quarantine this stale run? No agents will be retried automatically.")) return;
               await call("brain/runs/" + encodeURIComponent(brainRunId) + "/quarantine",{reason:quarantineReason.trim()});
               setBrainRunDetail(await call("brain/runs/" + encodeURIComponent(brainRunId)));
-              setBrainRuns(await call("brain/runs") as typeof brainRuns);
+              setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);
               setQuarantineReason("");
             })}>Quarantine stale execution</button>
           </>}
@@ -371,9 +399,9 @@ export default function Home() {
           </details>
         </>}
         <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio
-         onPrepareOfflineWorkflow={manifest=>setOfflineHandoff(previous=>({
+         onPrepareOfflineWorkflow={manifest=>{setOfflineHandoff(previous=>({
           organizationId:identity.organizationId,manifest,revision:(previous?.revision??0)+1
-         }))}/>}</div>
+         }));if(focused)navigateWorkspace("workflow-studio");}}/>}</div>
         <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio
          key={identity?.organizationId??"signed-out"} identity={identity}
          importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
@@ -390,7 +418,8 @@ export default function Home() {
       {learningSignals !== null && <details><summary>Learning evidence and quarantine</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(learningSignals,null,2)}</pre></details>}
       {skillProposals !== null && <details><summary>Governed agent skill proposals</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(skillProposals,null,2)}</pre></details>}
     </section>
-    {error && <p role="alert" style={{ color: "#a11919", padding: 16, background: "#fff1f1", borderRadius: 8 }}>{error}</p>}
+    {error && <p className="alpha-error" role="alert" style={{ color: "#a11919", padding: 16, background: "#fff1f1", borderRadius: 8 }}>{error}</p>}
     <p style={{ marginTop: 24, color: "#64748b", fontSize: 13 }}>Approval decisions require a verified OIDC identity and an authorized database role.</p>
+    </div>
   </main>;
 }

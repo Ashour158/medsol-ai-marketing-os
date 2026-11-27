@@ -34,14 +34,19 @@ export function pinnedStagingIssuer(env:Readonly<Record<string,string|undefined>
   throw new Error('Staging OIDC cannot use shared tenant or bootstrap credentials');
  for(const key of [
   'MARKETING_ENTRA_CLIENT_SECRET','OPENAI_API_KEY','ANTHROPIC_API_KEY',
-  'GOOGLE_API_KEY','GEMINI_API_KEY','META_ACCESS_TOKEN',
+  'GOOGLE_API_KEY','GEMINI_API_KEY','MARKETING_ANTHROPIC_API_KEY','MARKETING_GEMINI_API_KEY','META_ACCESS_TOKEN',
   'FACEBOOK_ACCESS_TOKEN','LINKEDIN_ACCESS_TOKEN','SMTP_PASSWORD',
-  'SENDGRID_API_KEY','MAILGUN_API_KEY','MARKETING_PROVIDER_CREDENTIALS_JSON'
+  'SENDGRID_API_KEY','MAILGUN_API_KEY','MARKETING_PROVIDER_CREDENTIALS_JSON',
+  'MARKETING_INCIDENT_WEBHOOK_URL','MARKETING_INCIDENT_WEBHOOK_HMAC_SECRET'
  ])if(env[key])throw new Error('Staging OIDC rejects external provider credentials: '+key);
  for(const key of [
   'MARKETING_REAL_PROVIDER_PUBLISHING_ENABLED','MARKETING_LIVE_DELIVERY_ENABLED',
-  'MARKETING_PROVIDER_EGRESS_ENABLED','MARKETING_LIVE_CAMPAIGN_EXECUTION_ENABLED'
+  'MARKETING_PROVIDER_EGRESS_ENABLED','MARKETING_LIVE_CAMPAIGN_EXECUTION_ENABLED',
+  'MARKETING_INCIDENT_ALERT_DELIVERY_ENABLED'
  ])if(env[key]&&env[key]!=='false')throw new Error('Staging OIDC forbids live effects: '+key);
+ const modelProvider=env.MARKETING_MODEL_PROVIDER??'disabled';
+ if(!['disabled','simulation'].includes(modelProvider))
+  throw new Error('Staging OIDC permits only disabled or simulated model adapters');
  const issuer=env.MARKETING_OIDC_ISSUER??'';
  if(env.MARKETING_STAGING_OIDC_TRUSTED_ISSUER!==issuer||!issuer)
   throw new Error('Staging OIDC issuer must match independently pinned trusted issuer');

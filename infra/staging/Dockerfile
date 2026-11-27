@@ -2,6 +2,7 @@
 # CI supplies a reviewed/resolved Node base digest and the captured dependency
 # lockfile. Do not build against an unpinned base or an absent lockfile.
 ARG NODE_IMAGE
+ARG RUNTIME_IMAGE
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 ENV CI=true NEXT_TELEMETRY_DISABLED=1
@@ -13,13 +14,19 @@ RUN pnpm exec prisma generate --schema prisma/schema.prisma \
  && pnpm --filter './packages/**' build \
  && pnpm --filter @medsol/api build \
  && pnpm --filter @medsol/web build
-# Preserve workspace symlinks and the generated Prisma runtime at their
-# original absolute path. This first packaging rehearsal retains build
-# dependencies; production minimization and scanner review remain gates.
-FROM ${NODE_IMAGE} AS common
+# Minimal maintained Ubuntu LTS runtime. Noble's OpenSSL 3.0 branch is
+# not affected by CVE-2026-107494 and CVE-2026-124709 (Ubuntu security tracker).
+# Do not copy the builder OS or npm/Corepack. Apply available signed distro
+# updates, preserve package metadata and scan the actual resulting filesystem.
+FROM ${RUNTIME_IMAGE} AS common
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
-COPY --from=build --chown=node:node /app /app
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libssl3t64 libstdc++6 libgcc-s1 zlib1g \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=build --chown=65532:65532 /app /app
+ENV PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 \
     MARKETING_EXTERNAL_EFFECTS_ENABLED=false \
     MARKETING_AI_REASONING_ENABLED=false \
@@ -28,7 +35,8 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 \
     MARKETING_PROVIDER_EGRESS_ENABLED=false \
     MARKETING_LIVE_DELIVERY_ENABLED=false \
     MARKETING_LIVE_CAMPAIGN_EXECUTION_ENABLED=false
-USER node
+USER 65532:65532
+ENTRYPOINT []
 FROM common AS api
 WORKDIR /app/apps/api
 ENV PORT=3001

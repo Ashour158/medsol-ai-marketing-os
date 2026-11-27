@@ -5,6 +5,7 @@ set -euo pipefail
 [[ "${CI:-}" == true && "${GITHUB_ACTIONS:-}" == true && "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ ]] || { echo 'Disposable GitHub CI only'; exit 1; }
 prefix="alpha-ci-${GITHUB_RUN_ID}"
 db="$prefix-db"; api="$prefix-api"; web="$prefix-web"; network="$prefix-net"; volume="$prefix-data"
+canary="$prefix-canary"; canary_net="$prefix-control-net"
 cleanup() {
   local status=$?
   trap - EXIT
@@ -13,9 +14,9 @@ cleanup() {
     docker logs --tail 40 "$web" 2>/dev/null || true
     docker logs --tail 20 "$db" 2>/dev/null || true
   fi
-  docker rm -f "$web" "$api" "$db" >/dev/null 2>&1 || true
+  docker rm -f "$web" "$api" "$db" "$canary" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
-  docker network rm "$network" >/dev/null 2>&1 || true
+  docker network rm "$network" "$canary_net" >/dev/null 2>&1 || true
   exit "$status"
 }
 trap cleanup EXIT
@@ -23,6 +24,8 @@ docker pull postgres:16
 pg_image="$(docker image inspect postgres:16 --format '{{index .RepoDigests 0}}')"
 [[ "$pg_image" =~ @sha256:[a-f0-9]{64}$ ]]
 docker network create --internal "$network" >/dev/null
+[[ "$(docker network inspect "$network" --format '{{.Internal}}')" == true ]]
+docker network create --internal "$canary_net" >/dev/null
 docker volume create "$volume" >/dev/null
 wait_for() {
   local n=0
@@ -72,5 +75,18 @@ db_start
 test "$(docker exec "$db" psql -X -U marketing_test -d marketing_test -Atc "SELECT count(*) FROM \"Organization\" WHERE \"id\"='alpha-container-fixture' AND \"name\"='Disposable container persistence marker';")" = 1
 test "$(docker exec "$db" psql -X -U marketing_test -d marketing_test -Atc "SELECT count(*) FROM pg_roles WHERE rolname='marketing_r3y_runtime' AND NOT rolsuper AND NOT rolbypassrls AND NOT rolcreaterole AND NOT rolcreatedb;")" = 1
 start_apps
+# Positive control on a separate isolated network; no external internet or
+# live provider is contacted. The tested app namespace must not reach it.
+docker run -d --name "$canary" --network "$canary_net" --read-only --cap-drop ALL \
+  --entrypoint node medsol-alpha-api:ci -e "require('node:http').createServer((q,s)=>s.end('control')).listen(38080,'0.0.0.0')" >/dev/null
+wait_for docker exec "$canary" node -e "$probe" http://127.0.0.1:38080/ 200
+canary_ip="$(docker inspect "$canary" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')"
+[[ "$canary_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+docker run --rm --network "$canary_net" --read-only --cap-drop ALL --entrypoint node medsol-alpha-api:ci -e "$probe" "http://$canary_ip:38080/" 200
+deny='const net=require("node:net");const socket=net.createConnection({host:process.argv[1],port:38080});socket.setTimeout(2000);socket.once("connect",()=>{socket.destroy();process.exit(1)});socket.once("error",()=>process.exit(0));socket.once("timeout",()=>{socket.destroy();process.exit(0)});'
+for service in "$api" "$web"; do
+  docker exec "$service" node -e "$deny" "$canary_ip"
+done
+printf '%s\n' 'CI_ISOLATED_NETWORK_CONTROL_CANARY_DENIED_NOT_HOST_FIREWALL_PROOF' > alpha-isolation-evidence.txt
 printf '%s\n' 'DISPOSABLE_CONTAINER_STARTUP_AND_VOLUME_REPLACEMENT_PASSED_NOT_DEPLOYED' > alpha-container-rehearsal-status.txt
 printf '%s\n' "$pg_image" > alpha-postgres-image.txt

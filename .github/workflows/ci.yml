@@ -516,7 +516,7 @@ jobs:
     name: Alpha offline image packaging rehearsal
     needs: alpha-lock
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     permissions:
       contents: read
     steps:
@@ -541,10 +541,17 @@ jobs:
           docker pull "$base"
           [[ "$base" =~ @sha256:[a-f0-9]{64}$ ]]
           printf '%s\n' "$base" > alpha-base-image.txt
+          # Resolve the maintained Ubuntu LTS runtime once for both images.
+          # Noble uses OpenSSL 3.0, not affected by the two Debian 13 QUIC CVEs.
+          # Signed package updates are applied during the build, then scanned.
+          docker pull ubuntu:24.04
+          runtime="$(docker image inspect ubuntu:24.04 --format '{{index .RepoDigests 0}}')"
+          [[ "$runtime" =~ ^(ubuntu|docker.io/library/ubuntu)@sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$runtime" > alpha-runtime-base-image.txt
           for target in api web; do
-            docker build --file infra/staging/Dockerfile --build-arg "NODE_IMAGE=$base" --target "$target" --tag "medsol-alpha-$target:ci" .
+            docker build --file infra/staging/Dockerfile --build-arg "NODE_IMAGE=$base" --build-arg "RUNTIME_IMAGE=$runtime" --target "$target" --tag "medsol-alpha-$target:ci" .
             docker image inspect "medsol-alpha-$target:ci" --format '{{.Id}} {{.Config.User}}' > "alpha-$target-image.txt"
-            test "$(docker image inspect "medsol-alpha-$target:ci" --format '{{.Config.User}}')" = node
+            test "$(docker image inspect "medsol-alpha-$target:ci" --format '{{.Config.User}}')" = "65532:65532"
           done
       - name: Verify compiled artifacts with zero container network
         run: |
@@ -553,6 +560,10 @@ jobs:
           printf '%s\n' 'PACKAGING_ONLY_NOT_DEPLOYED_NOT_CERTIFIED' > alpha-packaging-status.txt
       - name: Rehearse actual packaged application startup and durable volume replacement
         run: bash infra/staging/alpha-container-rehearsal.sh
+      - name: Scan exact API and web images for OS and library vulnerabilities
+        run: |
+          node --test scripts/quality/alpha-image-vulnerability-gate.test.mjs
+          bash infra/staging/alpha-image-scan.sh
       - name: Preserve local build provenance and candidate lockfile
         if: always()
         uses: actions/upload-artifact@v4
@@ -564,8 +575,16 @@ jobs:
             pnpm-lock.yaml
             alpha-lockfile.sha256
             alpha-base-image.txt
+            alpha-runtime-base-image.txt
             alpha-api-image.txt
             alpha-web-image.txt
             alpha-packaging-status.txt
             alpha-container-rehearsal-status.txt
+            alpha-isolation-evidence.txt
             alpha-postgres-image.txt
+            alpha-scanner-image.txt
+            alpha-image-scan-db.json
+            alpha-api-scan-lineage.json
+            alpha-web-scan-lineage.json
+            alpha-api-vulnerabilities.json
+            alpha-web-vulnerabilities.json

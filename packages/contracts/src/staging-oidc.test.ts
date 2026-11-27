@@ -20,6 +20,8 @@ const good:Record<string,string>={
 describe('T1E self-hosted staging OIDC must never become production or tenant bypass',()=>{
  it('requires explicit self-hosted staging identity with pinned issuer and scoped HTTPS JWKS',()=>{
   expect(pinnedStagingIssuer(good)).toBe(issuer);
+  expect(pinnedStagingIssuer({...good,MARKETING_MODEL_PROVIDER:'simulation'})).toBe(issuer);
+  for(const provider of ['anthropic','gemini','unknown'])expect(()=>pinnedStagingIssuer({...good,MARKETING_MODEL_PROVIDER:provider})).toThrow();
   expect(marketingIdentityProvider(undefined)).toBe('ENTRA');
   expect(()=>marketingIdentityProvider('anything')).toThrow();
   expect(assertStagingDiscoveryUrl(issuer,issuer+'/protocol/openid-connect/auth'))
@@ -47,7 +49,13 @@ describe('T1E self-hosted staging OIDC must never become production or tenant by
    MARKETING_OIDC_JWKS_URL:'https://evil.example/jwks',
    MARKETING_ENTRA_CLIENT_SECRET:'sensitive-entra',
    OPENAI_API_KEY:'sensitive-ai',
-   SMTP_PASSWORD:'smtp-secret'
+   SMTP_PASSWORD:'smtp-secret',
+   MARKETING_ANTHROPIC_API_KEY:'test-rejected',
+   MARKETING_GEMINI_API_KEY:'test-rejected',
+   MARKETING_MODEL_PROVIDER:'openai',
+   MARKETING_INCIDENT_ALERT_DELIVERY_ENABLED:'true',
+   MARKETING_INCIDENT_WEBHOOK_URL:'https://alerts.example/notify',
+   MARKETING_INCIDENT_WEBHOOK_HMAC_SECRET:'test-rejected'
   }))
    expect(()=>pinnedStagingIssuer({...good,[key]:value}),key).toThrow();
  });
