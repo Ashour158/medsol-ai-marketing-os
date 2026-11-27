@@ -16,7 +16,9 @@ printf '%s\n' "$scanner" > alpha-scanner-image.txt
 # Scanner receives exported image archives, never the Docker socket, repository,
 # environment secrets or credentials. DB download is isolated to this CI step.
 for target in api web; do
+  docker image inspect "medsol-alpha-$target:ci" --format '{{json .}}' > "$work/$target-inspect.json"
   docker save "medsol-alpha-$target:ci" -o "$work/images/$target.tar"
+  python3 infra/staging/alpha-scan-lineage.py "$target" "$work/$target-inspect.json" "$work/images/$target.tar" > "alpha-$target-scan-lineage.json"
 done
 docker run --rm --user "$scanner_user" --cap-drop ALL --security-opt no-new-privileges:true \
   --mount "type=bind,src=$work/cache,dst=/cache" "$scanner" \
@@ -31,6 +33,7 @@ for target in api web; do
     image --cache-dir /cache --skip-db-update --skip-java-db-update --offline-scan \
     --scanners vuln --pkg-types os,library --list-all-pkgs --format json \
     --output "/reports/$target.json" --timeout 5m --input "/images/$target.tar"
+  python3 infra/staging/alpha-scan-lineage.py "$target" "$work/$target-inspect.json" "$work/images/$target.tar" | cmp - "alpha-$target-scan-lineage.json"
   cp "$work/reports/$target.json" "alpha-$target-vulnerabilities.json"
 done
 node scripts/quality/alpha-image-vulnerability-gate.mjs
