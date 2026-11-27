@@ -8,7 +8,9 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [roster,setRoster]=useState<Agent[]>([]),[registry,setRegistry]=useState<Registry|null>(null);
  const [name,setName]=useState(""),[slug,setSlug]=useState(""),[mission,setMission]=useState(""),[template,setTemplate]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
- const lock=useRef(false),key=useRef("");
+ const [rehearsalAgent,setRehearsalAgent]=useState(""),[objective,setObjective]=useState(""),[market,setMarket]=useState("");
+ const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean}|null>(null);
+ const lock=useRef(false),key=useRef(""),rehearsalKey=useRef("");
  async function api(path:string,body?:unknown){
   const r=await fetch("/api/marketing/agents"+path,{method:body===undefined?"GET":"POST",cache:"no-store",credentials:"same-origin",...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
   const data=await r.json();if(!r.ok)throw Error(typeof data.message==="string"?data.message:"Specialist operation denied");return data;
@@ -36,6 +38,26 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
    })}>Request independent specialist registration</button>
   </div><h4>Registered paused identities ({registry.records.length})</h4>
   {registry.records.map(row=><article key={row.agentId}><strong>{row.input.name}</strong> · {row.status}<p>{row.agentId} · template {row.input.templateAgentId} · risk {row.templateRisk}</p><p>{row.input.mission}</p></article>)}
+  <h4>Independently reviewed specialist rehearsal</h4>
+  <p>One approved fixture assessment through the canonical template. This does not activate the specialist, change permissions or approve its output. Do not enter confidential or real customer data.</p>
+  <div className="alpha-grid">
+   <label>Rehearsal specialist<select value={rehearsalAgent} disabled={busy} onChange={e=>{setRehearsalAgent(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}><option value="">Choose paused specialist</option>{registry.records.map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
+   <label>Fixture assessment objective<textarea maxLength={500} value={objective} disabled={busy} onChange={e=>{setObjective(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
+   <label>Fixture assessment market<input maxLength={100} value={market} disabled={busy} onChange={e=>{setMarket(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
+   <button type="button" disabled={busy||!rehearsalAgent||objective.trim().length<12||market.trim().length<2} onClick={()=>void run(async()=>{
+    const requestKey=rehearsalKey.current||"fixture-"+crypto.randomUUID();rehearsalKey.current=requestKey;
+    const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true});
+    if(v.fixtureOnly!==true||v.externalEffectsAuthorized!==false||v.autonomousExecutionAuthorized!==false)throw Error("Unexpected rehearsal authority");
+    setRehearsalRef(v.approvalId);setRehearsalResult(null);setNotice("Exact rehearsal review "+v.approvalId+" · "+v.decision+". A different administrator must approve through the Approval inbox.");
+   })}>Request exact specialist rehearsal review</button>
+   <label>Approved specialist rehearsal reference<input value={rehearsalRef} disabled={busy} onChange={e=>{setRehearsalRef(e.target.value);setRehearsalResult(null);}}/></label>
+   <button type="button" disabled={busy||!/^specialist-run-[0-9a-f]{64}$/.test(rehearsalRef)} onClick={()=>void run(async()=>{
+    const v=await api("/specialists/execute-rehearsal",{approvalId:rehearsalRef,fixtureOnly:true});
+    if(v.externalEffectsAuthorized!==false||!["COMPLETED","BLOCKED"].includes(v.status)||typeof v.executionId!=="string")throw Error("Invalid rehearsal result");
+    setRehearsalResult({executionId:v.executionId,status:v.status,replayed:v.replayed===true});
+   })}>Execute approved specialist rehearsal</button>
+  </div>
+  {rehearsalResult&&<div role="status"><strong>{rehearsalResult.status}</strong> · {rehearsalResult.replayed?"Historical receipt (no new execution)":"Draft recorded in AgentExecution"}<p style={{overflowWrap:"anywhere"}}>Execution reference: {rehearsalResult.executionId}</p><p>Output still requires review. No live provider, model or tool call.</p></div>}
   <h4>Registration reviews</h4>{registry.historyCapped&&<p>Showing latest 100 reviews.</p>}
   {registry.reviews.map(row=><div key={row.approvalId} style={{overflowWrap:"anywhere"}}>{row.input.name} · {row.decision} · {row.approvalId}</div>)}</>}
   {notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}
