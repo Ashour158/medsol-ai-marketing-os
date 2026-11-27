@@ -68,7 +68,9 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
   // The single added T5B audited context-preview route extends the original
   // 145-route authenticated inventory. All routes must stay BFF-allowlisted.
   // Phase 5 adds exactly one read-only authenticated trial history route.
-  expect(endpoints).toHaveLength(178);
+  expect(endpoints).toHaveLength(181);
+  for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/agents/specialists",path:"/marketing/agents/specialists"});
+  expect(endpoints).toContainEqual({method:"POST",template:"/marketing/agents/team-preview",path:"/marketing/agents/team-preview"});
   for(const method of ["GET","POST"])expect(endpoints).toContainEqual({method,template:"/marketing/tenancy/offline-subscription",path:"/marketing/tenancy/offline-subscription"});
   expect(endpoints).toContainEqual({method:"GET",template:"/marketing/integrations/trials/history",path:"/marketing/integrations/trials/history"});
   expect(endpoints).toContainEqual({method:"POST",template:"/marketing/brain/runs/:id/cancel",path:"/marketing/brain/runs/id-acceptance/cancel"});
