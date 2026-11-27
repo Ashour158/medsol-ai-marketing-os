@@ -75,9 +75,11 @@ export function readRehearsal(a:Approval):Scope{
    s.schema!=='medsol.offline-specialist-rehearsal.v1'||s.fixtureOnly!==true||s.autonomousExecutionAuthorized!==false||
    s.modelCallsAuthorized!==false||s.toolCallsAuthorized!==false||s.memoryWritesAuthorized!==false||s.externalEffectsAuthorized!==false||
    rehearsalDigest(s)!==a.scopeDigest)throw Error('scope');
-  return rehearsalScope(a.organizationId,a.requestedBy,i,{registrationId:s.registrationId,registrationDigest:s.registrationDigest,
+  const exact=rehearsalScope(a.organizationId,a.requestedBy,i,{registrationId:s.registrationId,registrationDigest:s.registrationDigest,
    templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,templateInstalled:s.templateInstalled,
    capability:s.capability,maxInputBytes:s.maxInputBytes},s.expiresAt);
+  if(rehearsalDigest(exact)!==a.scopeDigest)throw Error('normalized scope');
+  return exact;
  }catch{throw new ConflictException('Invalid exact specialist rehearsal evidence');}
 }
 export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date){
