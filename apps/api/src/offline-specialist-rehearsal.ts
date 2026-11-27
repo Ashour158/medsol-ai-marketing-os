@@ -1,0 +1,93 @@
+import {BadRequestException,ConflictException,ForbiddenException} from '@nestjs/common';
+import type {Approval,Prisma} from '@prisma/client';
+import {createHash} from 'node:crypto';
+import {SPECIALIST_REGISTRATION,readSpecialist} from './offline-specialist.js';
+import {agentReleaseDigest,baselineAgentReleaseManifest,parseAgentReleaseManifest,verifyTrustedAgentReleaseSignature,agentReleaseTrustConfig} from './agent-manifest-release.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
+export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
+const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
+export function rehearsalInput(raw:unknown){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist rehearsal required');
+ const v=raw as Record<string,unknown>;
+ if(Object.keys(v).sort().join(',')!=='agentId,fixtureOnly,market,objective,requestKey'||
+ v.fixtureOnly!==true||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey)||
+ typeof v.agentId!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(v.agentId)||
+ typeof v.objective!=='string'||v.objective.trim().length<12||v.objective.length>500||
+ typeof v.market!=='string'||v.market.trim().length<2||v.market.length>100)
+ throw new BadRequestException('Bounded fixture objective, market and specialist identity required');
+ return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const};
+}
+type Input=ReturnType<typeof rehearsalInput>;
+export const rehearsalId=(org:string,key:string)=>'specialist-run-'+hash([org,key]).slice(7);
+export async function currentSpecialistTemplate(tx:Prisma.TransactionClient,org:string,agentId:string){
+ // Existing paused identity remains the registry owner. Row locks fence
+ // administrative changes while the short deterministic rehearsal runs.
+ await tx.$queryRaw`SELECT "id" FROM "Agent" WHERE "organizationId"=${org} AND "id"=${agentId} FOR SHARE`;
+ const row=await tx.agent.findFirst({where:{organizationId:org,id:agentId}});
+ const registrations=await tx.approval.findMany({where:{organizationId:org,objectType:SPECIALIST_REGISTRATION,objectId:agentId,decision:'APPROVED'},take:2});
+ const registration=registrations[0];
+ if(!row||row.status!=='PAUSED'||row.version!==1||!Array.isArray(row.capabilities)||row.capabilities.length!==0||
+ registrations.length!==1||!registration?.decidedBy||registration.decidedBy===registration.requestedBy||
+ !registration.decidedAt||!registration.scopeExpiresAt||registration.decidedAt>=registration.scopeExpiresAt)
+ throw new ConflictException('Reviewed paused specialist identity required');
+ const s=readSpecialist(registration);
+ if(s.input.name!==row.name)throw new ConflictException('Specialist registration changed');
+ const templateId=s.input.templateAgentId;
+ await tx.$queryRaw`SELECT "id" FROM "Agent" WHERE "organizationId"=${org} AND "id"=${templateId} FOR SHARE`;
+ const installed=await tx.agent.findFirst({where:{organizationId:org,id:templateId}});
+ let manifest=baselineAgentReleaseManifest(templateId);
+ const version=installed?.version??1;
+ if(installed&&installed.status!=='ACTIVE')throw new ConflictException('Template is paused or retired');
+ if(version>1){
+  await tx.$queryRaw`SELECT "id" FROM "AgentManifestRevision" WHERE "organizationId"=${org} AND "agentId"=${templateId} AND "revision"=${version} FOR SHARE`;
+  const release=await tx.agentManifestRevision.findFirst({where:{organizationId:org,agentId:templateId,revision:version,status:'APPROVED'}});
+  if(!release)throw new ConflictException('Template release unavailable');
+  manifest=parseAgentReleaseManifest(release.manifest);
+  if(manifest.agentId!==templateId||release.digest!==agentReleaseDigest(manifest)||
+    !verifyTrustedAgentReleaseSignature(manifest,release.signature,release.signerKeyId,agentReleaseTrustConfig()))
+   throw new ConflictException('Template release is untrusted');
+ }
+ if(installed&&(!Array.isArray(installed.capabilities)||JSON.stringify([...installed.capabilities].sort())!==JSON.stringify([...manifest.capabilities].sort())))
+ throw new ConflictException('Template capability metadata changed');
+ if(!manifest.capabilities.includes(s.proposedCapability))throw new ConflictException('Template no longer permits specialist draft capability');
+ return{registrationId:registration.id,registrationDigest:registration.scopeDigest!,templateId,templateVersion:version,
+  templateDigest:agentReleaseDigest(manifest),templateInstalled:!!installed,capability:s.proposedCapability,maxInputBytes:manifest.maxInputBytes};
+}
+type Template=Awaited<ReturnType<typeof currentSpecialistTemplate>>;
+export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string){
+ return{schema:'medsol.offline-specialist-rehearsal.v1',organizationId:org,requestedBy:actor,input,
+  ...template,expiresAt,fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
+  modelCallsAuthorized:false as const,toolCallsAuthorized:false as const,memoryWritesAuthorized:false as const,externalEffectsAuthorized:false as const};
+}
+type Scope=ReturnType<typeof rehearsalScope>;
+export function rehearsalDigest(s:Scope){
+ const i=s.input;
+ return hash([s.schema,s.organizationId,s.requestedBy,i.agentId,i.requestKey,i.objective,i.market,i.fixtureOnly,
+  s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
+  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized]);
+}
+export function readRehearsal(a:Approval):Scope{
+ try{
+  const s=a.scope as unknown as Scope,i=rehearsalInput(s.input);
+  if(a.objectType!==SPECIALIST_REHEARSAL||a.id!==rehearsalId(a.organizationId,i.requestKey)||
+   a.objectId!==i.agentId||a.organizationId!==s.organizationId||a.requestedBy!==s.requestedBy||!a.requestedBy||
+   a.requiredAuthority!=='HUMAN_MARKETING_AUTHORITY'||a.scopeExpiresAt?.toISOString()!==s.expiresAt||
+   s.schema!=='medsol.offline-specialist-rehearsal.v1'||s.fixtureOnly!==true||s.autonomousExecutionAuthorized!==false||
+   s.modelCallsAuthorized!==false||s.toolCallsAuthorized!==false||s.memoryWritesAuthorized!==false||s.externalEffectsAuthorized!==false||
+   rehearsalDigest(s)!==a.scopeDigest)throw Error('scope');
+  return rehearsalScope(a.organizationId,a.requestedBy,i,{registrationId:s.registrationId,registrationDigest:s.registrationDigest,
+   templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,templateInstalled:s.templateInstalled,
+   capability:s.capability,maxInputBytes:s.maxInputBytes},s.expiresAt);
+ }catch{throw new ConflictException('Invalid exact specialist rehearsal evidence');}
+}
+export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date){
+ const s=readRehearsal(a);
+ if(!a.scopeExpiresAt||a.scopeExpiresAt<=now)throw new ConflictException('Specialist rehearsal expired');
+ const requester=await tx.user.findFirst({where:{organizationId:a.organizationId,id:s.requestedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
+ if(!requester?.oidcSubject)throw new ForbiddenException('Current specialist requester required');
+ await assertActorPermissionInTenantTransaction(tx,{organizationId:a.organizationId,userId:requester.id,email:requester.email,role:requester.role,subject:requester.oidcSubject},'MANAGE_TENANT');
+ const current=await currentSpecialistTemplate(tx,a.organizationId,a.objectId);
+ if(rehearsalDigest(rehearsalScope(a.organizationId,s.requestedBy,s.input,current,s.expiresAt))!==a.scopeDigest)
+ throw new ConflictException('Specialist or template changed; request fresh review');
+ return s;
+}
