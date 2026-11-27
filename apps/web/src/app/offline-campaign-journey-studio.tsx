@@ -93,7 +93,7 @@ async function shaText(value:string){
 }
 const dateAt=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 
-export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[]}){
+export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[],campaignHandoff}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[];campaignHandoff?:{organizationId:string;userId:string;campaignId:string;revision:number}|null}){
  const [brands,setBrands]=useState<Brand[]>([]);
  const [brandId,setBrandId]=useState("");
  const [newBrandName,setNewBrandName]=useState("");
@@ -183,6 +183,14 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[identity?.organizationId,identity?.userId]);
 
+ // Prefill only. A selected campaign does not become the loaded campaign
+ // until the existing explicit, tenant-authorized refresh succeeds.
+ useEffect(()=>{
+  if(!identity||!campaignHandoff||campaignHandoff.organizationId!==identity.organizationId||
+   campaignHandoff.userId!==identity.userId||! /^[A-Za-z0-9_-]{1,128}$/.test(campaignHandoff.campaignId))return;
+  setLookupCampaignId(campaignHandoff.campaignId);
+  setNotice("Campaign selected from workspace; load its durable timeline before acting.");
+ },[identity?.organizationId,identity?.userId,campaignHandoff?.revision]);
  const activeApproval=journey?.campaignApprovals.find(a=>a.decision==="PENDING");
  const proposedCreative=journey?.creativeAssets.find(a=>a.revisionId===creative?.revisionId);
  const approvalForCreative=proposedCreative?.approvals.find(a=>a.decision==="PENDING");
