@@ -25,7 +25,7 @@ import {lockSpecialist} from './offline-specialist.js';
    const template=await currentSpecialistTemplate(tx,org,input.agentId);
    const scope=rehearsalScope(org,identity.userId,input,template,new Date(Date.now()+86400000).toISOString());
    await tx.approval.create({data:{id,organizationId:org,objectType:SPECIALIST_REHEARSAL,objectId:input.agentId,
-    requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',requestedBy:identity.userId,scope,scopeDigest:rehearsalDigest(scope),
+    requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R3',requestedBy:identity.userId,scope,scopeDigest:rehearsalDigest(scope),
     scopeExpiresAt:new Date(scope.expiresAt)}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_REQUESTED',objectType:'Agent',objectId:input.agentId,correlationId:id,after:{scopeDigest:rehearsalDigest(scope),externalEffectsAuthorized:false}}});
    return{approvalId:id,decision:'PENDING',...scope,replayed:false};
@@ -48,6 +48,12 @@ import {lockSpecialist} from './offline-specialist.js';
    const prior=await tx.agentExecution.findFirst({where:{organizationId:org,id:executionId}});
    if(prior){
     if(prior.agentId!==scope.input.agentId||prior.correlationId!==id||!['COMPLETED','BLOCKED'].includes(prior.status))throw new ConflictException('Invalid historical specialist execution');
+    const d=prior.decision as Record<string,unknown>|null;
+    if(!d||d.schema!=='medsol.specialist-rehearsal-result.v1'||d.approvalId!==id||d.scopeDigest!==a.scopeDigest||
+     d.agentId!==scope.input.agentId||d.templateAgentId!==scope.templateId||d.templateDigest!==scope.templateDigest||
+     d.fixtureOnly!==true||d.outputHumanApproved!==false||d.autonomousExecutionAuthorized!==false||d.modelCallsAuthorized!==false||
+     d.toolCallsAuthorized!==false||d.memoryWritesAuthorized!==false||d.externalEffectsAuthorized!==false)
+     throw new ConflictException('Historical specialist execution provenance invalid');
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
    await validateRehearsal(tx,a,new Date());
