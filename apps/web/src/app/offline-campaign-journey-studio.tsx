@@ -189,7 +189,15 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
   if(!identity||!campaignHandoff||campaignHandoff.organizationId!==identity.organizationId||
    campaignHandoff.userId!==identity.userId||! /^[A-Za-z0-9_-]{1,128}$/.test(campaignHandoff.campaignId))return;
   setLookupCampaignId(campaignHandoff.campaignId);
-  setNotice("Campaign selected from workspace; load its durable timeline before acting.");
+  // Drop all prior campaign-scoped state on a different selection. Never
+  // offer the previous approval or creative as part of the next campaign.
+  if(campaignHandoff.campaignId!==campaignId){
+   setCampaignId("");setJourney(null);setWorkflowId("");setBrainRunId("");
+   setCreative(null);setPreview(null);setVersionHistory([]);setHistoryId("");
+   setHistoricalPreview(null);setDestinationRef("");setCreativeApprovalId("");
+   setPublicationId("");setSyntheticContacts([]);setObjectiveId("");setBrandId("");setProductId("");
+  }
+  setError("");setNotice("Campaign selected from workspace; load its durable timeline before acting.");
  },[identity?.organizationId,identity?.userId,campaignHandoff?.revision]);
  const activeApproval=journey?.campaignApprovals.find(a=>a.decision==="PENDING");
  const proposedCreative=journey?.creativeAssets.find(a=>a.revisionId===creative?.revisionId);
