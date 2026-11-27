@@ -144,6 +144,8 @@ test('T1E-003 signed viewer cannot bypass canonical permission checks from brows
  await expect(page.getByText('Approval inbox is not available for your current permissions. Your permitted portfolio remains accessible.')).toBeVisible();
  expect((await bff(page,'approvals/pending')).status).toBe(403);
  expect((await bff(page,'integrations/trials/history')).status).toBe(403);
+ expect((await bff(page,'tenancy/offline-subscription')).status).toBe(403);
+ expect((await bff(page,'tenancy/offline-subscription',{})).status).toBe(403);
  expect((await bff(page,'integrations/trials/run',{provider:'OPENAI',scenario:'SUCCESS',requestKey:'viewer-'+randomUUID()})).status).toBe(403);
  await expect(page.locator('#approvals').getByRole('button',{name:'Approve',exact:true})).toHaveCount(0);
  const denied=await bff(page,'assets/offline-raster',{
@@ -187,6 +189,52 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
    'x-organization-id':'r3y-tenant-b','x-marketing-session-id':r.sessionId}
  });
  expect(response.status()).toBe(403);
+ // Phase 6A uses the two actual signed CI identities, canonical approval
+ // commands and real database; no subscription billing or entitlement grant.
+ test.setTimeout(180000);
+ const reviewer=await provisionedSession(request,'reviewer');
+ const invoke=async(who:typeof r,path:string,body?:unknown)=>{
+  const headers={authorization:'Bearer '+who.token,'x-organization-id':tenant('admin'),'x-marketing-session-id':who.sessionId};
+  const res=body===undefined?await request.get(api+'/marketing/'+path,{headers}):await request.post(api+'/marketing/'+path,{headers,data:body});
+  return{status:res.status(),data:await res.json()};
+ };
+ const path='tenancy/offline-subscription';
+ const initial=await invoke(r,path);
+ expect(initial).toMatchObject({status:200,data:{revision:0,state:'NONE',simulatedEntitledActions:[],realEntitlementsGranted:false,billingAuthorized:false}});
+ const end=new Date(Date.now()+30*86400000).toISOString();
+ const command=(action:string,expectedRevision:number,plan='INTERNAL_BASIC',termEndsAt=end)=>({requestKey:'fixture-'+randomUUID(),action,expectedRevision,plan,termEndsAt,fixtureOnly:true});
+ const decide=(approvalId:string,who:'admin'|'reviewer')=>({organizationId:tenant('admin'),approvalId,approverUserId:actor(who),commandId:'subscription-'+randomUUID(),correlationId:'subscription-'+randomUUID(),decision:'APPROVED',rationale:'Independent offline subscription lifecycle review'});
+ const start=command('START',0);
+ const proposed=await invoke(r,path,start);
+ expect(proposed).toMatchObject({status:201,data:{decision:'PENDING',revision:1,realEntitlementsGranted:false}});
+ expect(await invoke(r,path,start)).toMatchObject({status:201,data:{approvalId:proposed.data.approvalId,replayed:true}});
+ expect((await invoke(r,path,{...start,plan:'INTERNAL_TEAM'})).status).toBe(409);
+ expect((await invoke(r,'approvals/decide',decide(proposed.data.approvalId,'admin'))).status).toBe(403);
+ const competing=await invoke(r,path,command('START',0,'INTERNAL_TEAM'));
+ expect(competing.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(proposed.data.approvalId,'reviewer'))).status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(competing.data.approvalId,'reviewer'))).status).toBe(409);
+ expect(await invoke(r,path)).toMatchObject({status:200,data:{state:'ACTIVE',revision:1,simulatedEntitledActions:['RESEARCH_READ','CREATIVE_DRAFT'],externalEffectsAuthorized:false}});
+ const transition=async(action:string,rev:number,plan:string,term:string,state:string)=>{
+  const draft=await invoke(r,path,command(action,rev,plan,term));
+  expect(draft.status,JSON.stringify(draft.data)).toBe(201);
+  const approved=await invoke(reviewer,'approvals/decide',decide(draft.data.approvalId,'reviewer'));
+  expect(approved.status,JSON.stringify(approved.data)).toBe(201);
+  const current=await invoke(r,path);
+  expect(current).toMatchObject({status:200,data:{state,revision:rev+1,realEntitlementsGranted:false,billingAuthorized:false,productionCertified:false}});
+  return current.data;
+ };
+ expect((await transition('CHANGE',1,'INTERNAL_TEAM',end,'ACTIVE')).simulatedEntitledActions).toContain('CAMPAIGN_WRITE');
+ expect((await transition('SUSPEND',2,'INTERNAL_TEAM',end,'SUSPENDED')).simulatedEntitledActions).toEqual([]);
+ await transition('RESUME',3,'INTERNAL_TEAM',end,'ACTIVE');
+ const renewed=new Date(Date.now()+60*86400000).toISOString();
+ await transition('RENEW',4,'INTERNAL_TEAM',renewed,'ACTIVE');
+ expect((await transition('CANCEL',5,'INTERNAL_TEAM',renewed,'CANCELLED')).simulatedEntitledActions).toEqual([]);
+ expect((await invoke(r,path,command('START',6))).status).toBe(409);
+ const foreign=await provisionedSession(request,'foreign');
+ const foreignRead=await request.get(api+'/marketing/'+path,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId}});
+ expect(foreignRead.status()).toBe(200);
+ expect(await foreignRead.json()).toMatchObject({organizationId:tenant('foreign'),revision:0,reviews:[]});
 });
 test('T1E-007 signed staging operator drives real offline campaign workflow, no real providers',async({page})=>{
  await login(page);
