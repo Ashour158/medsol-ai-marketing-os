@@ -158,6 +158,8 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/tenancy/roles') createTenantRole(@Req() req:any,@Body() b:any){return this.tenantRoles.create(req.identity,b)}
  @Post('marketing/tenancy/roles/assign') assignTenantRole(@Req() req:any,@Body() b:any){return this.tenantRoles.assign(req.identity,b?.userId,b?.roleId)}
  @Post('marketing/tenancy/roles/:id/disable') disableTenantRole(@Param('id') id:string,@Req() req:any,@Body() b:any){return this.tenantRoles.disable(req.identity,id,b?.reason)}
+ @Get('marketing/tenancy/offline-subscription') offlineSubscription(@Req() req:any){return this.tenantBrands.subscription(req.identity.organizationId,req.identity)}
+ @Post('marketing/tenancy/offline-subscription') requestOfflineSubscription(@Req() req:any,@Body() b:any){return this.tenantBrands.requestSubscription(req.identity.organizationId,req.identity,b)}
  @Get('marketing/tenancy/activation-reviews') activationReviews(@Req() req:any){return this.tenantBrands.activationReviews(req.identity.organizationId,req.identity)}
  @Post('marketing/tenancy/activation-reviews') requestActivationReview(@Req() req:any,@Body() b:any){return this.tenantBrands.requestActivationReview(req.identity.organizationId,req.identity,b)}
  @Get('marketing/tenancy/brands') listTenantBrands(@Req() req:any){return this.tenantBrands.listBrands(req.identity.organizationId)}
