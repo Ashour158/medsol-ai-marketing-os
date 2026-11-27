@@ -93,6 +93,26 @@ test('T1E-002 independent reviewer uses actual interactive signed OIDC session',
  expect(me.status).toBe(200);
  expect(me.data.userId).toBe(actor('reviewer'));
  expect(me.data.organizationId).toBe(tenant('reviewer'));
+ test.setTimeout(180000);
+ await page.getByRole('navigation',{name:'Marketing workspaces'}).getByRole('link',{name:'Provider contract trials'}).click();
+ const lab=page.locator('#provider-trials');
+ await lab.getByRole('button',{name:'Load trial provider catalog'}).click();
+ await lab.getByRole('combobox',{name:'Failure/success scenario'}).selectOption('AUTH_REJECTED');
+ await lab.getByRole('button',{name:'Run selected scenario across catalog'}).click();
+ await expect(lab.getByRole('status').filter({hasText:'14/14 observed · Matrix evidence recorded'})).toBeVisible({timeout:90000});
+ const results=lab.getByRole('table',{name:'Cross-provider rehearsal results'});
+ await expect(results.getByRole('row')).toHaveCount(15);
+ await expect(results.getByRole('cell',{name:'BLOCKED',exact:true})).toHaveCount(14);
+ const history=await bff(page,'integrations/trials/history');
+ expect(history.status).toBe(200);
+ expect(history.data).toMatchObject({organizationId:tenant('reviewer'),fixtureOnly:true,realAccountsConnected:0,actualProviderRequests:0,externalEffectsAuthorized:false,productionCertified:false});
+ expect(history.data.entries.filter((e:any)=>e.scenario==='AUTH_REJECTED'&&e.contractOutcome==='BLOCKED').length).toBeGreaterThanOrEqual(14);
+ await page.reload();
+ await page.getByRole('button',{name:'Load authenticated workspace'}).click();
+ await page.getByRole('navigation',{name:'Marketing workspaces'}).getByRole('link',{name:'Provider contract trials'}).click();
+ await lab.getByRole('button',{name:'Refresh stored trial evidence'}).click();
+ await expect(lab.getByRole('table',{name:'Stored provider trial evidence'})).toBeVisible();
+ await expect(lab.getByRole('table',{name:'Cross-provider rehearsal results'})).toHaveCount(0);
 });
 test('T1E-003 signed viewer cannot bypass canonical permission checks from browser',async({page})=>{
  await login(page,'viewer');
@@ -101,6 +121,8 @@ test('T1E-003 signed viewer cannot bypass canonical permission checks from brows
  await expect(page.locator('#portfolio').getByText('active Objectives',{exact:true})).toBeVisible();
  await expect(page.getByText('Approval inbox is not available for your current permissions. Your permitted portfolio remains accessible.')).toBeVisible();
  expect((await bff(page,'approvals/pending')).status).toBe(403);
+ expect((await bff(page,'integrations/trials/history')).status).toBe(403);
+ expect((await bff(page,'integrations/trials/run',{provider:'OPENAI',scenario:'SUCCESS',requestKey:'viewer-'+randomUUID()})).status).toBe(403);
  await expect(page.locator('#approvals').getByRole('button',{name:'Approve',exact:true})).toHaveCount(0);
  const denied=await bff(page,'assets/offline-raster',{
   brandId,title:'Forged offline creative',
