@@ -184,10 +184,24 @@ export class TenantBrandService{
   id(actor.organizationId,'agency tenant');
   id(clientTenantId,'client tenant');id(brandId,'brand');
   if(campaignId!==undefined)id(campaignId,'campaign');
-  await this.roles.assertActorPermission(actor,'READ_PORTFOLIO');
   return this.db.$transaction(async tx=>{
    const org=actor.organizationId;
    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+   // Lock the current agency actor before the canonical role check. A
+   // concurrent user disable/reassignment cannot leave this read relying on
+   // a separately committed authorization snapshot.
+   const users=await tx.$queryRaw<Array<{tenantRoleDefinitionId:string|null}>>`
+    SELECT "tenantRoleDefinitionId" FROM "User"
+    WHERE "id"=${actor.userId} AND "organizationId"=${org}
+      AND "oidcSubject"=${actor.subject} AND "disabledAt" IS NULL FOR SHARE
+   `;
+   if(users.length!==1)throw new ForbiddenException('Current agency actor unavailable');
+   const roleId=users[0]!.tenantRoleDefinitionId;
+   if(roleId)await tx.$queryRaw`
+    SELECT "id" FROM "TenantRoleDefinition"
+    WHERE "id"=${roleId} AND "organizationId"=${org} FOR SHARE
+   `;
+   await assertActorPermissionInTenantTransaction(tx,actor,'READ_PORTFOLIO');
    // FOR SHARE freezes any revocation until the read transaction commits.
    // A concurrent revoked-grant transaction will serialize before or after
    // this read; no post-revocation grant can be accepted by a later read.
