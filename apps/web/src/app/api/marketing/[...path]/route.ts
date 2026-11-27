@@ -98,7 +98,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         ))
       )) ||
       (resource === "tenancy" && !(
-       (path.length===2 && (id==="brands"||id==="agency-grants"||id==="roles"||id==="activation-reviews") &&
+       (path.length===2 && (id==="brands"||id==="agency-grants"||id==="roles"||id==="activation-reviews"||id==="offline-subscription") &&
         (request.method==="GET"||request.method==="POST")) ||
        (path.length===3 && id==="roles" && action==="assign" && request.method==="POST") ||
        (path.length===4 && id==="roles" && !!action && operation==="disable" &&
