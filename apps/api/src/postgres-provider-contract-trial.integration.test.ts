@@ -90,7 +90,33 @@ describe('R2/R3 provider protocol trials with actual PostgreSQL OIDC and ledger'
     expect(JSON.stringify(audits)).not.toContain('REAL_SECRET_NEVER_ACCEPT');
     expect(audits.every(x=>(x.after as any).externalEffectsAuthorized===false))
      .toBe(true);
+    // Phase 5: every provider crosses the same authenticated owner and
+    // canonical durable receipts; history is bounded and redacted.
+    const observed=[];
+    for(const provider of catalog.providers)for(const scenario of ['SUCCESS','AUTH_REJECTED','TIMEOUT_AFTER_ACCEPT'] as const){
+     const row=await service.run(org,identity,{provider,scenario,requestKey:'matrix-'+randomUUID()});
+     expect(row).toMatchObject({provider,scenario,fixtureOnly:true,actualProviderRequests:0,actualModelCalls:0,actualMcpCalls:0,actualA2aCalls:0,verifiedRemoteReceipts:0,automaticRetryAllowed:false,externalEffectsAuthorized:false});
+     if(scenario==='AUTH_REJECTED')expect(row.contractOutcome).toBe('BLOCKED');
+     if(scenario==='TIMEOUT_AFTER_ACCEPT')expect(row.contractOutcome).toBe('OUTCOME_UNKNOWN');
+     observed.push(row);
+    }
+    expect(observed).toHaveLength(42);
+    const history=await service.history(org,identity);
+    expect(history).toMatchObject({organizationId:org,fixtureOnly:true,actualProviderRequests:0,realAccountsConnected:0,productionCertified:false,externalEffectsAuthorized:false,windowCapped:false,limit:100});
+    expect(history.entries).toHaveLength(44);
+    for(const r of observed)expect(history.entries.find(e=>e.trialRef===r.trialRef)).toMatchObject({provider:r.provider,scenario:r.scenario,contractOutcome:r.contractOutcome,verifiedRemoteReceipts:0});
+    expect(JSON.stringify(history)).not.toContain('TRIAL_ONLY_NOT_A_REAL_CREDENTIAL');
+    expect(JSON.stringify(history)).not.toContain(requestKey);
+    expect((await service.history(foreign,foreignIdentity)).entries.map(e=>e.trialRef)).toEqual([foreignTrial.trialRef]);
+    await expect(service.history(foreign,identity)).rejects.toThrow('administrator');
+    await expect(service.history(org,{...identity,role:'VIEWER'})).rejects.toThrow('administrator');
+    expect(await db.providerCredential.count({where:{organizationId:org}})).toBe(0);
+    expect(await db.integrationConnection.count({where:{organizationId:org}})).toBe(0);
+    // Corrupted evidence must not be treated as verified fixture history.
+    await db.commandReceipt.create({data:{organizationId:org,commandId:'PROVIDER_TRIAL:corrupt-'+randomUUID(),commandType:'PROVIDER_CONTRACT_TRIAL',correlationId:first.trialRef,status:'COMPLETED',response:{inputDigest:'invalid'}}});
+    await expect(service.history(org,identity)).rejects.toThrow('Invalid stored offline trial evidence');
     await db.user.update({where:{id:admin},data:{disabledAt:new Date()}});
+    await expect(service.history(org,identity)).rejects.toThrow('matching OIDC');
     await expect(service.run(org,identity,{
      provider:'GEMINI',scenario:'SUCCESS',requestKey:'disabled-'+randomUUID()}))
      .rejects.toThrow('matching OIDC');

@@ -69,6 +69,45 @@ export class ProviderContractTrialService{
     externalEffectsAuthorized:false};
   });
  }
+ /** Read only existing canonical receipts. No new integration state or
+  * credential authority, and never echo raw receipt JSON or request keys. */
+ async history(org:string,identity:VerifiedIdentity){
+  return this.scoped(org,async tx=>{
+   await this.admin(tx,org,identity);
+   const rows=await tx.commandReceipt.findMany({where:{organizationId:org,commandType:'PROVIDER_CONTRACT_TRIAL',status:'COMPLETED'},
+    orderBy:[{createdAt:'desc'},{id:'desc'}],take:101,
+    select:{commandId:true,correlationId:true,response:true,createdAt:true}});
+   const entries=rows.slice(0,100).map(row=>{
+    const corrupt=()=>{throw new ConflictException('Invalid stored offline trial evidence');};
+    if(!row.commandId.startsWith('PROVIDER_TRIAL:'))return corrupt();
+    const requestKey=row.commandId.slice('PROVIDER_TRIAL:'.length);
+    if(!/^[A-Za-z0-9_-]{8,80}$/.test(requestKey))return corrupt();
+    const ref=trialRefFor({organizationId:org,requestKey});
+    const raw=row.response;
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))return corrupt();
+    const receipt=raw as Record<string,unknown>;
+    const value=receipt.result;
+    if(!value||typeof value!=='object'||Array.isArray(value))return corrupt();
+    const v=value as Record<string,unknown>;
+    let provider,scenario;
+    try{provider=assertTrialProvider(v.provider);scenario=assertTrialScenario(v.scenario);}
+    catch{return corrupt();}
+    const digest='sha256:'+createHash('sha256').update(JSON.stringify(['medsol-offline-provider-trial-input-v1',org,provider,scenario])).digest('hex');
+    if(row.correlationId!==ref||v.trialRef!==ref||receipt.inputDigest!==digest||
+     v.fixtureOnly!==true||typeof v.contractOutcome!=='string'||!['FIXTURE_MATCH','HTTP_ACCEPTED_UNVERIFIED','BLOCKED','OUTCOME_UNKNOWN','CONTRACT_REJECTED'].includes(v.contractOutcome)||
+     ['actualProviderRequests','actualEmailsSent','actualPostsPublished','actualModelCalls','actualMcpCalls','actualA2aCalls','verifiedRemoteReceipts'].some(k=>v[k]!==0)||
+     ['accountOwnershipVerified','appEntitlementVerified','senderDomainVerified','externalEffectsAuthorized','automaticRetryAllowed'].some(k=>v[k]!==false)||
+     typeof v.fixtureReadbackMatches!=='boolean'||typeof v.mockHttpExchanges!=='number'||!Number.isSafeInteger(v.mockHttpExchanges)||v.mockHttpExchanges<0||v.mockHttpExchanges>6)
+     return corrupt();
+    return{trialRef:ref,provider,scenario,contractOutcome:v.contractOutcome as ProviderTrialResult['contractOutcome'],
+     fixtureReadbackMatches:v.fixtureReadbackMatches,mockHttpExchanges:v.mockHttpExchanges,
+     observedAt:row.createdAt.toISOString(),fixtureOnly:true as const,externalEffectsAuthorized:false as const,
+     verifiedRemoteReceipts:0 as const,automaticRetryAllowed:false as const};
+   });
+   return{organizationId:org,entries,windowCapped:rows.length>100,limit:100,fixtureOnly:true,
+    actualProviderRequests:0,realAccountsConnected:0,externalEffectsAuthorized:false,productionCertified:false};
+  });
+ }
  async run(org:string,identity:VerifiedIdentity,raw:unknown){
   if(!raw||typeof raw!=='object'||Array.isArray(raw))
    throw new BadRequestException('Strict trial request required');

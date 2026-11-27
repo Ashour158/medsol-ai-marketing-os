@@ -13,8 +13,11 @@ const actor=(role:string):VerifiedIdentity=>({
  email:"offline@example.invalid",subject:"oidc-offline",role
 });
 describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
- it("T03-025 covers all 179 real API method/path decorators in the single permission registry",()=>{
-  expect(endpoints).toHaveLength(179);
+ it("T03-025 covers all 180 real API method/path decorators in the single permission registry",()=>{
+  expect(endpoints).toHaveLength(180);
+  expect(endpoints).toContainEqual({method:"GET",pattern:"/marketing/integrations/trials/history",route:"/marketing/integrations/trials/history"});
+  expect(permissionForMarketingRoute('GET','/marketing/integrations/trials/history')).toBe('READ_TENANCY');
+  expect(hasMarketingPermission(actor('VIEWER'),'READ_TENANCY')).toBe(false);
   expect(permissionForMarketingRoute('POST','/marketing/brain/runs/id-acceptance/cancel')).toBe('DECIDE_APPROVAL');
   expect(hasMarketingPermission(actor('VIEWER'),'DECIDE_APPROVAL')).toBe(false);
   expect(permissionForMarketingRoute('GET','/marketing/audience/loyalty/id-acceptance')).toBe('READ_TENANCY');
@@ -64,7 +67,7 @@ describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
  });
  it("T03-027 fails closed for unregistered and genuinely external publishing routes",()=>{
   for(const path of ["/marketing/email/send","/marketing/publications/publish",
-   "/marketing/audience/export","/marketing/integrations/oauth/token",
+   "/marketing/audience/export","/marketing/integrations/oauth/token","/marketing/integrations/trials/history",
    "/marketing/approvals/override","/marketing/users/impersonate","/marketing/products/synthetic-price-proposals/apply","/marketing/campaigns/id-acceptance/channel-plans/dispatch","/marketing/audience/message-rehearsals/send","/marketing/tenancy/activation-reviews/activate"]){
    for(const method of ["POST","DELETE"])
     expect(()=>permissionForMarketingRoute(method,path),method+" "+path).toThrow("permission registry");
