@@ -113,8 +113,7 @@ describe('R2/R3 provider protocol trials with actual PostgreSQL OIDC and ledger'
     expect(await db.providerCredential.count({where:{organizationId:org}})).toBe(0);
     expect(await db.integrationConnection.count({where:{organizationId:org}})).toBe(0);
     // Corrupted evidence must not be treated as verified fixture history.
-    const stored=await db.commandReceipt.findFirstOrThrow({where:{organizationId:org,commandId:'PROVIDER_TRIAL:'+requestKey}});
-    await db.commandReceipt.update({where:{id:stored.id},data:{response:{inputDigest:'invalid',result:first}}});
+    await db.commandReceipt.create({data:{organizationId:org,commandId:'PROVIDER_TRIAL:corrupt-'+randomUUID(),commandType:'PROVIDER_CONTRACT_TRIAL',correlationId:first.trialRef,status:'COMPLETED',response:{inputDigest:'invalid'}}});
     await expect(service.history(org,identity)).rejects.toThrow('Invalid stored offline trial evidence');
     await db.user.update({where:{id:admin},data:{disabledAt:new Date()}});
     await expect(service.history(org,identity)).rejects.toThrow('matching OIDC');
