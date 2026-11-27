@@ -195,6 +195,8 @@ jobs:
         run: node --test scripts/quality/r3y-real-stack-evidence.test.mjs
       - name: Bind R3-Y real browser passes to same-run non-bypass RLS and no-provider preflight
         run: node scripts/quality/r3y-real-stack-evidence.mjs --input apps/web/r3y-playwright-report/r3y-results.json --output r3y-real-stack-evidence.json
+      - name: Verify Phase 2 host configuration rejects deployment bypass and secret leakage
+        run: node --test apps/api/scripts/alpha-host-deployment-preflight.nodecheck.mjs
       - name: Enforce operator staging PostgreSQL TLS and routing negative regression corpus
         run: node --test apps/api/scripts/t1g-staging-db-policy.nodecheck.mjs
       - name: Validate T1E staging configuration and dry-run operator provisioning with no external contact
@@ -580,6 +582,9 @@ jobs:
             alpha-web-image.txt
             alpha-packaging-status.txt
             alpha-container-rehearsal-status.txt
+            alpha-packaged-login-before.txt
+            alpha-packaged-login-after.txt
+            alpha-packaged-identity-status.txt
             alpha-isolation-evidence.txt
             alpha-postgres-image.txt
             alpha-scanner-image.txt
