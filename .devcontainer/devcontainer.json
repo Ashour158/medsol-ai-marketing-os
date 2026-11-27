@@ -4,13 +4,13 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "postCreateCommand": "sudo corepack enable && corepack prepare pnpm@10.12.4 --activate && pnpm install --no-frozen-lockfile && pnpm exec prisma generate --schema prisma/schema.prisma && pnpm --filter './packages/**' build",
+  "postCreateCommand": "sudo corepack enable && corepack prepare pnpm@10.12.4 --activate && pnpm install --frozen-lockfile && pnpm exec prisma generate --schema prisma/schema.prisma && pnpm --filter './packages/**' build",
   "forwardPorts": [
     3000
   ],
   "portsAttributes": {
     "3000": {
-      "label": "Medsol local preview — GitHub authenticated only",
+      "label": "Medsol private development preview (not a deployed Alpha)",
       "onAutoForward": "notify",
       "visibility": "private"
     }
@@ -22,7 +22,9 @@
     "MARKETING_REAL_PROVIDER_PUBLISHING_ENABLED": "false",
     "MARKETING_PROVIDER_EGRESS_ENABLED": "false",
     "MARKETING_LIVE_DELIVERY_ENABLED": "false",
-    "MARKETING_LIVE_CAMPAIGN_EXECUTION_ENABLED": "false"
+    "MARKETING_LIVE_CAMPAIGN_EXECUTION_ENABLED": "false",
+    "MARKETING_MODEL_PROVIDER": "disabled",
+    "MARKETING_INCIDENT_ALERT_DELIVERY_ENABLED": "false"
   },
   "customizations": {
     "vscode": {
@@ -32,5 +34,8 @@
         "dbaeumer.vscode-eslint"
       ]
     }
+  },
+  "otherPortsAttributes": {
+    "onAutoForward": "ignore"
   }
 }
