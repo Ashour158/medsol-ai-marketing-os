@@ -8,6 +8,9 @@ scanner='ghcr.io/aquasecurity/trivy@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/cache" "$work/images" "$work/reports"
+# With all capabilities dropped, root cannot bypass host-owned directory permissions.
+# Use the owning runner UID/GID rather than relaxing permissions or adding capabilities.
+scanner_user="$(id -u):$(id -g)"
 docker pull "$scanner"
 printf '%s\n' "$scanner" > alpha-scanner-image.txt
 # Scanner receives exported image archives, never the Docker socket, repository,
@@ -15,13 +18,13 @@ printf '%s\n' "$scanner" > alpha-scanner-image.txt
 for target in api web; do
   docker save "medsol-alpha-$target:ci" -o "$work/images/$target.tar"
 done
-docker run --rm --cap-drop ALL --security-opt no-new-privileges:true \
+docker run --rm --user "$scanner_user" --cap-drop ALL --security-opt no-new-privileges:true \
   --mount "type=bind,src=$work/cache,dst=/cache" "$scanner" \
   image --cache-dir /cache --download-db-only --timeout 5m
 test -s "$work/cache/db/metadata.json"
 cp "$work/cache/db/metadata.json" alpha-image-scan-db.json
 for target in api web; do
-  docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges:true \
+  docker run --rm --user "$scanner_user" --network none --cap-drop ALL --security-opt no-new-privileges:true \
     --mount "type=bind,src=$work/cache,dst=/cache" \
     --mount "type=bind,src=$work/images,dst=/images,readonly" \
     --mount "type=bind,src=$work/reports,dst=/reports" "$scanner" \
