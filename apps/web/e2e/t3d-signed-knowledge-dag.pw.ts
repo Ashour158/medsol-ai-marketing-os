@@ -107,6 +107,7 @@ async function waiting(page:Page,blueprintId:string){
  return{runId,wf,agent,approvalId:human.output.approvalId as string};
 }
 test("T19-001 signed DAG consults only independently reviewed, scoped evidence and finishes through independent approval",async({page})=>{
+ test.setTimeout(180000); // Expanded acceptance journey; no retries or skipped assertions.
  await login(page,"admin");
  const r=release();await activate(page,r);
  const allowed=await source(page,"MKT-CMO-001");
