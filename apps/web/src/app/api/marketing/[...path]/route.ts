@@ -166,12 +166,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       (resource === "agents" && !(
         (request.method === "GET" && (
           path.length === 1 ||
-          (path.length === 2 && ["executions","operations","budget","manifests"].includes(id??"")) ||
+          (path.length === 2 && ["executions","operations","budget","manifests","specialists"].includes(id??"")) ||
           (path.length === 3 && id === "executions" && !!action) ||
           (path.length === 4 && id === "manifests" && action === "baseline" && !!operation)
         )) ||
         (request.method === "POST" && (
-          (path.length === 2 && (id === "manifests"||id === "team-preview")) ||
+          (path.length === 2 && (id === "manifests"||id === "team-preview"||id === "specialists")) ||
           (path.length === 3 && id === "manifests" && action === "preview") ||
           (path.length === 4 && id === "manifests" && !!action &&
            ["approve","activate","revoke","rollback"].includes(operation??""))
