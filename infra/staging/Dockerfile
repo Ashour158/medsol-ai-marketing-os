@@ -14,13 +14,19 @@ RUN pnpm exec prisma generate --schema prisma/schema.prisma \
  && pnpm --filter './packages/**' build \
  && pnpm --filter @medsol/api build \
  && pnpm --filter @medsol/web build
-# Minimal runtime: do not copy the builder OS, npm, Corepack, shells or package managers.
-# Preserve the workspace dependency links and generated Prisma runtime for the
-# first compatibility rehearsal; pruning workspace dev dependencies is separate.
+# Minimal maintained Ubuntu LTS runtime. Noble's OpenSSL 3.0 branch is
+# not affected by CVE-2026-107494 and CVE-2026-124709 (Ubuntu security tracker).
+# Do not copy the builder OS or npm/Corepack. Apply available signed distro
+# updates, preserve package metadata and scan the actual resulting filesystem.
 FROM ${RUNTIME_IMAGE} AS common
 WORKDIR /app
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates libssl3t64 libstdc++6 libgcc-s1 zlib1g \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build --chown=65532:65532 /app /app
-ENV PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin
+ENV PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 \
     MARKETING_EXTERNAL_EFFECTS_ENABLED=false \
     MARKETING_AI_REASONING_ENABLED=false \
