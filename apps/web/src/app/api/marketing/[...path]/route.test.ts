@@ -67,7 +67,9 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
  it("T16-001 forwards every approved API campaign/agent/creative/consent route through one authenticated BFF",async()=>{
   // The single added T5B audited context-preview route extends the original
   // 145-route authenticated inventory. All routes must stay BFF-allowlisted.
-  expect(endpoints).toHaveLength(175);
+  // Phase 5 adds exactly one read-only authenticated trial history route.
+  expect(endpoints).toHaveLength(176);
+  expect(endpoints).toContainEqual({method:"GET",template:"/marketing/integrations/trials/history",path:"/marketing/integrations/trials/history"});
   expect(endpoints).toContainEqual({method:"POST",template:"/marketing/brain/runs/:id/cancel",path:"/marketing/brain/runs/id-acceptance/cancel"});
   expect(endpoints).toContainEqual({method:"GET",template:"/marketing/audience/loyalty/:id",path:"/marketing/audience/loyalty/id-acceptance"});
   expect(endpoints).toContainEqual({method:"POST",template:"/marketing/audience/loyalty",path:"/marketing/audience/loyalty"});
@@ -166,6 +168,7 @@ describe("R3-U authenticated web boundary contract across actual API inventory",
    ["POST","/marketing/audience/loyalty/redeem-live"],
    ["POST","/marketing/tenancy/activation-reviews/activate"],
    ["POST","/marketing/products"],
+   ["POST","/marketing/integrations/trials/history"],
    ["POST","/marketing/tools/registrations/id-1/dispatch"]] as const){
    expect((await call(path,method)).status).toBe(404);
   }
