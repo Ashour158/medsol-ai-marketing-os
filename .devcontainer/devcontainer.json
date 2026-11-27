@@ -37,5 +37,6 @@
   },
   "otherPortsAttributes": {
     "onAutoForward": "ignore"
-  }
+  },
+  "postStartCommand": "bash .devcontainer/start-private-preview.sh"
 }
