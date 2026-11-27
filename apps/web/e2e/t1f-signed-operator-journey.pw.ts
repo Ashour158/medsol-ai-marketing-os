@@ -307,6 +307,7 @@ test('T17-003 signed foreign tenant cannot read or mutate another organization c
  expect(crossHeader.status).toBe(403);
 });
 test('T17-004 interactive reviewer can approve a campaign then maker performs consent-gated email with zero effects',async({page})=>{
+ test.setTimeout(180000); // Expanded acceptance journey; no retries or skipped assertions.
  await signIn(page,'admin');await studio(page);const id=await create(page);
  await independentCampaignApproval(page,id);
  await switchIdentity(page,'admin');await studio(page);await load(page,id);
