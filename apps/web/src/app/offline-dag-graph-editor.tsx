@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useId,useMemo,useState} from "react";
 import {OFFLINE_EDITOR_NODE_TYPES,readOfflineEditorManifest,
  addOfflineEditorNode,removeOfflineEditorNode,addOfflineEditorEdge,
  removeOfflineEditorEdge,layoutOfflineEditor,
@@ -12,6 +12,7 @@ const button={padding:"8px 12px",borderRadius:7,border:0,background:"#124d83",
 export default function OfflineDagGraphEditor({json,onChange}:{
  json:string;onChange:(next:string)=>void
 }){
+ const arrowId=useId().replaceAll(":","");
  const [agents,setAgents]=useState<Agent[]>([]);
  const [id,setId]=useState("new-review");
  const [type,setType]=useState<EditorNodeType>("APPROVAL");
@@ -66,7 +67,7 @@ export default function OfflineDagGraphEditor({json,onChange}:{
     background:"#f8fafc",border:"1px solid #e2e8f0"}}>
     <svg role="img" aria-label="Directed offline workflow graph"
      width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-     <defs><marker id="dag-arrow" markerWidth="7" markerHeight="7"
+     <defs><marker id={arrowId} markerWidth="7" markerHeight="7"
       refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z"
        fill="#64748b"/></marker></defs>
      {graph.draft.edges.map((e,i)=>{
@@ -74,7 +75,7 @@ export default function OfflineDagGraphEditor({json,onChange}:{
       if(!a||!b)return null;
       return <path key={i} d={`M ${a.x+196} ${a.y+30} C ${a.x+225} ${a.y+30},
        ${b.x-30} ${b.y+30}, ${b.x} ${b.y+30}`}
-       stroke="#64748b" strokeWidth="1.7" fill="none" markerEnd="url(#dag-arrow)"/>;
+       stroke="#64748b" strokeWidth="1.7" fill="none" markerEnd={`url(#${arrowId})`}/>;
      })}
      {positions.map(n=><g key={n.id}>
       <rect x={n.x} y={n.y} width="196" height="65" rx="9"
