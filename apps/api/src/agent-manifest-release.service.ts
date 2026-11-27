@@ -10,6 +10,9 @@ import {agentReleaseDigest,agentReleaseTrustConfig,
  baselineAgentReleaseManifest,parseAgentReleaseManifest,
  verifyTrustedAgentReleaseSignature} from './agent-manifest-release.js';
 
+import {parseTeamAssembly,assembleOfflineTeam,type TeamMemberEvidence} from './offline-team-assembly.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
+import {SPECIALIST_REGISTRATION,specialistInput,specialistScope,specialistDigest,specialistApprovalId,readSpecialist,lockSpecialist} from './offline-specialist.js';
 const agent=(id:unknown)=>{
  const base=AGENT_ROSTER.find(a=>a.id===id);
  if(!base)throw new BadRequestException('Canonical agent ID required');
@@ -80,6 +83,83 @@ export class AgentManifestReleaseService{
   });
  }
  /** Returns canonical bytes for independent offline signing; no key or permission is granted. */
+ async specialistRegistry(organizationId:string,identity:VerifiedIdentity){
+  return this.transaction(organizationId,async tx=>{
+   await this.authorize(tx,organizationId,identity);
+   await assertActorPermissionInTenantTransaction(tx,identity,'READ_TENANCY');
+   const reviews=await tx.approval.findMany({where:{organizationId,objectType:SPECIALIST_REGISTRATION},orderBy:[{createdAt:'desc'},{id:'desc'}],take:101});
+   const installed=await tx.agent.findMany({where:{organizationId,id:{startsWith:'MKT-SPECIALIST-'}},take:101,orderBy:{id:'asc'}});
+   if(installed.length>100)throw new ConflictException('Specialist registry exceeds bounded inventory');
+   const records=[];
+   for(const row of installed){
+    const approved=await tx.approval.findMany({where:{organizationId,objectType:SPECIALIST_REGISTRATION,objectId:row.id,decision:'APPROVED'},take:2});
+    if(approved.length!==1||!approved[0]!.decidedBy||approved[0]!.decidedBy===approved[0]!.requestedBy||
+     !approved[0]!.decidedAt||!approved[0]!.scopeExpiresAt||approved[0]!.decidedAt!>=approved[0]!.scopeExpiresAt!||
+     row.status!=='PAUSED'||row.version!==1||!Array.isArray(row.capabilities)||row.capabilities.length!==0)
+     throw new ConflictException('Invalid paused specialist evidence');
+    const scope=readSpecialist(approved[0]!);
+    if(row.name!==scope.input.name)throw new ConflictException('Specialist identity metadata changed');
+    records.push({approvalId:approved[0]!.id,...scope,status:'PAUSED',installedVersion:1});
+   }
+   return{organizationId,records,reviews:reviews.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readSpecialist(a)})),
+    historyCapped:reviews.length>100,fixtureOnly:true,executionAuthorized:false,externalEffectsAuthorized:false};
+  });
+ }
+ async requestSpecialist(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  const input=specialistInput(raw),approvalId=specialistApprovalId(organizationId,input.requestKey);
+  // READ COMMITTED plus transaction-local advisory lock serializes proposals
+  // and decisions using the same canonical tenant scope.
+  return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+   await this.authorize(tx,organizationId,identity);
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await lockSpecialist(tx,organizationId);
+   const prior=await tx.approval.findFirst({where:{organizationId,id:approvalId}});
+   if(prior){
+    const scope=readSpecialist(prior);
+    if(scope.requestedBy!==identity.userId||JSON.stringify(scope.input)!==JSON.stringify(input))
+     throw new ConflictException('Immutable specialist request key already used');
+    return{approvalId,decision:prior.decision,...scope,replayed:true};
+   }
+   const scope=specialistScope(organizationId,identity.userId,input,new Date(Date.now()+86400000).toISOString());
+   if(await tx.agent.findFirst({where:{organizationId,id:scope.agentId}}))
+    throw new ConflictException('Specialist identity already registered');
+   await tx.approval.create({data:{id:approvalId,organizationId,objectType:SPECIALIST_REGISTRATION,objectId:scope.agentId,
+    requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',requestedBy:identity.userId,scope,scopeDigest:specialistDigest(scope),
+    scopeExpiresAt:new Date(scope.reviewExpiresAt)}});
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REVIEW_REQUESTED',
+    objectType:SPECIALIST_REGISTRATION,objectId:scope.agentId,correlationId:approvalId,after:{scopeDigest:specialistDigest(scope),executionAuthorized:false}}});
+   return{approvalId,decision:'PENDING',...scope,replayed:false};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
+ }
+ async teamPreview(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  const input=parseTeamAssembly(raw);
+  return this.transaction(organizationId,async tx=>{
+   await this.authorize(tx,organizationId,identity);
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   const evidence:TeamMemberEvidence[]=[];
+   for(const member of input.members){
+    const row=await tx.agent.findFirst({where:{organizationId,id:member.agentId}});
+    const version=row?.version??1;
+    if(version!==member.expectedVersion||row&&row.status!=='ACTIVE')
+     throw new ConflictException('Team member release changed or paused');
+    let manifest=baselineAgentReleaseManifest(member.agentId);
+    if(version>1){
+     const release=await tx.agentManifestRevision.findFirst({where:{organizationId,agentId:member.agentId,revision:version,status:'APPROVED'}});
+     if(!release)throw new ConflictException('Current team member release unavailable');
+     manifest=parseAgentReleaseManifest(release.manifest);
+     if(manifest.agentId!==member.agentId||release.digest!==agentReleaseDigest(manifest)||
+      !verifyTrustedAgentReleaseSignature(manifest,release.signature,release.signerKeyId,agentReleaseTrustConfig()))
+      throw new ConflictException('Current team member release untrusted');
+    }
+    if(row&&(!Array.isArray(row.capabilities)||JSON.stringify([...row.capabilities].sort())!==JSON.stringify([...manifest.capabilities].sort())))
+     throw new ConflictException('Installed capabilities disagree with current release');
+    evidence.push({agentId:member.agentId,version,digest:agentReleaseDigest(manifest),
+     installed:!!row,status:row?.status??'NOT_INSTALLED',capabilities:manifest.capabilities});
+   }
+   return{organizationId,...assembleOfflineTeam(input,evidence)};
+  });
+ }
  async preview(organizationId:string,identity:VerifiedIdentity,raw:unknown){
   return this.transaction(organizationId,async tx=>{
    await this.authorize(tx,organizationId,identity);
