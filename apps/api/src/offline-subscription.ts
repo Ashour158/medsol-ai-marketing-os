@@ -65,9 +65,7 @@ export function readSubscription(a:Approval):Scope{
    a.requestedBy!==s.requestedBy||!a.requestedBy||s.organizationId!==a.organizationId||s.schema!=='medsol.offline-subscription.v1'||
    a.requiredAuthority!=='HUMAN_MARKETING_AUTHORITY'||!a.scopeExpiresAt||
    s.revision!==i.expectedRevision+1||s.plan!==i.plan||s.termEndsAt!==i.termEndsAt||
-   s.state!==({SUSPEND:'SUSPENDED',CANCEL:'CANCELLED'} as Record<string,string>)[i.action]&&
-    s.state!=='ACTIVE'||
-   (i.action==='SUSPEND'&&s.state!=='SUSPENDED')||(i.action==='CANCEL'&&s.state!=='CANCELLED')||
+   s.state!==(i.action==='SUSPEND'?'SUSPENDED':i.action==='CANCEL'?'CANCELLED':'ACTIVE')||
    s.fixtureOnly!==true||s.billingAuthorized!==false||s.realEntitlementsGranted!==false||s.externalEffectsAuthorized!==false||
    subscriptionDigest({...s,input:i})!==a.scopeDigest)throw Error('scope');
   return{...s,input:i};
@@ -100,7 +98,7 @@ export async function validateSubscriptionDecision(tx:Prisma.TransactionClient,a
  const s=readSubscription(a);
  if(reviewer===s.requestedBy)throw new ForbiddenException('Independent subscription reviewer required');
  await lockSubscription(tx,a.organizationId);
- if(a.scopeExpiresAt!<=now)throw new ConflictException('Offline subscription review expired');
+ if(!a.scopeExpiresAt||a.scopeExpiresAt<=now)throw new ConflictException('Offline subscription review expired');
  const requester=await tx.user.findFirst({where:{organizationId:a.organizationId,id:s.requestedBy,disabledAt:null},select:{id:true,role:true,email:true,oidcSubject:true}});
  if(!requester?.oidcSubject)throw new ConflictException('Subscription requester unavailable');
  await assertActorPermissionInTenantTransaction(tx,{organizationId:a.organizationId,userId:requester.id,role:requester.role,email:requester.email,subject:requester.oidcSubject},'MANAGE_TENANT');
