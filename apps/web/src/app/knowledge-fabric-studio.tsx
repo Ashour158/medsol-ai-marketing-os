@@ -35,6 +35,8 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
  const [collectionPermitted,setCollectionPermitted]=useState(false);
  const [noPersonalData,setNoPersonalData]=useState(false);
  const [scope,setScope]=useState("MKT-SCI-001,MKT-STR-001");
+ const [specialistExpiry,setSpecialistExpiry]=useState("");
+ const specialistScope=scope.split(",").some(s=>s.trim().startsWith("MKT-SPECIALIST-"));
  const [accessMode,setAccessMode]=useState("AGENT_SCOPED");
  const [query,setQuery]=useState("sequencing genomics");
  const [results,setResults]=useState<Result|null>(null);
@@ -123,12 +125,17 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
      <select style={field} value={accessMode}
       onChange={e=>setAccessMode(e.target.value)}>
       <option value="REVIEWERS_ONLY">Human reviewers only</option>
-      <option value="AGENT_SCOPED">Specified canonical agents</option>
+      <option value="AGENT_SCOPED">Specified registered agents</option>
      </select></label>
    </div>
    {accessMode==="AGENT_SCOPED"&&<label style={{display:"block",
     fontSize:13,marginTop:9}}>Allowed agent IDs (comma separated)
     <input style={field} value={scope} onChange={e=>setScope(e.target.value)}/></label>}
+   {accessMode==="AGENT_SCOPED"&&specialistScope&&<fieldset style={{border:"1px solid #cbd5e1",padding:10,marginTop:9}}>
+    <legend>Exclusive specialist fixture</legend>
+    <p>Use exactly one reviewed specialist ID, no source URL or governed import, and synthetic material only. This does not share the source with the canonical template or other agents.</p>
+    <label>Specialist source expiry (within 30 days)<input type="date" style={field} value={specialistExpiry} onChange={e=>setSpecialistExpiry(e.target.value)}/></label>
+   </fieldset>}
    <label style={{display:"block",fontSize:13,marginTop:9}}>Source content (plain text)
     <textarea style={{...field,minHeight:130}} value={content}
      onChange={e=>setContent(e.target.value)} spellCheck={false}/>
@@ -148,12 +155,14 @@ export default function KnowledgeFabricStudio({identity}:{identity:Identity|null
     <label style={{display:"block"}}><input type="checkbox" checked={noPersonalData} onChange={e=>setNoPersonalData(e.target.checked)}/> I attest no personal data is included</label>
     <small>Independent review required. No automatic retrieval, legal-rights verification or external request is made.</small>
    </fieldset>}
-   <button disabled={busy||(governed&&(!url.trim()||!rightsRef.trim()||!rightsExpiry||!collectionPermitted||!noPersonalData))} style={button} onClick={()=>void task(async()=>{
-    const key=sourceKey||"local-"+crypto.randomUUID();
+   <button disabled={busy||(accessMode==="AGENT_SCOPED"&&specialistScope&&(!specialistExpiry||!!url.trim()||governed))||(governed&&(!url.trim()||!rightsRef.trim()||!rightsExpiry||!collectionPermitted||!noPersonalData))} style={button} onClick={()=>void task(async()=>{
+    const specialist=accessMode==="AGENT_SCOPED"&&specialistScope;
+    const key=sourceKey||(specialist?"specialist-fixture-":"local-")+crypto.randomUUID();
     if(!sourceKey)setSourceKey(key);
     const payload={sourceKey:key,title,text:content,sourceUrl:url||undefined,
      accessMode,agentScope:accessMode==="AGENT_SCOPED"?
       scope.split(",").map(s=>s.trim()).filter(Boolean):[],
+     ...(specialist?{expiresAt:new Date(specialistExpiry+"T00:00:00Z").toISOString()}:{}),
      ...(governed?{expiresAt:new Date(rightsExpiry+"T23:59:59Z").toISOString(),governedImport:{rightsBasis,scope:collectionScope,
       permissionReference:rightsRef,collectionPermitted,noPersonalData}}:{})};
     setLast(await call("",payload));
