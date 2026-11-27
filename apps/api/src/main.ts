@@ -72,6 +72,8 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  }
  @Get('marketing/agents/manifests/baseline/:id') agentManifestBaseline(@Req() req:any,@Param('id') id:string){return this.agentManifests.baseline(req.identity.organizationId,req.identity,id)}
  @Get('marketing/agents/manifests') agentManifestsList(@Req() req:any){return this.agentManifests.list(req.identity.organizationId,req.identity,req.query?.agentId)}
+ @Get('marketing/agents/specialists') specialistRegistry(@Req() req:any){return this.agentManifests.specialistRegistry(req.identity.organizationId,req.identity)}
+ @Post('marketing/agents/specialists') requestSpecialist(@Req() req:any,@Body() b:any){return this.agentManifests.requestSpecialist(req.identity.organizationId,req.identity,b)}
  @Post('marketing/agents/team-preview') teamPreview(@Req() req:any,@Body() b:any){return this.agentManifests.teamPreview(req.identity.organizationId,req.identity,b)}
  @Post('marketing/agents/manifests/preview') agentManifestPreview(@Req() req:any,@Body() b:any){return this.agentManifests.preview(req.identity.organizationId,req.identity,b?.manifest)}
  @Post('marketing/agents/manifests') agentManifestPropose(@Req() req:any,@Body() b:any){return this.agentManifests.propose(req.identity.organizationId,req.identity,b)}
