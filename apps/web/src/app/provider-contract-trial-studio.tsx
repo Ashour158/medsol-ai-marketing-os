@@ -1,5 +1,5 @@
 "use client";
-import {useRef,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 type Identity={userId:string;organizationId:string;email:string;role:string}|null;
 type Catalog={providers:string[];scenarios:string[];
  protocolModes:Record<string,string>;mockOnly:true;realNetworkCalls:0;
@@ -35,6 +35,8 @@ export default function ProviderContractTrialStudio({identity}:{identity:Identit
  const [matrixTotal,setMatrixTotal]=useState(0);
  const [matrixComplete,setMatrixComplete]=useState(false);
  const running=useRef(false);
+ const mounted=useRef(false);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const admin=identity&&["ADMIN","SUPER_ADMIN"].includes(identity.role.toUpperCase());
  async function call(path:string,body?:unknown){
   const response=await fetch("/api/marketing/integrations/trials/"+path,{
@@ -55,7 +57,7 @@ export default function ProviderContractTrialStudio({identity}:{identity:Identit
   const h=await call("history") as History;
   if(!identity||h.organizationId!==identity.organizationId||h.fixtureOnly!==true||h.productionCertified!==false||h.externalEffectsAuthorized!==false||h.actualProviderRequests!==0||h.realAccountsConnected!==0||h.limit!==100||!Array.isArray(h.entries)||h.entries.length>100||h.entries.some(e=>e.fixtureOnly!==true||e.externalEffectsAuthorized!==false||e.verifiedRemoteReceipts!==0||e.automaticRetryAllowed!==false))
    throw Error("Invalid offline receipt history; do not use as acceptance evidence");
-  setHistory(h);
+  setHistory(h);return h;
  }
  async function rehearseMatrix(){
   if(!catalog||catalog.mockOnly!==true||catalog.realNetworkCalls!==0||catalog.realAccountsConnected!==0||catalog.externalEffectsAuthorized!==false||!Array.isArray(catalog.providers)||catalog.providers.length<1||catalog.providers.length>20||new Set(catalog.providers).size!==catalog.providers.length)
@@ -66,6 +68,7 @@ export default function ProviderContractTrialStudio({identity}:{identity:Identit
   setMatrix([]);setMatrixTotal(providers.length);setMatrixComplete(false);setHistory(null);
   const rows:TrialResult[]=[];
   for(const p of providers){
+   if(!mounted.current)throw Error("Trial workspace closed; remaining trials were not started");
    const observed=await call("run",{provider:p,scenario:selectedScenario,requestKey:"matrix-"+crypto.randomUUID()}) as TrialResult;
    if(observed.provider!==p||observed.scenario!==selectedScenario||observed.fixtureOnly!==true||
     observed.externalEffectsAuthorized!==false||observed.automaticRetryAllowed!==false||
@@ -76,7 +79,9 @@ export default function ProviderContractTrialStudio({identity}:{identity:Identit
     throw Error("Unexpected fixture evidence; matrix stopped without automatic retry");
    rows.push(observed);setMatrix([...rows]);
   }
-  await refreshHistory();setMatrixComplete(true);
+  const stored=await refreshHistory();
+  if(!rows.every(row=>stored.entries.some(e=>e.trialRef===row.trialRef&&e.provider===row.provider&&e.scenario===row.scenario&&e.contractOutcome===row.contractOutcome)))throw Error("Matrix receipt readback incomplete; inspect stored history");
+  setMatrixComplete(true);
  }
  if(!admin)return null;
  return <section style={{background:"white",borderRadius:14,padding:24,marginTop:24}}>
