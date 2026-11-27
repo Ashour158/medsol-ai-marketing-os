@@ -36,6 +36,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from './prisma.service.js';
 import { AGENT_ROSTER } from '@medsol/agent-runtime';
+import {isSpecialistId,assertReviewedSpecialist} from './offline-specialist.js';
 import {reviewedMarketSignals} from './market-signal-diagnostics.js';
 
 type SignalInput={topic:string;sector:string;sourceUrl:string;sourceTitle:string;observedAt:string;sourcePublishedAt?:string;evidence:{summary:string;excerpt?:string}};
@@ -181,12 +182,16 @@ export class MarketingLearningService {
   if(!['REVIEWERS_ONLY','AGENT_SCOPED'].includes(accessMode as string))
    throw new BadRequestException('Unknown knowledge access scope');
   const agents=raw?.agentScope??[];
+  const specialistScope=Array.isArray(agents)&&agents.some(isSpecialistId);
+  if(specialistScope&&(!Array.isArray(agents)||agents.length!==1||!isSpecialistId(agents[0])||accessMode!=='AGENT_SCOPED'||!/^specialist-fixture-[a-zA-Z0-9_-]{12,120}$/.test(sourceKey)||sourceUrl!==null||profileMode||feedbackMode||raw.governedImport!==undefined||!expiresAt||expiresAt.getTime()>Date.now()+30*86400000))
+   throw new ForbiddenException('Specialist sources require a single reviewed specialist, manual fixture key, no URL and expiry within 30 days');
+  if(sourceKey.startsWith('specialist-fixture-')&&!specialistScope)throw new ForbiddenException('Specialist fixture key requires exclusive specialist scope');
   if(feedback&&(!expiresAt||expiresAt.getTime()>Date.now()+90*86400000||accessMode!=='REVIEWERS_ONLY'||!Array.isArray(agents)||agents.length!==0))
    throw new BadRequestException('Synthetic feedback must be reviewer-only and expire within 90 days');
   if(profile&&(!sourceUrl||!expiresAt||expiresAt.getTime()>Date.now()+365*86400000||!Array.isArray(agents)||agents.some(a=>!BUSINESS_PROFILE_AGENTS.includes(a as typeof BUSINESS_PROFILE_AGENTS[number]))))
    throw new BadRequestException('Business profile needs HTTPS provenance, expiry within one year and only designated canonical agents');
   if(!Array.isArray(agents)||agents.length>13||
-   agents.some(x=>typeof x!=='string'||!AGENT_ROSTER.some(a=>a.id===x))||
+   agents.some(x=>typeof x!=='string'||(!AGENT_ROSTER.some(a=>a.id===x)&&!isSpecialistId(x)))||
    new Set(agents).size!==agents.length||
    (accessMode==='AGENT_SCOPED'&&agents.length===0)||
    (accessMode==='REVIEWERS_ONLY'&&agents.length!==0))
@@ -204,6 +209,7 @@ export class MarketingLearningService {
    chunks.map(c=>c.content).join('\n[chunk-boundary]\n'));
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   if(specialistScope){await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');await assertReviewedSpecialist(tx,org,(agents as string[])[0]!);}
    if(feedback&&!await tx.brand.findFirst({where:{organizationId:org,id:feedback.brandId,status:'ACTIVE'},select:{id:true}}))throw new NotFoundException('Active tenant brand not found');
    const previous=await tx.knowledgeDocument.findFirst({where:{
     organizationId:org,sourceKey}});
@@ -290,6 +296,11 @@ export class MarketingLearningService {
     const c=chunks[0],profile=c&&decodeBusinessProfile(c.content);
     if(!profile||chunks.length!==1||c?.ordinal!==0||knowledgeSourceDigest(c.content)!==doc.contentDigest||c.digest!==doc.contentDigest||doc.title!=='Business profile · '+profile.name||!doc.sourceUrl||!doc.expiresAt||doc.expiresAt<=new Date()||doc.agentScope.some(a=>!BUSINESS_PROFILE_AGENTS.includes(a as typeof BUSINESS_PROFILE_AGENTS[number])))
      throw new ConflictException('Invalid or expired immutable business profile evidence');
+   }
+   if(decisionInput==='REVIEW'&&doc.agentScope.some(isSpecialistId)){
+    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+    if(doc.agentScope.length!==1||!doc.sourceKey.startsWith('specialist-fixture-')||doc.sourceUrl!==null||doc.sourceType!=='MANUAL'||doc.accessMode!=='AGENT_SCOPED'||!doc.expiresAt||doc.expiresAt<=new Date())throw new ConflictException('Invalid specialist source ACL');
+    await assertReviewedSpecialist(tx,org,doc.agentScope[0]!);
    }
    if(decisionInput==='REVIEW'&&doc.accessMode==='AGENT_SCOPED'){
     // Never upgrade known instruction-attack data into agent-visible evidence.
@@ -447,9 +458,10 @@ export class MarketingLearningService {
  }
  async contextForAgent(org:string,agentId:string,query:unknown,
   existingTx?:Prisma.TransactionClient){
-  if(!AGENT_ROSTER.some(a=>a.id===agentId))
-   throw new ForbiddenException('Unknown canonical agent cannot retrieve knowledge');
+  if(!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId))
+   throw new ForbiddenException('Unknown agent cannot retrieve knowledge');
   const load=async(tx:Prisma.TransactionClient)=>{
+   if(isSpecialistId(agentId))await assertReviewedSpecialist(tx,org,agentId);
    const base=await this.knowledgeRetrieve(org,query,agentId,3,tx);
    const now=new Date();
    // Every memory is anchored to a still-reviewed, still-allowed source.
@@ -505,10 +517,11 @@ export class MarketingLearningService {
   agentId?:unknown;query?:unknown
  }){
   const agentId=raw?.agentId;
-  if(typeof agentId!=="string"||!AGENT_ROSTER.some(a=>a.id===agentId))
-   throw new ForbiddenException("Canonical agent identity required");
+  if(typeof agentId!=="string"||(!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId)))
+   throw new ForbiddenException("Registered agent identity required");
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,"READ_AUDIT");
+   if(isSpecialistId(agentId))await assertActorPermissionInTenantTransaction(tx,identity,"READ_AUDIT");
    const context=await this.contextForAgent(org,agentId,raw?.query,tx);
    return{...context,agentId,
     inspectionOnly:true as const,sourceReviewIsScientificTruth:false as const,
@@ -532,6 +545,7 @@ export class MarketingLearningService {
    await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
    const doc=await tx.knowledgeDocument.findFirst({where:{organizationId:org,
     id:documentId,status:'REVIEWED'}});
+   if(doc?.agentScope.some(isSpecialistId))throw new ForbiddenException('Specialist-only evidence cannot promote shared learning signals');
    if(!doc||!doc.sourceUrl||doc.expiresAt&&doc.expiresAt<=new Date())
     throw new ConflictException('Only active reviewed HTTPS evidence may enter learning');
    const prior=await tx.learningSignal.findFirst({where:{
@@ -709,8 +723,8 @@ export class MarketingLearningService {
  }){
   const documentId=this.knowledgeId(raw?.documentId,'memory source ID');
   const agentId=required(raw?.agentId,'agent ID',100);
-  if(!AGENT_ROSTER.some(a=>a.id===agentId))
-   throw new ForbiddenException('Memory must use an immutable canonical agent ID');
+  if(!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId))
+   throw new ForbiddenException('Memory must use an immutable registered agent ID');
   const memoryKey=this.knowledgeId(raw?.memoryKey,'memory key');
   if(memoryKey.length<12)throw new BadRequestException('Stable memory key needs 12+ characters');
   const content=required(raw?.content,'memory content',1200);
@@ -724,6 +738,7 @@ export class MarketingLearningService {
   const contentDigest=knowledgeSourceDigest(content);
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   if(isSpecialistId(agentId)){await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');await assertReviewedSpecialist(tx,org,agentId);}
    const doc=await tx.knowledgeDocument.findFirst({where:{
     organizationId:org,id:documentId,status:'REVIEWED',
     accessMode:'AGENT_SCOPED',agentScope:{has:agentId},
@@ -770,6 +785,7 @@ export class MarketingLearningService {
     throw new ForbiddenException('Independent agent memory reviewer required');
    const now=new Date();
    if(decision==='APPROVE'){
+    if(isSpecialistId(memory.agentId)){await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');await assertReviewedSpecialist(tx,org,memory.agentId);}
     if(!safeForAgentEvidence(memory.content))
      throw new ForbiddenException('Risk-marked memory cannot be approved');
     const doc=await tx.knowledgeDocument.findFirst({where:{
@@ -821,10 +837,11 @@ export class MarketingLearningService {
  }
  async memoriesForReviewer(org:string,identity:VerifiedIdentity,agentIdRaw?:unknown){
   const agentId=agentIdRaw===undefined?undefined:required(agentIdRaw,'agent ID',100);
-  if(agentId&&!AGENT_ROSTER.some(a=>a.id===agentId))
-   throw new BadRequestException('Unknown canonical agent');
+  if(agentId&&!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId))
+   throw new BadRequestException('Unknown registered agent');
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'READ_AUDIT');
+   if(agentId&&isSpecialistId(agentId)){await assertActorPermissionInTenantTransaction(tx,identity,'READ_AUDIT');await assertReviewedSpecialist(tx,org,agentId);}
    const rows=await tx.agentKnowledgeMemory.findMany({where:{
     organizationId:org,...(agentId?{agentId}:{})},
     take:100,orderBy:{createdAt:'desc'}});
