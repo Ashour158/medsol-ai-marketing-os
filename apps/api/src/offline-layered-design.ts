@@ -92,3 +92,28 @@ export function renderOfflineLayeredSpec(raw:unknown){
  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="'+height+'" viewBox="0 0 1080 '+height+'">'+content+'</svg>';
  return{spec,sourceDigest:hash(JSON.stringify(spec)),renditionDigest:hash(svg),svg,motionFrames:frames.map(f=>({seconds:f.seconds,svg:f.svg,digest:hash(f.svg)}))};
 }
+
+/** Original, bounded frame-addressing primitive for the existing motion source.
+ * Advisory only: no encoding, persistence, external effects or release authority.
+ * Integer-second source durations make every supported frame boundary exact. */
+export function planOfflineMotionTimeline(raw:unknown,fps:unknown=30){
+ const spec=normalizeOfflineLayeredSpec(raw);
+ if(!spec.motion)throw Error('Motion source required');
+ if(fps!==24&&fps!==25&&fps!==30&&fps!==60)throw Error('Unsupported frame rate');
+ const durations=[spec.motion.openingSeconds,...spec.motion.scenes.map(s=>s.seconds)];
+ let cursor=0;
+ const scenes=durations.map((seconds,index)=>{
+  const startFrame=cursor;
+  cursor+=seconds*fps;
+  return {index,startFrame,endFrameExclusive:cursor};
+ });
+ return {fps,totalFrames:cursor,scenes,videoEncodingVerified:false as const,releaseAuthorized:false as const};
+}
+export function resolveOfflineMotionFrame(raw:unknown,frame:unknown,fps:unknown=30){
+ const timeline=planOfflineMotionTimeline(raw,fps);
+ if(typeof frame!=='number'||!Number.isSafeInteger(frame)||frame<0||frame>=timeline.totalFrames)
+  throw Error('Frame outside motion timeline');
+ const scene=timeline.scenes.find(s=>frame>=s.startFrame&&frame<s.endFrameExclusive);
+ if(!scene)throw Error('Invalid timeline');
+ return {sceneIndex:scene.index,localFrame:frame-scene.startFrame,frame, fps:timeline.fps,releaseAuthorized:false as const};
+}
