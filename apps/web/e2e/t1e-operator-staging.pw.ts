@@ -161,6 +161,8 @@ test('T1E-003 signed viewer cannot bypass canonical permission checks from brows
  expect((await bff(page,'integrations/trials/history')).status).toBe(403);
  expect((await bff(page,'tenancy/offline-subscription')).status).toBe(403);
  expect((await bff(page,'agents/team-preview',{})).status).toBe(403);
+ expect((await bff(page,'agents/specialists')).status).toBe(403);
+ expect((await bff(page,'agents/specialists',{})).status).toBe(403);
  expect((await bff(page,'tenancy/offline-subscription',{})).status).toBe(403);
  expect((await bff(page,'integrations/trials/run',{provider:'OPENAI',scenario:'SUCCESS',requestKey:'viewer-'+randomUUID()})).status).toBe(403);
  await expect(page.locator('#approvals').getByRole('button',{name:'Approve',exact:true})).toHaveCount(0);
@@ -247,7 +249,28 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  await transition('RENEW',4,'INTERNAL_TEAM',renewed,'ACTIVE');
  expect((await transition('CANCEL',5,'INTERNAL_TEAM',renewed,'CANCELLED')).simulatedEntitledActions).toEqual([]);
  expect((await invoke(r,path,command('START',6))).status).toBe(409);
+ // Persistent specialist registration uses the canonical approval ledger,
+ // but must not create executable capability or enter the canonical roster.
+ const specialistPath='agents/specialists';
+ const slug='evidence-'+randomUUID().slice(0,12);
+ const definition={requestKey:'fixture-'+randomUUID(),slug,name:'Synthetic evidence specialist',mission:'Prepare bounded internal evidence review drafts only',templateAgentId:'MKT-SCI-001',fixtureOnly:true};
+ const specialist=await invoke(r,specialistPath,definition);
+ expect(specialist).toMatchObject({status:201,data:{decision:'PENDING',agentId:'MKT-SPECIALIST-'+slug,executionAuthorized:false}});
+ expect(await invoke(r,specialistPath,definition)).toMatchObject({status:201,data:{approvalId:specialist.data.approvalId,replayed:true}});
+ expect((await invoke(r,specialistPath,{...definition,name:'Different specialist'})).status).toBe(409);
+ expect((await invoke(r,specialistPath,{...definition,toolKeys:['MCP']})).status).toBe(400);
+ expect((await invoke(r,'approvals/decide',decide(specialist.data.approvalId,'admin'))).status).toBe(403);
+ expect((await invoke(r,specialistPath)).data.records).toEqual([]);
+ expect((await invoke(reviewer,'approvals/decide',decide(specialist.data.approvalId,'reviewer'))).status).toBe(201);
+ const specialistRead=await invoke(r,specialistPath);
+ expect(specialistRead.data.records).toEqual([expect.objectContaining({agentId:specialist.data.agentId,status:'PAUSED',installedVersion:1,executionAuthorized:false,memoryWritesAuthorized:false})]);
+ expect((await invoke(r,'agents')).data.some((x:any)=>x.id===specialist.data.agentId)).toBe(false);
+ expect((await invoke(r,'agents/team-preview',{blueprintId:'team-invalid-custom',version:1,members:[{agentId:specialist.data.agentId,expectedVersion:1,roleLabel:'Custom specialist'}],fixtureOnly:true})).status).toBe(400);
+ expect((await invoke(r,specialistPath,{...definition,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
  const foreign=await provisionedSession(request,'foreign');
+ const foreignSpecialists=await request.get(api+'/marketing/'+specialistPath,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId}});
+ expect(foreignSpecialists.status()).toBe(200);
+ expect(await foreignSpecialists.json()).toMatchObject({organizationId:tenant('foreign'),records:[],reviews:[]});
  const foreignRead=await request.get(api+'/marketing/'+path,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId}});
  expect(foreignRead.status()).toBe(200);
  expect(await foreignRead.json()).toMatchObject({organizationId:tenant('foreign'),revision:0,reviews:[]});
