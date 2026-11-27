@@ -18,6 +18,7 @@ import R3AcceptanceStudio from "./r3-release-acceptance-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
 import AgentReleaseStudio from "./agent-release-studio";
 import OfflineTeamAssemblyStudio from "./offline-team-assembly-studio";
+import OfflineSpecialistStudio from "./offline-specialist-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
 import OfflineSubscriptionStudio from "./offline-subscription-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
@@ -207,7 +208,7 @@ export default function Home() {
     <div id="social" data-workspace-panel hidden={isHidden("social")} style={{scrollMarginTop:120}}><CampaignPublicationStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
     <div id="email" data-workspace-panel hidden={isHidden("email")} style={{scrollMarginTop:120}}><SyntheticEmailStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
     <div id="tool-registry" data-workspace-panel hidden={isHidden("tool-registry")} style={{scrollMarginTop:120}}><GovernedToolRegistryStudio identity={identity}/></div>
-    <div id="agent-studio" data-workspace-panel hidden={isHidden("agent-studio")} style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/>{identity&&<OfflineTeamAssemblyStudio key={identity.organizationId+":"+identity.userId} identity={identity} onPrepare={manifest=>{setOfflineHandoff(previous=>({organizationId:identity.organizationId,userId:identity.userId,manifest,revision:(previous?.revision??0)+1}));navigateWorkspace("workflow-studio");}}/>}</div>
+    <div id="agent-studio" data-workspace-panel hidden={isHidden("agent-studio")} style={{scrollMarginTop:120}}><AgentReleaseStudio identity={identity}/>{identity&&<OfflineSpecialistStudio key={identity.organizationId+":"+identity.userId} identity={identity}/>}{identity&&<OfflineTeamAssemblyStudio key={identity.organizationId+":"+identity.userId} identity={identity} onPrepare={manifest=>{setOfflineHandoff(previous=>({organizationId:identity.organizationId,userId:identity.userId,manifest,revision:(previous?.revision??0)+1}));navigateWorkspace("workflow-studio");}}/>}</div>
     <div id="provider-trials" data-workspace-panel hidden={isHidden("provider-trials")} style={{scrollMarginTop:120}}><ProviderContractTrialStudio identity={identity}/></div>
     <div id="integrations" data-workspace-panel hidden={isHidden("integrations")} style={{scrollMarginTop:120}}><IntegrationGovernanceStudio identity={identity}/></div>
     <div id="operations" data-workspace-panel hidden={isHidden("operations")} style={{scrollMarginTop:120}}><OperationsConsole key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
