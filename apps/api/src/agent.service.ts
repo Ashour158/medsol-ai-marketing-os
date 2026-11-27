@@ -2,10 +2,77 @@ import {validateAgentInput} from '@medsol/agent-runtime';
 import {agentReleaseDigest,agentReleaseTrustConfig,baselineAgentReleaseManifest,
  parseAgentReleaseManifest,verifyTrustedAgentReleaseSignature}
  from './agent-manifest-release.js';
-import {ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService,withMarketingTenant} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
+import {BadRequestException,ConflictException,NotFoundException,ForbiddenException,Injectable,Optional} from '@nestjs/common'; import {GovernedModelService} from './governed-model.service.js'; import {AgentRegistry,AgentRuntime,AGENT_ROSTER,MarketingDomainAgent} from '@medsol/agent-runtime'; import {PrismaService,withMarketingTenant} from './prisma.service.js'; import {randomUUID} from 'node:crypto';
+import type {VerifiedIdentity} from './oidc-identity.js';
+import type {Prisma} from '@prisma/client';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
+import {SPECIALIST_REHEARSAL,rehearsalInput,rehearsalId,rehearsalScope,rehearsalDigest,readRehearsal,currentSpecialistTemplate,validateRehearsal} from './offline-specialist-rehearsal.js';
+import {lockSpecialist} from './offline-specialist.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
  constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
+ async requestSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
+  const input=rehearsalInput(raw),org=identity.organizationId,id=rehearsalId(org,input.requestKey);
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await lockSpecialist(tx,org);
+   const prior=await tx.approval.findFirst({where:{organizationId:org,id}});
+   if(prior){
+    const scope=readRehearsal(prior);
+    if(scope.requestedBy!==identity.userId||JSON.stringify(scope.input)!==JSON.stringify(input))throw new ConflictException('Immutable specialist rehearsal key already used');
+    return{approvalId:id,decision:prior.decision,...scope,replayed:true};
+   }
+   const template=await currentSpecialistTemplate(tx,org,input.agentId);
+   const scope=rehearsalScope(org,identity.userId,input,template,new Date(Date.now()+86400000).toISOString());
+   await tx.approval.create({data:{id,organizationId:org,objectType:SPECIALIST_REHEARSAL,objectId:input.agentId,
+    requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',requestedBy:identity.userId,scope,scopeDigest:rehearsalDigest(scope),
+    scopeExpiresAt:new Date(scope.expiresAt)}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_REQUESTED',objectType:'Agent',objectId:input.agentId,correlationId:id,after:{scopeDigest:rehearsalDigest(scope),externalEffectsAuthorized:false}}});
+   return{approvalId:id,decision:'PENDING',...scope,replayed:false};
+  });
+ }
+ async executeSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='approvalId,fixtureOnly')throw new BadRequestException('Exact approved rehearsal reference required');
+  const v=raw as {approvalId?:unknown;fixtureOnly?:unknown};
+  if(v.fixtureOnly!==true||typeof v.approvalId!=='string'||!/^specialist-run-[0-9a-f]{64}$/.test(v.approvalId))throw new BadRequestException('Invalid rehearsal reference');
+  const id=v.approvalId,org=identity.organizationId,executionId=id+'-execution';
+  if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist rehearsal requires offline reasoning');
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await tx.$queryRaw`SELECT "id" FROM "Approval" WHERE "organizationId"=${org} AND "id"=${id} FOR UPDATE`;
+   const a=await tx.approval.findFirst({where:{organizationId:org,id,objectType:SPECIALIST_REHEARSAL}});
+   if(!a)throw new NotFoundException('Specialist rehearsal not found in tenant');
+   const scope=readRehearsal(a);
+   if(scope.requestedBy!==identity.userId)throw new ForbiddenException('Only the original reviewed rehearsal operator may execute');
+   if(a.decision!=='APPROVED'||!a.decidedBy||a.decidedBy===a.requestedBy||!a.decidedAt||!a.scopeExpiresAt||a.decidedAt>=a.scopeExpiresAt)throw new ConflictException('Independent exact rehearsal approval required');
+   const prior=await tx.agentExecution.findFirst({where:{organizationId:org,id:executionId}});
+   if(prior){
+    if(prior.agentId!==scope.input.agentId||prior.correlationId!==id||!['COMPLETED','BLOCKED'].includes(prior.status))throw new ConflictException('Invalid historical specialist execution');
+    return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
+   }
+   await validateRehearsal(tx,a,new Date());
+   const reviewer=await tx.user.findFirst({where:{organizationId:org,id:a.decidedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
+   if(!reviewer?.oidcSubject)throw new ForbiddenException('Current independent reviewer required');
+   const reviewerIdentity={organizationId:org,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
+   await assertActorPermissionInTenantTransaction(tx,reviewerIdentity,'MANAGE_TENANT');
+   await assertActorPermissionInTenantTransaction(tx,reviewerIdentity,'DECIDE_APPROVAL');
+   const input={objective:scope.input.objective,market:scope.input.market,fixtureOnly:true};
+   validateAgentInput(input,scope.maxInputBytes);
+   // Invoke only the existing deterministic runtime's canonical template,
+   // never its governed model gateway. This is an explicit rehearsal of a
+   // paused specialist, not general activation or a second engine.
+   const templateDecision=await this.runtime.execute(scope.templateId,{executionId,organizationId:org,correlationId:id,input,capabilities:[scope.capability]});
+   const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
+    templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,fixtureOnly:true,outputHumanApproved:false,
+    autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
+   const status=templateDecision.executionAllowed?'COMPLETED':'BLOCKED';
+   await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
+    input,decision:decision as unknown as Prisma.InputJsonValue,status,completedAt:new Date()}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_EXECUTED',objectType:'AgentExecution',objectId:executionId,correlationId:id,after:{scopeDigest:a.scopeDigest,status,externalEffectsAuthorized:false}}});
+   return{executionId,status,decision,replayed:false,externalEffectsAuthorized:false};
+  });
+ }
  async execute(agentId:string,i:{organizationId:string;correlationId:string;causationId?:string;input:unknown;capabilities:string[]}){
  const manifest=AGENT_ROSTER.find(a=>a.id===agentId);
  if(!manifest||!i.organizationId||!i.correlationId)throw new ForbiddenException('Unknown agent or incomplete execution identity');
