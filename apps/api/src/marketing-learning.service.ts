@@ -853,7 +853,7 @@ export class MarketingLearningService {
   });
  }
  async recordKnowledgeFeedback(org:string,identity:VerifiedIdentity,raw:{
-  query?:unknown;chunkId?:unknown;label?:unknown;reason?:unknown
+  query?:unknown;chunkId?:unknown;label?:unknown;reason?:unknown;agentId?:unknown
  }){
   const query=required(raw?.query,'feedback search query',400);
   if(query.length<3)throw new BadRequestException('Feedback query too short');
@@ -864,22 +864,26 @@ export class MarketingLearningService {
   const reason=required(raw?.reason,'feedback review rationale',800);
   if(reason.length<12)throw new BadRequestException('Detailed feedback rationale required');
   const queryDigest=feedbackDigest(query);
+  const specialist=raw?.agentId;
+  if(specialist!==undefined&&!isSpecialistId(specialist))throw new BadRequestException('Explicit specialist feedback identity required');
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   if(isSpecialistId(specialist)){await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');await assertReviewedSpecialist(tx,org,specialist);}
    const chunk=await tx.knowledgeChunk.findFirst({where:{
     organizationId:org,id:chunkId,
-    document:{status:'REVIEWED',
+    document:{status:'REVIEWED',...(isSpecialistId(specialist)?{accessMode:'AGENT_SCOPED',agentScope:{has:specialist}}:{}),
      OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]}
    }});
    if(!chunk)throw new ConflictException('Feedback must target live reviewed source chunk');
+   if(isSpecialistId(specialist)&&!(await this.knowledgeRetrieve(org,query,specialist,3,tx)).results.some(x=>x.chunkId===chunkId))throw new ConflictException('Feedback must target an observed specialist retrieval result');
    const feedbackId=randomUUID();
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',
     actorId:identity.userId,action:'KNOWLEDGE_RETRIEVAL_FEEDBACK',
     objectType:'KnowledgeChunk',objectId:chunkId,correlationId:feedbackId,
     after:{queryDigest,chunkDigest:chunk.digest,documentId:chunk.documentId,
-     relevance:label as string,reason,autonomousWeightChange:false,
+     relevance:label as string,reason,...(isSpecialistId(specialist)?{specialistAgentId:specialist}:{}),autonomousWeightChange:false,
      automaticSkillRelease:false}}});
-   return{feedbackId,queryDigest,label,
+   return{feedbackId,queryDigest,label,...(isSpecialistId(specialist)?{specialistAgentId:specialist}:{}),
     automaticRankingChange:false,automaticSkillRelease:false};
   });
  }
@@ -901,24 +905,27 @@ export class MarketingLearningService {
   });
  }
  async evaluateKnowledgeRetrieval(org:string,identity:VerifiedIdentity,raw:{
-  cases?:unknown;k?:unknown
+  cases?:unknown;k?:unknown;agentId?:unknown
  }){
+  const specialist=raw?.agentId;
+  if(specialist!==undefined&&!isSpecialistId(specialist))throw new BadRequestException('Explicit specialist evaluation identity required');
   const cases=parseRetrievalCases(raw?.cases);
   const cutoff=raw?.k??5;
   if(!Number.isSafeInteger(cutoff)||(cutoff as number)<1||(cutoff as number)>10)
    throw new BadRequestException('Evaluation cutoff must be 1-10');
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'MANAGE_TENANT');
+   if(isSpecialistId(specialist)){await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');await assertReviewedSpecialist(tx,org,specialist);}
    const ids=[...new Set(cases.flatMap(c=>c.relevantDocumentIds))];
    const count=await tx.knowledgeDocument.count({where:{
-    organizationId:org,id:{in:ids},status:'REVIEWED',
+    organizationId:org,id:{in:ids},status:'REVIEWED',...(isSpecialistId(specialist)?{accessMode:'AGENT_SCOPED',agentScope:{has:specialist}}:{}),
     OR:[{expiresAt:null},{expiresAt:{gt:new Date()}}]
    }});
    if(count!==ids.length)throw new ConflictException(
     'Every expected retrieval source must be reviewed, unexpired and in tenant');
    const observations=[];
    for(const item of cases){
-    const result=await this.knowledgeRetrieve(org,item.query,undefined,cutoff,tx);
+    const result=await this.knowledgeRetrieve(org,item.query,isSpecialistId(specialist)?specialist:undefined,cutoff,tx);
     const rankedDocumentIds=[...new Set(result.results.map(x=>x.documentId))];
     observations.push({id:item.id,rankedDocumentIds,
      relevantDocumentIds:item.relevantDocumentIds});
@@ -929,12 +936,12 @@ export class MarketingLearningService {
     actorId:identity.userId,action:'KNOWLEDGE_RETRIEVAL_EVALUATED',
     objectType:'KnowledgeRetrievalEvaluation',objectId:evaluationId,
     correlationId:evaluationId,after:{
-     ...metrics,observations:metrics.observations.map(x=>({
+     ...metrics,...(isSpecialistId(specialist)?{specialistAgentId:specialist}:{}),observations:metrics.observations.map(x=>({
       ...x,queryDigest:feedbackDigest(cases.find(c=>c.id===x.id)!.query)
      })),
      claimVerification:false,promotionAuthorized:false
     } as Prisma.InputJsonValue}});
-   return{evaluationId,...metrics};
+   return{evaluationId,...metrics,...(isSpecialistId(specialist)?{specialistAgentId:specialist}:{}),automaticSkillRelease:false};
   });
  }
  async createReviewedWatch(org:string,identity:VerifiedIdentity,raw:unknown){
