@@ -10,6 +10,8 @@ import {agentReleaseDigest,agentReleaseTrustConfig,
  baselineAgentReleaseManifest,parseAgentReleaseManifest,
  verifyTrustedAgentReleaseSignature} from './agent-manifest-release.js';
 
+import {parseTeamAssembly,assembleOfflineTeam,type TeamMemberEvidence} from './offline-team-assembly.js';
+import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 const agent=(id:unknown)=>{
  const base=AGENT_ROSTER.find(a=>a.id===id);
  if(!base)throw new BadRequestException('Canonical agent ID required');
@@ -80,6 +82,34 @@ export class AgentManifestReleaseService{
   });
  }
  /** Returns canonical bytes for independent offline signing; no key or permission is granted. */
+ async teamPreview(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  const input=parseTeamAssembly(raw);
+  return this.transaction(organizationId,async tx=>{
+   await this.authorize(tx,organizationId,identity);
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   const evidence:TeamMemberEvidence[]=[];
+   for(const member of input.members){
+    const row=await tx.agent.findFirst({where:{organizationId,id:member.agentId}});
+    const version=row?.version??1;
+    if(version!==member.expectedVersion||row&&row.status!=='ACTIVE')
+     throw new ConflictException('Team member release changed or paused');
+    let manifest=baselineAgentReleaseManifest(member.agentId);
+    if(version>1){
+     const release=await tx.agentManifestRevision.findFirst({where:{organizationId,agentId:member.agentId,revision:version,status:'APPROVED'}});
+     if(!release)throw new ConflictException('Current team member release unavailable');
+     manifest=parseAgentReleaseManifest(release.manifest);
+     if(manifest.agentId!==member.agentId||release.digest!==agentReleaseDigest(manifest)||
+      !verifyTrustedAgentReleaseSignature(manifest,release.signature,release.signerKeyId,agentReleaseTrustConfig()))
+      throw new ConflictException('Current team member release untrusted');
+    }
+    if(row&&(!Array.isArray(row.capabilities)||JSON.stringify([...row.capabilities].sort())!==JSON.stringify([...manifest.capabilities].sort())))
+     throw new ConflictException('Installed capabilities disagree with current release');
+    evidence.push({agentId:member.agentId,version,digest:agentReleaseDigest(manifest),
+     installed:!!row,status:row?.status??'NOT_INSTALLED',capabilities:manifest.capabilities});
+   }
+   return{organizationId,...assembleOfflineTeam(input,evidence)};
+  });
+ }
  async preview(organizationId:string,identity:VerifiedIdentity,raw:unknown){
   return this.transaction(organizationId,async tx=>{
    await this.authorize(tx,organizationId,identity);
