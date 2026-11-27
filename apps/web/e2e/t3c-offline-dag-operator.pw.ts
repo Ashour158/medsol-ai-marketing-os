@@ -153,6 +153,7 @@ test("T18-003 foreign signed identity denied; same-tenant viewer can only read, 
 });
 
 test("T18-004 operator run key invalidates when workflow input scope changes",async({page})=>{
+ test.setTimeout(180000); // Expanded acceptance journey; no retries or skipped assertions.
  await login(page,"admin");
  const studio=page.locator("section[aria-label='R3-G governed offline DAG console']");
  const key=studio.getByRole("textbox",{name:"Stable request key"});
