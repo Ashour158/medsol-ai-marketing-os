@@ -32,6 +32,7 @@ export default function Home() {
   const [focused,setFocused]=useState("");
   const [brainRunsLoaded,setBrainRunsLoaded]=useState(false);
   const [navigationRevision,setNavigationRevision]=useState(0);
+  const [campaignHandoff,setCampaignHandoff]=useState<{organizationId:string;userId:string;campaignId:string;revision:number}|null>(null);
   const focusRoot=focused==="performance"?"operations":["workflow-studio","blueprint-studio","market-intelligence","knowledge","memory","acceptance"].includes(focused)?"agent-brain":focused;
   const isHidden=(id:string)=>!!focusRoot&&focusRoot!==id;
   function navigateWorkspace(id:string){
@@ -42,9 +43,17 @@ export default function Home() {
     if(!focused)return;
     const target=document.getElementById(focused);
     if(!target)return;
+    // The campaign handoff remounts its editor to clear stale state.
+    // Its root is a closed details element inside the navigation wrapper,
+    // not an ancestor. Open that exact workspace before focusing.
+    if(focused==="journey"){
+      const journey=target.querySelector('details[aria-label="Complete offline campaign journey workspace"]');
+      if(journey instanceof HTMLDetailsElement)journey.open=true;
+    }
     let current=target.parentElement;
     while(current){if(current instanceof HTMLDetailsElement)current.open=true;current=current.parentElement;}
     target.scrollIntoView({block:"start"});
+    target.setAttribute("tabindex","-1");target.focus({preventScroll:true});
   },[focused,navigationRevision]);
   const [organizationId, setOrganizationId] = useState("");
   const [goal, setGoal] = useState("");
@@ -59,7 +68,7 @@ export default function Home() {
   const [approvalInboxUnavailable,setApprovalInboxUnavailable]=useState(false);
   const [identity, setIdentity] = useState<{userId:string;organizationId:string;email:string;role:string}|null>(null);
   const [offlineHandoff,setOfflineHandoff]=useState<{
-   organizationId:string;manifest:string;revision:number
+   organizationId:string;userId:string;manifest:string;revision:number
   }|null>(null);
   const [approvalRationale, setApprovalRationale] = useState("");
   const [selectedApprovalId, setSelectedApprovalId] = useState("");
@@ -97,6 +106,13 @@ export default function Home() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Presentation-only handoff: the receiving journey must re-read canonical
+  // campaign data under its signed tenant session before taking any action.
+  function openCampaign(id:string){
+    if(!identity||! /^[A-Za-z0-9_-]{1,128}$/.test(id))return;
+    setCampaignHandoff(previous=>({organizationId:identity.organizationId,userId:identity.userId,campaignId:id,revision:(previous?.revision??0)+1}));
+    navigateWorkspace("journey");
+  }
   async function call(path: string, body?: unknown): Promise<unknown> {
 
     const response = await fetch("/api/marketing/" + path, {
@@ -161,8 +177,8 @@ export default function Home() {
     </header>
     <WorkspaceNavigation authenticated={Boolean(identity)} focused={focused} onNavigate={navigateWorkspace} onShowAll={()=>setFocused("")}/>
     <div className="alpha-content">
-    {focused&&<div className="alpha-focus-bar"><strong>{WORKSPACE_LINKS.find(x=>x.id===focused)?.label}</strong><button type="button" onClick={()=>setFocused("")}>Return to all workspaces</button><span className="alpha-subtle">If a workspace is unavailable, sign in with an authorized role or return to the directory.</span></div>}
-    {!focused&&<AlphaExecutiveDashboard authenticated={!!identity} overview={overview} campaigns={campaigns} runs={brainRunsLoaded?brainRuns:null} approvals={pendingApprovals} approvalUnavailable={approvalInboxUnavailable} busy={busy} onRefresh={()=>void perform(async()=>{await loadDashboard();try{setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);}catch(e){setBrainRuns([]);setBrainRunsLoaded(false);if(!(e instanceof MarketingRequestError&&e.status===403))throw e;}})} onNavigate={navigateWorkspace}/>}
+    {focused&&<div className="alpha-focus-bar"><strong>{WORKSPACE_LINKS.find(x=>x.id===focused)?.label}</strong><button type="button" onClick={()=>navigateWorkspace("identity")}>Account & session</button><button type="button" onClick={()=>setFocused("")}>Return to all workspaces</button><span className="alpha-subtle">If a workspace is unavailable, sign in with an authorized role or return to the directory.</span></div>}
+    {!focused&&<AlphaExecutiveDashboard authenticated={!!identity} overview={overview} campaigns={campaigns} runs={brainRunsLoaded?brainRuns:null} approvals={pendingApprovals} approvalUnavailable={approvalInboxUnavailable} busy={busy} onRefresh={()=>void perform(async()=>{await loadDashboard();try{setBrainRuns(await call("brain/runs") as typeof brainRuns);setBrainRunsLoaded(true);}catch(e){setBrainRuns([]);setBrainRunsLoaded(false);if(!(e instanceof MarketingRequestError&&e.status===403))throw e;}})} onNavigate={navigateWorkspace} onOpenCampaign={openCampaign}/>}
     <section id="identity" hidden={isHidden("identity")} style={{ scrollMarginTop: 120, background: "white", borderRadius: 14, padding: 24, marginTop: 24 }}>
       <h2 style={{ marginTop: 0 }}>1. Connect to your organization</h2>
       <p style={{ color: "#64748b", fontSize: 13 }}>Sign in through your organization's identity provider. Sessions use encrypted HTTP-only cookies and authenticated requests are proxied server-side.</p>
@@ -181,9 +197,9 @@ export default function Home() {
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
-    <div data-workspace-panel hidden={isHidden("readiness-board")}><CampaignReadinessBoard identity={identity}/></div>
+    <div data-workspace-panel hidden={isHidden("readiness-board")}><CampaignReadinessBoard key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} onNavigate={navigateWorkspace} onOpenCampaign={openCampaign}/></div>
     <div data-workspace-panel hidden={isHidden("delivery-dossier")}><CustomerDeliveryDossierStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
-    <div id="journey" data-workspace-panel hidden={isHidden("journey")} style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} campaigns={identity?campaigns:[]} products={identity?products:[]}/></div>
+    <div id="journey" data-workspace-panel hidden={isHidden("journey")} style={{scrollMarginTop:120}}><OfflineCampaignJourneyStudio key={identity?identity.organizationId+":"+identity.userId+":"+(campaignHandoff?.organizationId===identity.organizationId&&campaignHandoff?.userId===identity.userId?campaignHandoff.revision:0):"signed-out"} identity={identity} campaigns={identity?campaigns:[]} products={identity?products:[]} campaignHandoff={campaignHandoff}/></div>
     <div id="creative" data-workspace-panel hidden={isHidden("creative")} style={{scrollMarginTop:120}}><CreativeGovernanceStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} /></div>
     <div id="social" data-workspace-panel hidden={isHidden("social")} style={{scrollMarginTop:120}}><CampaignPublicationStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
     <div id="email" data-workspace-panel hidden={isHidden("email")} style={{scrollMarginTop:120}}><SyntheticEmailStudio key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}/></div>
@@ -204,7 +220,7 @@ export default function Home() {
         {Object.entries(overview).map(([label, value]) => <div key={label} style={{ border: "1px solid #dbe4ed", borderRadius: 12, padding: 16, background: "#f8fafc" }}><div style={{ fontSize: 28, fontWeight: 800, color: "#124d83" }}>{value}</div><div style={{ fontSize: 12, color: "#64748b" }}>{label.replace(/([A-Z])/g, " $1")}</div></div>)}
       </div>}
       <h3>Campaign portfolio</h3>
-      {campaigns.length === 0 ? <p style={{ color: "#64748b" }}>No campaigns loaded.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr><th>Campaign</th><th>Status</th><th>Risk</th><th>Action</th></tr></thead><tbody>{campaigns.map(c => <tr key={c.id}><td style={{ padding: 10, borderTop: "1px solid #e2e8f0" }}><strong>{c.name}</strong><div style={{ fontSize: 12 }}>{c.code}</div></td><td>{c.status}</td><td>{c.riskLevel}</td><td><button disabled={busy} onClick={() => perform(async () => { setCampaignDetail(await call("campaigns/" + encodeURIComponent(c.id))); })}>Inspect</button></td></tr>)}</tbody></table></div>}
+      {campaigns.length === 0 ? <p style={{ color: "#64748b" }}>No campaigns loaded.</p> : <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}><thead><tr><th>Campaign</th><th>Status</th><th>Risk</th><th>Action</th></tr></thead><tbody>{campaigns.map(c => <tr key={c.id}><td style={{ padding: 10, borderTop: "1px solid #e2e8f0" }}><strong>{c.name}</strong><div style={{ fontSize: 12 }}>{c.code}</div></td><td>{c.status}</td><td>{c.riskLevel}</td><td><button disabled={busy} onClick={() => perform(async () => { setCampaignDetail(await call("campaigns/" + encodeURIComponent(c.id))); })}>Inspect</button>{" "}<button disabled={!identity||busy} type="button" onClick={()=>openCampaign(c.id)}>Open campaign</button></td></tr>)}</tbody></table></div>}
       {campaignDetail !== null && <details open style={{ marginTop: 12 }}><summary>Campaign detail, approval records and audit history</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(campaignDetail, null, 2)}</pre></details>}
       {identity && <div style={{ border: "1px solid #dbe4ed", padding: 14, borderRadius: 10, marginBottom: 12 }}>
         <label>New objective name<input style={fieldStyle} value={newObjectiveName} onChange={e => setNewObjectiveName(e.target.value)} /></label>
@@ -398,13 +414,13 @@ export default function Home() {
             <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify({brains:blueprintInventory.brains,personas:blueprintInventory.personas},null,2)}</pre>
           </details>
         </>}
-        <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio
+        <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio key={identity.organizationId+":"+identity.userId}
          onPrepareOfflineWorkflow={manifest=>{setOfflineHandoff(previous=>({
-          organizationId:identity.organizationId,manifest,revision:(previous?.revision??0)+1
-         }));if(focused)navigateWorkspace("workflow-studio");}}/>}</div>
+          organizationId:identity.organizationId,userId:identity.userId,manifest,revision:(previous?.revision??0)+1
+         }));navigateWorkspace("workflow-studio");}}/>}</div>
         <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio
-         key={identity?.organizationId??"signed-out"} identity={identity}
-         importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
+         key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}
+         importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId&&offlineHandoff?.userId===identity?.userId?
           offlineHandoff:null}/></div>
         <div style={{scrollMarginTop:120}}><MarketIntelligenceStudio
          key={identity?identity.organizationId+":"+identity.userId:"signed-out"}

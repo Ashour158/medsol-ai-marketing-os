@@ -3,6 +3,7 @@ import {useEffect,useState} from "react";
 import PersistentLayeredDesignStudio from "./persistent-layered-design-studio";
 import SyntheticChannelPlanStudio from "./synthetic-channel-plan-studio";
 import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
+import {CAMPAIGN_STAGE_ORDER} from "../lib/campaign-readiness";
 import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
@@ -93,7 +94,7 @@ async function shaText(value:string){
 }
 const dateAt=(days:number)=>new Date(Date.now()+days*86400_000).toISOString();
 
-export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[]}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[]}){
+export default function OfflineCampaignJourneyStudio({identity,campaigns=[],products=[],campaignHandoff}:{identity:Identity|null;campaigns?:readonly CampaignChoice[];products?:readonly ProductChoice[];campaignHandoff?:{organizationId:string;userId:string;campaignId:string;revision:number}|null}){
  const [brands,setBrands]=useState<Brand[]>([]);
  const [brandId,setBrandId]=useState("");
  const [newBrandName,setNewBrandName]=useState("");
@@ -183,6 +184,22 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
  // eslint-disable-next-line react-hooks/exhaustive-deps
  },[identity?.organizationId,identity?.userId]);
 
+ // Prefill only. A selected campaign does not become the loaded campaign
+ // until the existing explicit, tenant-authorized refresh succeeds.
+ useEffect(()=>{
+  if(!identity||!campaignHandoff||campaignHandoff.organizationId!==identity.organizationId||
+   campaignHandoff.userId!==identity.userId||! /^[A-Za-z0-9_-]{1,128}$/.test(campaignHandoff.campaignId))return;
+  setLookupCampaignId(campaignHandoff.campaignId);
+  // Drop all prior campaign-scoped state on a different selection. Never
+  // offer the previous approval or creative as part of the next campaign.
+  if(campaignHandoff.campaignId!==campaignId){
+   setCampaignId("");setJourney(null);setWorkflowId("");setBrainRunId("");
+   setCreative(null);setPreview(null);setVersionHistory([]);setHistoryId("");
+   setHistoricalPreview(null);setDestinationRef("");setCreativeApprovalId("");
+   setPublicationId("");setSyntheticContacts([]);setObjectiveId("");setBrandId("");setProductId("");
+  }
+  setError("");setNotice("Campaign selected from workspace; load its durable timeline before acting.");
+ },[identity?.organizationId,identity?.userId,campaignHandoff?.revision]);
  const activeApproval=journey?.campaignApprovals.find(a=>a.decision==="PENDING");
  const proposedCreative=journey?.creativeAssets.find(a=>a.revisionId===creative?.revisionId);
  const approvalForCreative=proposedCreative?.approvals.find(a=>a.decision==="PENDING");
@@ -274,12 +291,13 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
     </button>
     {journey&&<>
      <p style={{fontSize:13}}><strong>Loaded campaign:</strong> {journey.campaign.name} · {journey.campaign.status} · <code>{campaignId}</code></p>
-     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
-      {Object.entries(journey.stages).map(([name,ok])=>
-       <div key={name} style={{padding:9,background:"#f8fafc",borderRadius:6,fontSize:12}}>
-        <strong style={{color:ok?"#166534":"#92400e"}}>{ok?"✓":"○"}</strong>{" "}
-        {name.replace(/([A-Z])/g," $1")}
-       </div>)}
+     <div className="alpha-card" style={{boxShadow:"none",marginTop:12}} aria-label="Campaign milestone progress">
+      <div className="alpha-status-row"><strong>Offline milestones</strong><span className="alpha-pill">{CAMPAIGN_STAGE_ORDER.filter(([key])=>journey.stages[key]===true).length}/{CAMPAIGN_STAGE_ORDER.length} evidenced</span></div>
+      <progress aria-label="Evidenced offline campaign milestones" value={CAMPAIGN_STAGE_ORDER.filter(([key])=>journey.stages[key]===true).length} max={CAMPAIGN_STAGE_ORDER.length} style={{width:"100%",accentColor:"#087c83"}}/>
+      <div className="alpha-grid">{CAMPAIGN_STAGE_ORDER.map(([key,title])=><div className="alpha-stat" key={key}>
+       <span>{title}</span><div style={{fontSize:12,fontWeight:700,color:journey.stages[key]===true?"#166534":"#92400e"}}>{journey.stages[key]===true?"Evidenced":"Not demonstrated"}</div>
+      </div>)}</div>
+      <p className="alpha-subtle">Milestones describe the last loaded canonical offline journey; not live delivery, release permission or scientific validation.</p>
      </div>
      <details style={{marginTop:9}}><summary>Audited actions and simulation evidence</summary>
       <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:11}}>

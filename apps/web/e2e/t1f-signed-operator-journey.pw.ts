@@ -91,6 +91,7 @@ async function independentCampaignApproval(page:Page,id:string){
   hasText:'Independent campaign approval recorded'})).toBeVisible();
 }
 test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social, email and learning journey',async({page})=>{
+ test.setTimeout(180000);
  const creator=await signIn(page,'admin');expect(creator.organizationId).toBe('r3y-tenant-a');
  // Exercise actual profile intake and independent review before the campaign.
  const businessName='Alpha proteomics '+uid();
@@ -261,6 +262,27 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText(campaignId);
  await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('APPROVED');
  await expect(page.getByText(/Loaded campaign product: Synthetic research catalogue product/)).toBeVisible();
+ await expect(page.getByRole('progressbar',{name:'Evidenced offline campaign milestones'})).toHaveAttribute('value','10');
+ const dashboard=page.getByRole('region',{name:'Executive overview'});
+ await dashboard.getByRole('searchbox',{name:'Search loaded campaigns'}).fill(inspected.campaign.name);
+ await dashboard.getByRole('combobox',{name:'Campaign status filter'}).selectOption('APPROVED');
+ await dashboard.getByRole('button',{name:'Open campaign '+inspected.campaign.name,exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Tenant campaign ID'})).toHaveValue(campaignId);
+ await expect(page.getByText('Loaded campaign:',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
+ await expect(page.getByRole('progressbar',{name:'Evidenced offline campaign milestones'})).toHaveAttribute('value','10');
+ // A readiness-board handoff must preselect the campaign and focus the
+ // receiving workspace without silently mutating or approving anything.
+ await page.getByRole('navigation',{name:'Marketing workspaces'}).getByRole('link',{name:'Campaign readiness & blockers'}).click();
+ await page.getByRole('button',{name:'Refresh campaign readiness'}).click();
+ const selected=page.locator('#readiness-board article').filter({hasText:inspected.campaign.name}).first();
+ await expect(selected).toBeVisible();
+ await selected.getByRole('button',{name:'Resume campaign'}).click();
+ await expect(page.locator('#journey')).toBeFocused();
+ await expect(page.getByRole('textbox',{name:'Tenant campaign ID'})).toHaveValue(campaignId);
+ await expect(page.getByText('Loaded campaign:',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
+ await expect(page.getByRole('progressbar',{name:'Evidenced offline campaign milestones'})).toHaveAttribute('value','10');
 });
 test('T17-002 signed maker cannot self-approve, and viewer cannot bypass creative permissions',async({page})=>{
  await signIn(page,'admin');await studio(page);

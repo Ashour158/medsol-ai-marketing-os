@@ -85,7 +85,29 @@ test('T1E-001 real browser self-hosted staging OIDC login binds signed subject a
  await nav.getByRole('button',{name:'Show all workspaces'}).click();
  await expect(overview).toBeVisible();
  await expect(page.locator('#portfolio')).toBeVisible();
-
+ // Phase 4: actual signed browser, not a static mockup. Visual changes
+ // remain an unsigned draft; the canonical simulation/approval path is reused.
+ await nav.getByRole('link',{name:'Blueprint Studio',exact:true}).click();
+ const bp=page.getByRole('region',{name:'R3 Blueprint and Workflow virtual studio'});
+ await expect(bp).toBeVisible();
+ await bp.getByRole('button',{name:'Start bounded visual blueprint'}).click();
+ await bp.getByText('Visual offline workflow builder · controlled nodes and edges',{exact:true}).click();
+ await expect(bp.getByRole('img',{name:'Directed offline workflow graph'})).toBeVisible();
+ await bp.getByRole('textbox',{name:'New node ID'}).fill('extra-review');
+ await bp.getByRole('button',{name:'Add bounded node'}).click();
+ expect(JSON.parse(await bp.getByRole('textbox',{name:'Versioned workflow JSON'}).inputValue()).nodes.some((n:{id:string})=>n.id==='extra-review')).toBe(true);
+ await bp.getByRole('button',{name:'Remove extra-review',exact:true}).click();
+ await bp.getByRole('button',{name:'Simulate blueprint · No execution'}).click();
+ await expect(bp.getByRole('status').filter({hasText:'SIMULATED'})).toBeVisible();
+ await bp.getByRole('button',{name:'Prepare for signed offline Workflow Studio'}).click();
+ const dag=page.getByRole('region',{name:'R3-G governed offline DAG console'});
+ await expect(dag.getByRole('status').filter({hasText:'Unsigned draft imported'})).toBeVisible();
+ await expect(dag.getByRole('textbox',{name:'Ed25519 signature (base64url)'})).toHaveValue('');
+ await expect(dag.getByRole('textbox',{name:'Blueprint ID'})).toHaveValue('offline-science-review');
+ await expect(page.locator('#workflow-studio')).toBeFocused();
+ await page.getByRole('button',{name:'Account & session'}).click();
+ await expect(page.locator('#identity')).toBeFocused();
+ await expect(page.getByRole('button',{name:'Sign out'})).toBeVisible();
 });
 test('T1E-002 independent reviewer uses actual interactive signed OIDC session',async({page})=>{
  await login(page,'reviewer');
