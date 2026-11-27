@@ -1,5 +1,7 @@
 "use client";
-import {useState} from "react";
+import {useMemo,useState} from "react";
+import OfflineDagGraphEditor from "./offline-dag-graph-editor";
+import {readOfflineEditorManifest} from "../lib/offline-dag-graph";
 import {prepareOfflineWorkflowDraft} from "../lib/blueprint-offline-handoff";
 
 const EXAMPLE=JSON.stringify({
@@ -21,6 +23,10 @@ const EXAMPLE=JSON.stringify({
   {from:"schedule",to:"end"}
  ]
 },null,2);
+const BOUNDED_EXAMPLE=JSON.stringify({id:"offline-science-review",version:1,nodes:[
+ {id:"start",type:"TRIGGER"},{id:"science",type:"AGENT_TASK",agentId:"MKT-SCI-001",maxSeconds:45},
+ {id:"review",type:"APPROVAL"},{id:"end",type:"END"}],edges:[
+ {from:"start",to:"science"},{from:"science",to:"review"},{from:"review",to:"end"}]},null,2);
 type Issue={code:string;detail:string;nodeId?:string};
 type VirtualStep={order:number;nodeId:string;nodeType:string;kind:string;
  agentId:string|null;predecessors:string[];downstream:string[];
@@ -44,6 +50,7 @@ export function BlueprintVirtualStudio({onPrepareOfflineWorkflow}:{
  const [error,setError]=useState("");
  const [busy,setBusy]=useState(false);
  const [handoffNotice,setHandoffNotice]=useState("");
+ const editableManifest=useMemo(()=>{try{const raw=JSON.parse(draft);return JSON.stringify(readOfflineEditorManifest(JSON.stringify({draft:raw,canaryPercent:100,maxSteps:Math.max(8,raw.nodes.length),executionMode:"DETERMINISTIC_NO_MODEL"})));}catch{return null;}},[draft]);
  const handleChange=(s:string)=>{setDraft(s);setRequestKey("");setResult(null);setError("");setHandoffNotice("");};
  async function run(){
   setBusy(true);setError("");
@@ -78,6 +85,11 @@ export function BlueprintVirtualStudio({onPrepareOfflineWorkflow}:{
    persisted to the existing workflow ledger, but <strong>nothing is deployed,
    no AI model is called, and no provider is contacted.</strong>
   </p>
+  <div className="alpha-notice">
+   <strong>Visual authoring</strong><p>Start with a bounded offline draft to edit nodes and connections. Advanced virtual-only definitions stay intact; they are never silently converted.</p>
+   <button type="button" disabled={busy} onClick={()=>handleChange(BOUNDED_EXAMPLE)}>Start bounded visual blueprint</button>
+  </div>
+  {editableManifest&&<fieldset disabled={busy} style={{border:0,padding:0,margin:0}}><OfflineDagGraphEditor json={editableManifest} onChange={next=>handleChange(JSON.stringify(readOfflineEditorManifest(next).draft,null,2))}/></fieldset>}
   <label style={{display:"block",fontSize:13,fontWeight:600}}>
    Versioned workflow definition (JSON)
    <textarea aria-label="Versioned workflow JSON"
