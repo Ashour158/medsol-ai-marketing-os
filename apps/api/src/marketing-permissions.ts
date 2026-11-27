@@ -68,9 +68,11 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'MANAGE_CAMPAIGN';
   if(method==='GET'&&/^\/marketing\/agents\/manifests\/baseline\/[A-Za-z0-9_-]+$/.test(path))
    return 'READ_TENANCY';
+  if(method==='GET'&&path==='/marketing/agents/specialists')return 'READ_TENANCY';
+  if(method==='POST'&&path==='/marketing/agents/specialists')return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/agents/manifests')return 'READ_TENANCY';
   if(method==='POST'&&(path==='/marketing/agents/manifests'||
-    path==='/marketing/agents/manifests/preview'||
+    path==='/marketing/agents/manifests/preview'||path==='/marketing/agents/team-preview'||
     /^\/marketing\/agents\/manifests\/[^/]+\/(approve|activate|revoke|rollback)$/.test(path)))
    return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/tools/registrations')return 'READ_TENANCY';
