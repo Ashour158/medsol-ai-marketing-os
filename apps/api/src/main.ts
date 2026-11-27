@@ -83,6 +83,7 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Post('marketing/tools/registrations/:id/approve') approveTool(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.governedTools.approve(req.identity.organizationId,req.identity,id,b?.expectedVersion)}
  @Post('marketing/tools/registrations/:id/revoke') revokeTool(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.governedTools.revoke(req.identity.organizationId,req.identity,id,b?.expectedVersion,b?.reason)}
  @Post('marketing/tools/registrations/:id/inspect') inspectTool(@Req() req:any,@Param('id') id:string,@Body() b:any){return this.governedTools.inspect(req.identity.organizationId,req.identity,id,b?.toolKey,b?.requestedScope)}
+ @Get('marketing/integrations/trials/history') trialHistory(@Req() req:any){return this.providerTrials.history(req.identity.organizationId,req.identity)}
  @Get('marketing/integrations/trials/catalog') trialCatalog(@Req() req:any){return this.providerTrials.catalog(req.identity.organizationId,req.identity)}
  @Post('marketing/integrations/trials/run') runProviderTrial(@Req() req:any,@Body() b:any){return this.providerTrials.run(req.identity.organizationId,req.identity,b)}
  @Get('marketing/integrations/catalog') integrationProviderCatalog(){return this.integrationHub.catalog()}
