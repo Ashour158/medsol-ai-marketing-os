@@ -108,6 +108,21 @@ test('T1E-001 real browser self-hosted staging OIDC login binds signed subject a
  await page.getByRole('button',{name:'Account & session'}).click();
  await expect(page.locator('#identity')).toBeFocused();
  await expect(page.getByRole('button',{name:'Sign out'})).toBeVisible();
+ test.setTimeout(180000);
+ await nav.getByRole('link',{name:'Signed Agent Studio'}).click();
+ const team=page.getByRole('region',{name:'Offline team assembly'});
+ await team.getByRole('button',{name:'Load team agent catalog'}).click();
+ await team.getByRole('textbox',{name:'Team blueprint ID'}).fill('team-'+randomUUID().slice(0,12));
+ for(const [id,role] of [['MKT-PM-001','Portfolio specialist'],['MKT-SCI-001','Evidence specialist']]){
+  await team.getByRole('combobox',{name:'Team canonical agent'}).selectOption(id!);
+  await team.getByRole('textbox',{name:'Specialist role label'}).fill(role!);
+  await team.getByRole('button',{name:'Add specialist'}).click();
+ }
+ await team.getByRole('button',{name:'Validate offline team draft'}).click();
+ await expect(team.getByRole('status')).toContainText('2 members');
+ await team.getByRole('button',{name:'Open unsigned team in Workflow Studio'}).click();
+ await expect(dag.getByRole('status').filter({hasText:'Unsigned draft imported'})).toBeVisible();
+ await expect(dag.getByRole('textbox',{name:'Ed25519 signature (base64url)'})).toHaveValue('');
 });
 test('T1E-002 independent reviewer uses actual interactive signed OIDC session',async({page})=>{
  await login(page,'reviewer');
@@ -145,6 +160,7 @@ test('T1E-003 signed viewer cannot bypass canonical permission checks from brows
  expect((await bff(page,'approvals/pending')).status).toBe(403);
  expect((await bff(page,'integrations/trials/history')).status).toBe(403);
  expect((await bff(page,'tenancy/offline-subscription')).status).toBe(403);
+ expect((await bff(page,'agents/team-preview',{})).status).toBe(403);
  expect((await bff(page,'tenancy/offline-subscription',{})).status).toBe(403);
  expect((await bff(page,'integrations/trials/run',{provider:'OPENAI',scenario:'SUCCESS',requestKey:'viewer-'+randomUUID()})).status).toBe(403);
  await expect(page.locator('#approvals').getByRole('button',{name:'Approve',exact:true})).toHaveCount(0);
