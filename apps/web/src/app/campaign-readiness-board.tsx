@@ -23,7 +23,7 @@ function unknown(id:string,name:string,reason:string):PortfolioReadinessRow{
 /** A read-only command board; every campaign journey remains server-tenant scoped.
  * No batch side effects, no approval shortcuts, no spoofed status or provider calls.
  */
-export default function CampaignReadinessBoard({identity}:{identity:Identity|null}){
+export default function CampaignReadinessBoard({identity,onNavigate,onOpenCampaign}:{identity:Identity|null;onNavigate?:(id:string)=>void;onOpenCampaign?:(id:string)=>void}){
  const [rows,setRows]=useState<PortfolioReadinessRow[]>([]);
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState("");
@@ -195,6 +195,7 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
        <p style={{fontSize:12,color:"#475569",marginBottom:5}}>
         Campaign: {row.item.campaignStatus} · Workflow: {row.item.workflowStatus}
        </p>
+       {onOpenCampaign&&<button type="button" disabled={loading||!identity} onClick={()=>onOpenCampaign(row.item.id)}>Resume campaign</button>}
        <details>
         <summary style={{cursor:"pointer",fontSize:13}}>
          {row.item.blockers.length} missing evidence gates — inspect next actions
@@ -203,7 +204,7 @@ export default function CampaignReadinessBoard({identity}:{identity:Identity|nul
          <p>Offline gates complete. Real publishing and production remain prohibited.</p>:
          <ol style={{fontSize:13}}>
           {row.item.blockers.map(b=><li key={b.key} style={{padding:"4px 0"}}>
-           {b.label} · <a href={"#"+b.workspace}>Open {b.workspace} workspace</a>
+           {b.label} · <a href={"#"+b.workspace} onClick={e=>{if(onNavigate){e.preventDefault();onNavigate(b.workspace);}}}>Open {b.workspace} workspace</a>
           </li>)}
          </ol>}
        </details>
