@@ -23,6 +23,9 @@ const button={background:"#124d83",color:"white",border:0,
 const field={padding:10,border:"1px solid #cbd5e1",borderRadius:8,
  width:"100%",boxSizing:"border-box" as const,marginTop:5};
 export default function ProviderContractTrialStudio({identity}:{identity:Identity}){
+ return <TrialWorkspace key={identity?identity.organizationId+":"+identity.userId+":"+identity.role:"signed-out"} identity={identity}/>;
+}
+function TrialWorkspace({identity}:{identity:Identity}){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
  const [provider,setProvider]=useState("META_GRAPH");
  const [scenario,setScenario]=useState("SUCCESS");
