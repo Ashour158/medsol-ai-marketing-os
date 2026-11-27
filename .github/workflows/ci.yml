@@ -583,5 +583,7 @@ jobs:
             alpha-postgres-image.txt
             alpha-scanner-image.txt
             alpha-image-scan-db.json
+            alpha-api-scan-lineage.json
+            alpha-web-scan-lineage.json
             alpha-api-vulnerabilities.json
             alpha-web-vulnerabilities.json
