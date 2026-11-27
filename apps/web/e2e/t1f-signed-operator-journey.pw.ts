@@ -171,8 +171,36 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  expect(journey.stages.creativeIndependentlyApproved).toBe(true);
  expect(journey.stages.simulatedSocialPublished).toBe(true);
  expect(journey.stages.syntheticEmailSimulated).toBe(true);
- expect(journey.brainRuns[0].steps.length).toBeGreaterThanOrEqual(13);
- expect((await success(page,'brain/runs/'+journey.brainRuns[0].id)).input.productId).toBe('r3y-alpha-product');
+ // Verify the exact canonical roster and every durable execution, rather
+ // than counting step placeholders or treating one success label as evidence.
+ const plan=await success(page,'brain/plan');
+ const expected=plan.stages.flatMap((stage:{stage:string;agents:string[]})=>stage.agents.map(agentId=>({agentId,stage:stage.stage})));
+ expect(expected).toHaveLength(13);
+ expect(new Set(expected.map((s:{agentId:string})=>s.agentId)).size).toBe(13);
+ const completedRun=journey.brainRuns.find((r:{status:string})=>r.status==='REVIEW_REQUIRED');
+ expect(completedRun).toBeDefined();
+ const run=await success(page,'brain/runs/'+completedRun.id);
+ expect(run.input.productId).toBe('r3y-alpha-product');
+ expect(run.steps).toHaveLength(13);
+ let prior:string|null=null;
+ const executionIds=new Set<string>();
+ for(const [ordinal,step] of run.steps.entries()){
+  expect(step).toMatchObject({...expected[ordinal],ordinal,status:'COMPLETED'});
+  expect(typeof step.executionId).toBe('string');
+  expect(executionIds.has(step.executionId)).toBe(false);
+  executionIds.add(step.executionId);
+  const execution=await success(page,'agents/executions/'+step.executionId);
+  expect(execution).toMatchObject({id:step.executionId,organizationId:creator.organizationId,
+   agentId:step.agentId,correlationId:run.correlationId,causationId:prior,status:'COMPLETED',
+   decision:{agentId:step.agentId,executionAllowed:true,releaseEvidence:{modelCallsAuthorized:false,
+    toolCallsAuthorized:false,externalEffectsAuthorized:false},
+    payload:{engine:step.agentId,evidence:{verified:false},controls:{externalEffectPermitted:false}}}});
+  expect(execution.decision.payload.reasoningDraft).toBeUndefined();
+  prior=step.executionId;
+ }
+ const recovery=await success(page,'brain/runs/'+run.id+'/recovery');
+ expect(recovery).toMatchObject({completedSteps:13,totalSteps:13,automaticReplayAllowed:false,
+  automaticCheckpointAllowed:false,externalPublishingAuthorized:false,evidenceStatus:'NO_PENDING_STEP'});
  expect(journey.publications[0].attempts[0].mode).toBe('SANDBOX');
  expect(journey.emailSimulations[0].result.actualMessagesSent).toBe(0);
  expect(journey.learningSignals.some((x:{status:string})=>x.status==='QUARANTINED')).toBe(true);
