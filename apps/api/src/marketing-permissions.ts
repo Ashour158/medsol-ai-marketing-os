@@ -131,6 +131,8 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
    return 'MANAGE_CAMPAIGN';
   if(method==='POST'&&/^\/marketing\/assets\/revisions\/[^/]+\/rights-review$/.test(path))
    return 'DECIDE_APPROVAL';
+  if(path==='/marketing/tenancy/offline-subscription'&&method==='GET')return 'READ_TENANCY';
+  if(path==='/marketing/tenancy/offline-subscription'&&method==='POST')return 'MANAGE_TENANT';
   if(path==='/marketing/tenancy/activation-reviews'&&method==='GET')return 'READ_TENANCY';
   if(path==='/marketing/tenancy/activation-reviews'&&method==='POST')return 'MANAGE_TENANT';
   if(method==='GET'&&path==='/marketing/tenancy/roles')return 'READ_TENANCY';
