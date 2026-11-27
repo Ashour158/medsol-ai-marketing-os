@@ -541,10 +541,16 @@ jobs:
           docker pull "$base"
           [[ "$base" =~ @sha256:[a-f0-9]{64}$ ]]
           printf '%s\n' "$base" > alpha-base-image.txt
+          # Resolve the official distroless runtime once, and use the same immutable
+          # candidate for both images. Review actual digest and scan before promotion.
+          docker pull gcr.io/distroless/nodejs22-debian13:nonroot
+          runtime="$(docker image inspect gcr.io/distroless/nodejs22-debian13:nonroot --format '{{index .RepoDigests 0}}')"
+          [[ "$runtime" =~ ^gcr.io/distroless/nodejs22-debian13@sha256:[a-f0-9]{64}$ ]]
+          printf '%s\n' "$runtime" > alpha-runtime-base-image.txt
           for target in api web; do
-            docker build --file infra/staging/Dockerfile --build-arg "NODE_IMAGE=$base" --target "$target" --tag "medsol-alpha-$target:ci" .
+            docker build --file infra/staging/Dockerfile --build-arg "NODE_IMAGE=$base" --build-arg "RUNTIME_IMAGE=$runtime" --target "$target" --tag "medsol-alpha-$target:ci" .
             docker image inspect "medsol-alpha-$target:ci" --format '{{.Id}} {{.Config.User}}' > "alpha-$target-image.txt"
-            test "$(docker image inspect "medsol-alpha-$target:ci" --format '{{.Config.User}}')" = node
+            test "$(docker image inspect "medsol-alpha-$target:ci" --format '{{.Config.User}}')" = "65532:65532"
           done
       - name: Verify compiled artifacts with zero container network
         run: |
@@ -568,6 +574,7 @@ jobs:
             pnpm-lock.yaml
             alpha-lockfile.sha256
             alpha-base-image.txt
+            alpha-runtime-base-image.txt
             alpha-api-image.txt
             alpha-web-image.txt
             alpha-packaging-status.txt
