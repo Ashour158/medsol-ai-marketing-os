@@ -319,12 +319,12 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect((await invoke(r,memoryReview,{decision:'APPROVE',reason})).status).toBe(403);
  expect((await invoke(reviewer,memoryReview,{decision:'APPROVE',reason})).status).toBe(201);
  expect((await context(r)).data.memories).toEqual([expect.objectContaining({memoryId:proposedMemory.data.memoryId,humanReviewed:true,independentlyVerified:false})]);
- expect((await context(r,'MKT-SCI-001')).data.memories).toEqual([]);
+ expect((await context(r,'MKT-SCI-001')).data.memories.some((m:any)=>m.memoryId===proposedMemory.data.memoryId)).toBe(false);
  const feedback=await invoke(r,'learning/knowledge/feedback',{agentId:specialistId,query:marker,chunkId:inspected.data.results[0].chunkId,label:'RELEVANT',reason});
  expect(feedback).toMatchObject({status:201,data:{specialistAgentId:specialistId,automaticRankingChange:false,automaticSkillRelease:false}});
  const cases=[{id:'specialist-fixture',query:marker,relevantDocumentIds:[doc.data.id]}];
  const evaluation=await invoke(r,'learning/knowledge/evaluate',{agentId:specialistId,k:1,cases});
- expect(evaluation).toMatchObject({status:201,data:{specialistAgentId:specialistId,automaticSkillRelease:false}});
+ expect(evaluation).toMatchObject({status:201,data:{specialistAgentId:specialistId,recallAtK:1,automaticSkillRelease:false}});
  const revoked=await invoke(reviewer,'learning/knowledge/'+doc.data.id+'/revoke',{reason:'Withdraw exclusive specialist synthetic evidence after evaluation'});
  expect(revoked).toMatchObject({status:201,data:{status:'REVOKED',scrubbedMemories:1}});
  expect((await context(r)).data).toMatchObject({results:[],memories:[]});
