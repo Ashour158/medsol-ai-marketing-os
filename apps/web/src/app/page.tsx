@@ -18,6 +18,7 @@ import R3AcceptanceStudio from "./r3-release-acceptance-studio";
 import GovernedToolRegistryStudio from "./governed-tool-registry-studio";
 import AgentReleaseStudio from "./agent-release-studio";
 import ProviderContractTrialStudio from "./provider-contract-trial-studio";
+import OfflineSubscriptionStudio from "./offline-subscription-studio";
 import OfflineCampaignJourneyStudio from "./offline-campaign-journey-studio";
 import CampaignReadinessBoard from "./campaign-readiness-board";
 import CustomerDeliveryDossierStudio from "./customer-delivery-dossier-studio";
@@ -195,6 +196,7 @@ export default function Home() {
         })}>Sign out</button>
       </div>
       {identity && <p>Signed in as {identity.email} · {identity.role}</p>}
+      {identity&&<OfflineSubscriptionStudio identity={identity}/>}
       {agents !== null && <details style={{ marginTop: 14 }}><summary>Agent roster</summary><pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(agents, null, 2)}</pre></details>}
     </section>
     <div data-workspace-panel hidden={isHidden("readiness-board")}><CampaignReadinessBoard key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity} onNavigate={navigateWorkspace} onOpenCampaign={openCampaign}/></div>

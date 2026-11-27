@@ -134,6 +134,22 @@ describe.skipIf(!enabled)('R3-M real Postgres tenant and agency cross-engine acc
    await db.user.update({where:{id:actorId},data:{disabledAt:new Date()}});
    await expect(svc.delegatedCampaigns(identity,client,brand.id)).rejects.toThrow();
    await db.user.update({where:{id:actorId},data:{disabledAt:null}});
+   // Phase 6A: an active agency grant is not sufficient after a
+   // restrictive role is disabled or an agency operator is offboarded.
+   const staffId='agency-staff-'+randomUUID();
+   const staff={...actor(agency,staffId),role:'VIEWER'};
+   await db.user.create({data:{id:staffId,organizationId:agency,name:'Scoped agency reviewer',
+    email:staff.email,role:staff.role,oidcSubject:staff.subject}});
+   const roles=new TenantRolePolicyService(db as any);
+   const permitted=await roles.create(identity,{key:'reader-'+randomUUID(),name:'Campaign reader',permissions:['READ_PORTFOLIO']});
+   await roles.assign(identity,staffId,permitted.id);
+   const session=await withMarketingTenant(db,agency,tx=>tx.authSession.create({data:{id:randomUUID(),organizationId:agency,userId:staffId,expiresAt:new Date(Date.now()+600000)}}));
+   expect((await svc.delegatedCampaigns(staff,client,brand.id)).records.map(x=>x.id)).toEqual([a!.campaignId]);
+   expect(await roles.disable(identity,permitted.id,'Terminate agency operator access without revoking client grant')).toMatchObject({disabled:true,affectedUsers:1});
+   expect((await db.authSession.findUniqueOrThrow({where:{id:session.id}})).revokedAt).not.toBeNull();
+   await expect(svc.delegatedCampaigns(staff,client,brand.id)).rejects.toThrow('Tenant role policy denies');
+   expect((await svc.delegatedCampaigns(identity,client,brand.id)).records).toHaveLength(1);
+   expect(await db.agencyGrant.findUniqueOrThrow({where:{id:grant.id}})).toMatchObject({status:'ACTIVE'});
    await svc.revokeAgency(client,admin,grant.id,
     'Client terminates temporary delegated read-only campaign access');
    await expect(svc.delegatedCampaigns(identity,client,brand.id)).rejects.toThrow('No active');
