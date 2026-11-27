@@ -74,7 +74,7 @@ export class TenantBrandService{
    const scopeDigest=subscriptionDigest(scope);
    await tx.approval.create({data:{id:approvalId,organizationId:org,objectType:OFFLINE_SUBSCRIPTION,objectId:org,
     requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',requestedBy:identity.userId,scope,scopeDigest,
-    scopeExpiresAt:new Date(now.getTime()+86400000)}});
+    scopeExpiresAt:new Date(scope.reviewExpiresAt)}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SUBSCRIPTION_REVIEW_REQUESTED',
     objectType:OFFLINE_SUBSCRIPTION,objectId:org,correlationId:approvalId,after:{scopeDigest,revision:scope.revision,externalEffectsAuthorized:false}}});
    return{approvalId,decision:'PENDING',...scope,replayed:false};
