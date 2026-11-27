@@ -171,8 +171,36 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  expect(journey.stages.creativeIndependentlyApproved).toBe(true);
  expect(journey.stages.simulatedSocialPublished).toBe(true);
  expect(journey.stages.syntheticEmailSimulated).toBe(true);
- expect(journey.brainRuns[0].steps.length).toBeGreaterThanOrEqual(13);
- expect((await success(page,'brain/runs/'+journey.brainRuns[0].id)).input.productId).toBe('r3y-alpha-product');
+ // Verify the exact canonical roster and every durable execution, rather
+ // than counting step placeholders or treating one success label as evidence.
+ const plan=await success(page,'brain/plan');
+ const expected=plan.stages.flatMap((stage:{stage:string;agents:string[]})=>stage.agents.map(agentId=>({agentId,stage:stage.stage})));
+ expect(expected).toHaveLength(13);
+ expect(new Set(expected.map((s:{agentId:string})=>s.agentId)).size).toBe(13);
+ const completedRun=journey.brainRuns.find((r:{status:string})=>r.status==='REVIEW_REQUIRED');
+ expect(completedRun).toBeDefined();
+ const run=await success(page,'brain/runs/'+completedRun.id);
+ expect(run.input.productId).toBe('r3y-alpha-product');
+ expect(run.steps).toHaveLength(13);
+ let prior:string|null=null;
+ const executionIds=new Set<string>();
+ for(const [ordinal,step] of run.steps.entries()){
+  expect(step).toMatchObject({...expected[ordinal],ordinal,status:'COMPLETED'});
+  expect(typeof step.executionId).toBe('string');
+  expect(executionIds.has(step.executionId)).toBe(false);
+  executionIds.add(step.executionId);
+  const execution=await success(page,'agents/executions/'+step.executionId);
+  expect(execution).toMatchObject({id:step.executionId,organizationId:creator.organizationId,
+   agentId:step.agentId,correlationId:run.correlationId,causationId:prior,status:'COMPLETED',
+   decision:{agentId:step.agentId,executionAllowed:true,releaseEvidence:{modelCallsAuthorized:false,
+    toolCallsAuthorized:false,externalEffectsAuthorized:false},
+    payload:{engine:step.agentId,evidence:{verified:false},controls:{externalEffectPermitted:false}}}});
+  expect(execution.decision.payload.reasoningDraft).toBeUndefined();
+  prior=step.executionId;
+ }
+ const recovery=await success(page,'brain/runs/'+run.id+'/recovery');
+ expect(recovery).toMatchObject({completedSteps:13,totalSteps:13,automaticReplayAllowed:false,
+  automaticCheckpointAllowed:false,externalPublishingAuthorized:false,evidenceStatus:'NO_PENDING_STEP'});
  expect(journey.publications[0].attempts[0].mode).toBe('SANDBOX');
  expect(journey.emailSimulations[0].result.actualMessagesSent).toBe(0);
  expect(journey.learningSignals.some((x:{status:string})=>x.status==='QUARANTINED')).toBe(true);
@@ -279,6 +307,7 @@ test('T17-003 signed foreign tenant cannot read or mutate another organization c
  expect(crossHeader.status).toBe(403);
 });
 test('T17-004 interactive reviewer can approve a campaign then maker performs consent-gated email with zero effects',async({page})=>{
+ test.setTimeout(180000); // Expanded acceptance journey; no retries or skipped assertions.
  await signIn(page,'admin');await studio(page);const id=await create(page);
  await independentCampaignApproval(page,id);
  await switchIdentity(page,'admin');await studio(page);await load(page,id);
@@ -292,6 +321,75 @@ test('T17-004 interactive reviewer can approve a campaign then maker performs co
  expect(s.emailSimulations[0].result.actualMessagesSent).toBe(0);
  expect(s.stages.syntheticEmailSimulated).toBe(true);
  expect(s.externalEffectsAuthorized).toBe(false);
+ // Batch 3C: extend the independently approved campaign through the
+ // authoritative synthetic conversion and commercial reporting engines.
+ const formInput={campaignId:id,brandId:brand,formKey:'fixture-'+randomUUID(),headline:'Synthetic research consultation',cta:'Request scientific information'};
+ const form=await success(page,'performance/forms',formInput);
+ expect(form).toMatchObject({approvalDecision:'PENDING',syntheticOnly:true,publicFormHosted:false,externalEffectsAuthorized:false});
+ expect(await success(page,'performance/forms',formInput)).toMatchObject({formId:form.formId,replayed:true});
+ expect((await api(page,'performance/forms',{...formInput,headline:'Changed revision'})).status).toBe(409);
+ const decide=(approvalId:string,who:'admin'|'reviewer')=>({
+  organizationId:'r3y-tenant-a',approvalId,approverUserId:'t1e-stage-'+who,
+  commandId:randomUUID(),correlationId:randomUUID(),decision:'APPROVED',
+  rationale:'Review exact synthetic conversion evidence; no external effects'
+ });
+ expect((await api(page,'approvals/decide',decide(form.approvalId,'admin'))).status).toBe(403);
+ const contact=await success(page,'audience/synthetic-contacts',{brandId:brand});
+ const consent=(action:string)=>success(page,'audience/synthetic-contacts/'+contact.contactId+'/consent',{action,requestKey:'consent-'+randomUUID()});
+ const input={contactId:contact.contactId,requestKey:'fixture-'+randomUUID(),formDigest:form.contentDigest,mockCrmPurposeGranted:true,mockTransport:'OUTCOME_UNKNOWN'};
+ const submit='performance/forms/'+form.formId+'/submit';
+ expect((await api(page,submit,input)).status).toBe(409);
+ await switchIdentity(page,'reviewer');
+ expect(await success(page,'approvals/decide',decide(form.approvalId,'reviewer'))).toMatchObject({decision:'APPROVED'});
+ await switchIdentity(page,'admin');
+ expect((await api(page,submit,input)).status).toBe(409);
+ await consent('SIMULATED_OPT_IN');
+ expect((await api(page,submit,{...input,formDigest:'sha256:'+'f'.repeat(64)})).status).toBe(409);
+ const submission=await success(page,submit,input);
+ expect(submission).toMatchObject({outcome:'OUTCOME_UNKNOWN',automaticRetryAuthorized:false,actualLeadsCreated:0,crmHandoffsExecuted:0,protocolEvidence:{actualCrmRequests:0,verifiedRemoteReceipts:0}});
+ expect(await success(page,submit,input)).toMatchObject({submissionId:submission.submissionId,replayed:true});
+ expect((await api(page,submit,{...input,mockTransport:'ACCEPTED'})).status).toBe(409);
+ const qualificationPath='performance/submissions/'+submission.submissionId+'/qualification';
+ const scores={bant:{budget:4,authority:4,need:5,timeline:4},icp:{industry:2,companySize:2,role:2,geography:2}};
+ const qualification=await success(page,qualificationPath,scores);
+ expect(qualification).toMatchObject({decision:'PENDING',assessment:{bantTotal:17,icpTotal:8,priority:'HOT',fitTier:'A'},realLeadVerified:false,crmWriteAuthorized:false});
+ expect((await api(page,'approvals/decide',decide(qualification.approvalId,'admin'))).status).toBe(403);
+ // Distinct source-record and currency groups, no FX or causal attribution.
+ const observations:string[]=[];
+ for(const currency of ['EGP','USD']){
+  const base={campaignId:id,sourceSystem:'MANUAL_EXPORT',sourceRecordId:'phase3-'+currency+'-'+randomUUID(),
+   sourceReference:'internal:phase3-synthetic-commercial-evidence',observedAt:new Date(Date.now()-60000).toISOString()};
+  for(const [metricKey,value] of [['impressions',1000],['clicks',100],['leads',20],['qualified_leads',5],['spend_micros',1000000],['reported_revenue_micros',3000000]] as const){
+   const observation=await success(page,'performance/ingest',{...base,metricKey,value,...(metricKey.endsWith('_micros')?{currency}:{})});
+   expect(observation.status).toBe('QUARANTINED');observations.push(observation.observationId);
+  }
+ }
+ expect((await api(page,'performance/review',{observationId:observations[0],rationale:'Author cannot review own observation'})).status).toBe(403);
+ await switchIdentity(page,'reviewer');
+ expect(await success(page,'approvals/decide',decide(qualification.approvalId,'reviewer'))).toMatchObject({decision:'APPROVED'});
+ for(const observationId of observations)expect(await success(page,'performance/review',{observationId,rationale:'Independent internal review of synthetic commercial source'})).toMatchObject({status:'REVIEWED',independentlyVerified:false});
+ await switchIdentity(page,'admin');
+ await consent('SIMULATED_WITHDRAWAL');
+ expect((await api(page,qualificationPath,scores)).status).toBe(409);
+ expect(await success(page,submit,input)).toMatchObject({replayed:true,outcome:'OUTCOME_UNKNOWN',crmHandoffsExecuted:0});
+ const ledger=await success(page,'performance/forms?campaignId='+id);
+ expect(ledger.forms).toHaveLength(1);expect(ledger.submissions).toHaveLength(1);expect(ledger.qualifications).toHaveLength(1);
+ expect(ledger.qualifications[0]).toMatchObject({decision:'APPROVED',independentInternalReviewRecorded:true,realLeadVerified:false,crmWriteAuthorized:false});
+ const dossier=await success(page,'journeys/'+id+'/dossier');
+ expect(dossier).toMatchObject({schema:'medsol.customer_delivery_dossier.v1',status:'OFFLINE_EVIDENCE_ONLY',signed:false,independentlyVerified:false,externalEffectsAuthorized:false,productionStatus:'NOT_CERTIFIED'});
+ expect(dossier.pillars.email.actualMessagesSent).toBe(0);
+ expect(dossier.pillars.social.realPostsPublished).toBe(0);
+ expect(dossier.pillars.intelligence.sourceScope).toBe('TENANT_WIDE_NOT_CAMPAIGN_ATTRIBUTED');
+ expect(dossier.pillars.conversion.syntheticLedger).toMatchObject({counts:{forms:1,submissions:1,outcomeUnknown:1,independentInternalQualificationApprovals:1},actualLeadsCreated:0,actualCrmWrites:0,realConsentVerified:false});
+ expect(dossier.pillars.commercial.combinedCommercial).toMatchObject({status:'EXACT_COMBINED_MATCH',matchedGroups:2,fxConversionPerformed:false,revenueVerified:false,roiValidated:false,attributionValidated:false});
+ const currencies=dossier.pillars.commercial.combinedCommercial.currencies;
+ expect(currencies.map((c:{currency:string})=>c.currency)).toEqual(['EGP','USD']);
+ for(const currency of currencies)expect(currency).toMatchObject({reportedSpendMicros:'1000000',reportedRevenueMicros:'3000000',reportedRevenueToSpendRatio:'3.0000',spendMicrosPerLead:'50000',spendMicrosPerQualifiedLead:'200000'});
+ // Aggregate report contains no anonymous contact or raw source IDs.
+ expect(JSON.stringify(dossier)).not.toContain(contact.contactId);
+ await switchIdentity(page,'foreign');
+ expect((await api(page,'journeys/'+id+'/dossier')).status).toBe(404);
+ expect((await success(page,'performance/forms?campaignId='+id)).forms).toEqual([]);
 });
 test('T17-005 revoking a signed browser session blocks replay across audited campaign requests',async({page})=>{
  await signIn(page,'admin');await studio(page);const id=await create(page);
