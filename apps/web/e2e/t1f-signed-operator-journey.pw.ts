@@ -263,6 +263,14 @@ test('T17-001 two interactive OIDC humans finish real 13-agent, creative, social
  await expect(page.getByText('Loaded campaign:',{exact:true}).locator('..')).toContainText('APPROVED');
  await expect(page.getByText(/Loaded campaign product: Synthetic research catalogue product/)).toBeVisible();
  await expect(page.getByRole('progressbar',{name:'Evidenced offline campaign milestones'})).toHaveAttribute('value','10');
+ const dashboard=page.getByRole('region',{name:'Executive overview'});
+ await dashboard.getByRole('searchbox',{name:'Search loaded campaigns'}).fill(inspected.campaign.name);
+ await dashboard.getByRole('combobox',{name:'Campaign status filter'}).selectOption('APPROVED');
+ await dashboard.getByRole('button',{name:'Open campaign '+inspected.campaign.name,exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Tenant campaign ID'})).toHaveValue(campaignId);
+ await expect(page.getByText('Loaded campaign:',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Load durable cross-engine timeline'}).click();
+ await expect(page.getByRole('progressbar',{name:'Evidenced offline campaign milestones'})).toHaveAttribute('value','10');
  // A readiness-board handoff must preselect the campaign and focus the
  // receiving workspace without silently mutating or approving anything.
  await page.getByRole('navigation',{name:'Marketing workspaces'}).getByRole('link',{name:'Campaign readiness & blockers'}).click();
