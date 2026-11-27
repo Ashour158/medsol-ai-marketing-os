@@ -43,6 +43,13 @@ export default function Home() {
     if(!focused)return;
     const target=document.getElementById(focused);
     if(!target)return;
+    // The campaign handoff remounts its editor to clear stale state.
+    // Its root is a closed details element inside the navigation wrapper,
+    // not an ancestor. Open that exact workspace before focusing.
+    if(focused==="journey"){
+      const journey=target.querySelector('details[aria-label="Complete offline campaign journey workspace"]');
+      if(journey instanceof HTMLDetailsElement)journey.open=true;
+    }
     let current=target.parentElement;
     while(current){if(current instanceof HTMLDetailsElement)current.open=true;current=current.parentElement;}
     target.scrollIntoView({block:"start"});
