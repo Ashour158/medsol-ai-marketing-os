@@ -45,10 +45,10 @@ export function nextSubscription(current:Revision,input:Input,now:Date):Revision
  }
  return{revision:current.revision+1,state,plan:input.plan,termEndsAt:input.termEndsAt,approvalId:null};
 }
-export function subscriptionScope(org:string,actor:string,input:Input,current:Revision,now:Date){
+export function subscriptionScope(org:string,actor:string,input:Input,current:Revision,now:Date,reviewExpiresAt=new Date(now.getTime()+86400000).toISOString()){
  const next=nextSubscription(current,input,now);
  return{schema:'medsol.offline-subscription.v1',organizationId:org,requestedBy:actor,input,
-  priorApprovalId:current.approvalId,revision:next.revision,state:next.state,plan:next.plan,termEndsAt:next.termEndsAt,
+  priorApprovalId:current.approvalId,revision:next.revision,state:next.state,plan:next.plan,termEndsAt:next.termEndsAt,reviewExpiresAt,
   fixtureOnly:true as const,billingAuthorized:false as const,realEntitlementsGranted:false as const,externalEffectsAuthorized:false as const};
 }
 type Scope=ReturnType<typeof subscriptionScope>;
@@ -56,19 +56,19 @@ type Scope=ReturnType<typeof subscriptionScope>;
 export function subscriptionDigest(s:Scope){
  const i=s.input;
  return hash([s.schema,s.organizationId,s.requestedBy,i.requestKey,i.expectedRevision,i.action,i.plan,i.termEndsAt,i.fixtureOnly,
-  s.priorApprovalId,s.revision,s.state,s.plan,s.termEndsAt,s.fixtureOnly,s.billingAuthorized,s.realEntitlementsGranted,s.externalEffectsAuthorized]);
+  s.priorApprovalId,s.revision,s.state,s.plan,s.termEndsAt,s.reviewExpiresAt,s.fixtureOnly,s.billingAuthorized,s.realEntitlementsGranted,s.externalEffectsAuthorized]);
 }
 export function readSubscription(a:Approval):Scope{
  try{
   const s=a.scope as unknown as Scope,i=subscriptionInput(s.input);
   if(a.objectType!==OFFLINE_SUBSCRIPTION||a.objectId!==a.organizationId||a.id!==subscriptionId(a.organizationId,i.requestKey)||
    a.requestedBy!==s.requestedBy||!a.requestedBy||s.organizationId!==a.organizationId||s.schema!=='medsol.offline-subscription.v1'||
-   a.requiredAuthority!=='HUMAN_MARKETING_AUTHORITY'||!a.scopeExpiresAt||
+   a.requiredAuthority!=='HUMAN_MARKETING_AUTHORITY'||!a.scopeExpiresAt||a.scopeExpiresAt.toISOString()!==s.reviewExpiresAt||
    s.revision!==i.expectedRevision+1||s.plan!==i.plan||s.termEndsAt!==i.termEndsAt||
    s.state!==(i.action==='SUSPEND'?'SUSPENDED':i.action==='CANCEL'?'CANCELLED':'ACTIVE')||
    s.fixtureOnly!==true||s.billingAuthorized!==false||s.realEntitlementsGranted!==false||s.externalEffectsAuthorized!==false||
    subscriptionDigest({...s,input:i})!==a.scopeDigest)throw Error('scope');
-  return{...s,input:i};
+  return{schema:s.schema,organizationId:s.organizationId,requestedBy:s.requestedBy,input:i,priorApprovalId:s.priorApprovalId,revision:s.revision,state:s.state,plan:s.plan,termEndsAt:s.termEndsAt,reviewExpiresAt:s.reviewExpiresAt,fixtureOnly:true,billingAuthorized:false,realEntitlementsGranted:false,externalEffectsAuthorized:false};
  }catch{throw new ConflictException('Invalid exact offline subscription evidence');}
 }
 export async function lockSubscription(tx:Prisma.TransactionClient,org:string){
@@ -103,6 +103,6 @@ export async function validateSubscriptionDecision(tx:Prisma.TransactionClient,a
  if(!requester?.oidcSubject)throw new ConflictException('Subscription requester unavailable');
  await assertActorPermissionInTenantTransaction(tx,{organizationId:a.organizationId,userId:requester.id,role:requester.role,email:requester.email,subject:requester.oidcSubject},'MANAGE_TENANT');
  const current=await currentSubscription(tx,a.organizationId);
- const expected=subscriptionScope(a.organizationId,s.requestedBy,s.input,current,now);
+ const expected=subscriptionScope(a.organizationId,s.requestedBy,s.input,current,now,s.reviewExpiresAt);
  if(subscriptionDigest(expected)!==a.scopeDigest)throw new ConflictException('Stale subscription review');
 }
