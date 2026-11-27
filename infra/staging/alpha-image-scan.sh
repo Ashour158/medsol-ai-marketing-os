@@ -33,7 +33,8 @@ for target in api web; do
     image --cache-dir /cache --skip-db-update --skip-java-db-update --offline-scan \
     --scanners vuln --pkg-types os,library --list-all-pkgs --format json \
     --output "/reports/$target.json" --timeout 5m --input "/images/$target.tar"
-  python3 infra/staging/alpha-scan-lineage.py "$target" "$work/$target-inspect.json" "$work/images/$target.tar" | cmp - "alpha-$target-scan-lineage.json"
+  docker image inspect "medsol-alpha-$target:ci" --format '{{json .}}' > "$work/$target-after-inspect.json"
+  python3 infra/staging/alpha-scan-lineage.py "$target" "$work/$target-after-inspect.json" "$work/images/$target.tar" | cmp - "alpha-$target-scan-lineage.json"
   cp "$work/reports/$target.json" "alpha-$target-vulnerabilities.json"
 done
 node scripts/quality/alpha-image-vulnerability-gate.mjs
