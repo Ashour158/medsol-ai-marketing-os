@@ -7,6 +7,7 @@ import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.ser
 import {TenantRolePolicyService} from './tenant-role-policy.service.js';
 import type {VerifiedIdentity} from './oidc-identity.js';
 
+import {OFFLINE_SUBSCRIPTION,subscriptionInput,subscriptionId,subscriptionScope,subscriptionDigest,readSubscription,lockSubscription,currentSubscription,subscriptionProjection} from './offline-subscription.js';
 const DELEGABLE=new Set(['CAMPAIGN_READ','ASSET_DRAFT','REVIEW_COMMENT','REPORT_READ']);
 const AGENCY_ACTION_PERMISSION={
  CAMPAIGN_READ:'READ_PORTFOLIO',ASSET_DRAFT:'MANAGE_CAMPAIGN',
@@ -44,6 +45,41 @@ function actions(value:unknown):string[]{
 export class TenantBrandService{
  constructor(private readonly db:PrismaService,
   private readonly roles:TenantRolePolicyService){}
+ async subscription(org:string,identity:VerifiedIdentity){
+  if(!identity?.subject||identity.organizationId!==org)throw new ForbiddenException('Verified tenant operator required');
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'READ_TENANCY');
+   await lockSubscription(tx,org);
+   const current=await currentSubscription(tx,org);
+   const rows=await tx.approval.findMany({where:{organizationId:org,objectType:OFFLINE_SUBSCRIPTION},orderBy:[{createdAt:'desc'},{id:'desc'}],take:101});
+   return{organizationId:org,...subscriptionProjection(current,new Date()),historyCapped:rows.length>100,
+    reviews:rows.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readSubscription(a),reviewExpiresAt:a.scopeExpiresAt?.toISOString()}))};
+  });
+ }
+ async requestSubscription(org:string,identity:VerifiedIdentity,raw:unknown){
+  if(!identity?.subject||identity.organizationId!==org)throw new ForbiddenException('Verified tenant operator required');
+  const input=subscriptionInput(raw),approvalId=subscriptionId(org,input.requestKey);
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await lockSubscription(tx,org);
+   const prior=await tx.approval.findFirst({where:{organizationId:org,id:approvalId}});
+   if(prior){
+    const scope=readSubscription(prior);
+    if(scope.requestedBy!==identity.userId||JSON.stringify(scope.input)!==JSON.stringify(input))
+     throw new ConflictException('Immutable subscription request key already used');
+    return{approvalId,decision:prior.decision,...scope,replayed:true};
+   }
+   const now=new Date(),current=await currentSubscription(tx,org);
+   const scope=subscriptionScope(org,identity.userId,input,current,now);
+   const scopeDigest=subscriptionDigest(scope);
+   await tx.approval.create({data:{id:approvalId,organizationId:org,objectType:OFFLINE_SUBSCRIPTION,objectId:org,
+    requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R2',requestedBy:identity.userId,scope,scopeDigest,
+    scopeExpiresAt:new Date(now.getTime()+86400000)}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SUBSCRIPTION_REVIEW_REQUESTED',
+    objectType:OFFLINE_SUBSCRIPTION,objectId:org,correlationId:approvalId,after:{scopeDigest,revision:scope.revision,externalEffectsAuthorized:false}}});
+   return{approvalId,decision:'PENDING',...scope,replayed:false};
+  });
+ }
  async requestActivationReview(org:string,identity:VerifiedIdentity,raw:unknown){
   if(!identity||identity.organizationId!==org||!identity.subject)throw new ForbiddenException('Verified tenant activation operator required');
   const input=normalizeActivationInput(raw),approvalId=activationReviewId(org,input.requestKey);
@@ -184,10 +220,24 @@ export class TenantBrandService{
   id(actor.organizationId,'agency tenant');
   id(clientTenantId,'client tenant');id(brandId,'brand');
   if(campaignId!==undefined)id(campaignId,'campaign');
-  await this.roles.assertActorPermission(actor,'READ_PORTFOLIO');
   return this.db.$transaction(async tx=>{
    const org=actor.organizationId;
    await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${org}, true)`;
+   // Lock the current agency actor before the canonical role check. A
+   // concurrent user disable/reassignment cannot leave this read relying on
+   // a separately committed authorization snapshot.
+   const users=await tx.$queryRaw<Array<{tenantRoleDefinitionId:string|null}>>`
+    SELECT "tenantRoleDefinitionId" FROM "User"
+    WHERE "id"=${actor.userId} AND "organizationId"=${org}
+      AND "oidcSubject"=${actor.subject} AND "disabledAt" IS NULL FOR SHARE
+   `;
+   if(users.length!==1)throw new ForbiddenException('Current agency actor unavailable');
+   const roleId=users[0]!.tenantRoleDefinitionId;
+   if(roleId)await tx.$queryRaw`
+    SELECT "id" FROM "TenantRoleDefinition"
+    WHERE "id"=${roleId} AND "organizationId"=${org} FOR SHARE
+   `;
+   await assertActorPermissionInTenantTransaction(tx,actor,'READ_PORTFOLIO');
    // FOR SHARE freezes any revocation until the read transaction commits.
    // A concurrent revoked-grant transaction will serialize before or after
    // this read; no post-revocation grant can be accepted by a later read.
