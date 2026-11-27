@@ -80,7 +80,7 @@ export function permissionForMarketingRoute(method: string, path: string): Marke
     ['approve','revoke','inspect'].includes(path.split('/')[5]??'') &&
     !!path.split('/')[4])))
    return 'MANAGE_TENANT';
-  if(method==='GET'&&path==='/marketing/integrations/trials/catalog')return 'READ_TENANCY';
+  if(method==='GET'&&['/marketing/integrations/trials/catalog','/marketing/integrations/trials/history'].includes(path))return 'READ_TENANCY';
   if(method==='POST'&&path==='/marketing/integrations/trials/run')return 'MANAGE_TENANT';
   if(method==='GET'&&(
     path==='/marketing/integrations/catalog'||
