@@ -29,7 +29,7 @@ if(process.argv[2]==='proxy'){
   if(!raw||! /;\s*Secure(?:;|$)/i.test(raw)||! /;\s*HttpOnly(?:;|$)/i.test(raw))throw Error('Expected secure HTTP-only cookie missing');
   return raw.split(';',1)[0];
  };
- const bff=(path,session,opts={})=>get(origin+'/api/marketing/'+path,{...opts,headers:{...opts.headers,cookie:session}});
+ const bff=(path,session,opts={})=>get(origin+'/api/marketing/'+path,{...opts,headers:{...opts.headers,cookie:session,...(opts.method==='POST'?{origin}:{})}});
  async function login(persona){
   assert.equal((await get('http://127.0.0.1:3216/__select-persona?persona='+persona,{method:'POST'})).status,200);
   const start=await get(origin+'/api/auth/login');
@@ -47,6 +47,9 @@ if(process.argv[2]==='proxy'){
  const brands=await bff('tenancy/brands',admin);assert.equal(brands.status,200);assert.ok((await brands.json()).some(b=>b.id==='r3y-stage-brand'));
  // Run real queued work, not just heartbeat. No execute endpoint or mock DB.
  const command={commandKey:'alpha-worker-'+randomUUID(),requestedOutcome:'Prepare a synthetic internal life sciences campaign assessment without external effects'};
+ // Confirm the anti-CSRF gate itself before sending the correctly scoped mutation.
+ const missingOrigin=await get(origin+'/api/marketing/brain/runs',{method:'POST',headers:{'content-type':'application/json',cookie:admin},body:JSON.stringify(command)});
+ assert.equal(missingOrigin.status,403);
  const created=await bff('brain/runs',admin,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(command)});
  assert.equal(created.status,201);const queued=await created.json();
  assert.ok(queued.id);
