@@ -3,6 +3,7 @@ import {useEffect,useState} from "react";
 import PersistentLayeredDesignStudio from "./persistent-layered-design-studio";
 import SyntheticChannelPlanStudio from "./synthetic-channel-plan-studio";
 import {selectedCreativeIsCurrent} from "../lib/journey-creative-current";
+import {CAMPAIGN_STAGE_ORDER} from "../lib/campaign-readiness";
 import {validateOfflineCreativeDownload,deriveOfflineEditableSvgDraft} from "../lib/offline-creative-export";
 
 type Identity={organizationId:string;userId:string;email:string;role:string};
@@ -290,12 +291,13 @@ export default function OfflineCampaignJourneyStudio({identity,campaigns=[],prod
     </button>
     {journey&&<>
      <p style={{fontSize:13}}><strong>Loaded campaign:</strong> {journey.campaign.name} · {journey.campaign.status} · <code>{campaignId}</code></p>
-     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
-      {Object.entries(journey.stages).map(([name,ok])=>
-       <div key={name} style={{padding:9,background:"#f8fafc",borderRadius:6,fontSize:12}}>
-        <strong style={{color:ok?"#166534":"#92400e"}}>{ok?"✓":"○"}</strong>{" "}
-        {name.replace(/([A-Z])/g," $1")}
-       </div>)}
+     <div className="alpha-card" style={{boxShadow:"none",marginTop:12}} aria-label="Campaign milestone progress">
+      <div className="alpha-status-row"><strong>Offline milestones</strong><span className="alpha-pill">{CAMPAIGN_STAGE_ORDER.filter(([key])=>journey.stages[key]===true).length}/{CAMPAIGN_STAGE_ORDER.length} evidenced</span></div>
+      <progress aria-label="Evidenced offline campaign milestones" value={CAMPAIGN_STAGE_ORDER.filter(([key])=>journey.stages[key]===true).length} max={CAMPAIGN_STAGE_ORDER.length} style={{width:"100%",accentColor:"#087c83"}}/>
+      <div className="alpha-grid">{CAMPAIGN_STAGE_ORDER.map(([key,title])=><div className="alpha-stat" key={key}>
+       <span>{title}</span><div style={{fontSize:12,fontWeight:700,color:journey.stages[key]===true?"#166534":"#92400e"}}>{journey.stages[key]===true?"Evidenced":"Not demonstrated"}</div>
+      </div>)}</div>
+      <p className="alpha-subtle">Milestones describe the last loaded canonical offline journey; not live delivery, release permission or scientific validation.</p>
      </div>
      <details style={{marginTop:9}}><summary>Audited actions and simulation evidence</summary>
       <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:11}}>
