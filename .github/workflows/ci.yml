@@ -582,6 +582,9 @@ jobs:
             alpha-web-image.txt
             alpha-packaging-status.txt
             alpha-container-rehearsal-status.txt
+            alpha-packaged-login-before.txt
+            alpha-packaged-login-after.txt
+            alpha-packaged-identity-status.txt
             alpha-isolation-evidence.txt
             alpha-postgres-image.txt
             alpha-scanner-image.txt
