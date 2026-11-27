@@ -241,3 +241,8 @@ A narrowly bounded **synthetic-only** Audience/Consent owner now creates random 
 ## Six additional offline provider protocols — Instagram, TikTok, YouTube, X, Canva, Adobe
 
 [Reuse Map, ordered upload/post/job/status contracts, 66 new provider chaos cases, 5 fake PKCE flows, Adobe server-to-server fixture, exact HTTP shapes, no-egress checks and remaining official sandbox requirements](R2_R3_SIX_PROVIDER_PROTOCOL_COMPLETION_2026_11_19.md). All **14** provider categories now have in-process trial contract coverage. This is **not** a connected production API adapter release; customer permissions, real binary uploads, application approval, provider callbacks and all cross-channel production R2/R3 acceptance remain unverified. The social/email and tool/model egress locks are unchanged.
+
+
+## Mandatory creative integration depth
+
+[Creative OSS integration tranche](CREATIVE_OSS_INTEGRATION_TRANCHE.md) adds the OpenMotion-first candidate evaluation, reuse map, C0–C9 implementation/acceptance packages and provider-independent creative scope. Existing engine, workflow and studio IDs and release gates are unchanged. No upstream import or production certification is implied.

@@ -38,6 +38,12 @@ describe('Master Blueprint v2.1 complete declarative coverage',()=>{
    expect(target?.blocker?.length).toBeGreaterThan(10);
   }
  });
+ it('retains creative expansion as partial within canonical targets',()=>{
+  for(const id of ['E10','E11','E12','E13','E14','E32'])expect(TARGET_ENGINES.find(e=>e.id===id)?.state).toBe('PARTIAL');
+  expect(TARGET_ENGINES.find(e=>e.id==='E11')?.blocker).toContain('OpenMotion/HyperFrames');
+  expect(TARGET_WORKFLOWS.find(w=>w.id==='WF19')?.blocker).toContain('Motion.md');
+  expect(TARGET_STUDIOS.find(s=>s.id==='S04')?.state).toBe('PARTIAL');
+ });
  it('does not create new executing agents: aliases map to the 13 existing canonical authorities',()=>{
   const authorized=new Set([
    'MKT-CMO-001','MKT-OPS-001','MKT-STR-001','MKT-ANA-001','MKT-PM-001',

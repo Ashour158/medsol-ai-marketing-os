@@ -95,47 +95,47 @@ export const TARGET_ENGINES = [
   {
     "id": "E10",
     "name": "Copywriting",
-    "goal": "Versioned copy variants and approvals",
+    "goal": "Versioned copy variants, scripts, captions, multilingual campaign derivatives and approvals",
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Stored layered title/body variants; standalone copy variant lifecycle and approvals remain."
+    "blocker": "Layered text exists; standalone copy lifecycle, script/caption editor and variant review remain"
   },
   {
     "id": "E11",
     "name": "Creative Production",
-    "goal": "Editable layered designs, deterministic renders, rendition lineage, multimedia jobs and rights",
+    "goal": "Editable still canvas and motion timeline, isolated decoded multimedia renders, audio, image editing, rights and rendition lineage",
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered source, deterministic SVG, derived PNG lineage, byte verification and independent comparison review exist; production release, multiformat and external editor remain"
+    "blocker": "Merged timed motion storyboard and derived PNG review; OpenMotion/HyperFrames selective integration, persistent verified video, audio and full editor remain"
   },
   {
     "id": "E12",
     "name": "Localization",
-    "goal": "Approved copy derivatives for language and locale",
+    "goal": "Reviewed locale derivatives, RTL typography, captions and voiceover",
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Versioned locale drafts and Arabic RTL rendering merged; independent translation validation, provider rendition and release approval remain"
+    "blocker": "Locale/RTL still drafts exist; translation, caption and narration verification remain"
   },
   {
     "id": "E13",
     "name": "Content Quality",
-    "goal": "Factual, accessibility, rights and brand QA",
+    "goal": "Revision-bound factual, accessibility, rights, all-scene brand and audio/visual QA",
     "release": "R2",
     "owner": "BrandMasterService",
     "state": "PARTIAL",
-    "blocker": "Stored revision-bound brand-policy advisory checks phrases, disclaimers, accents and contrast; independent factual, accessibility, translation and rights validation remain"
+    "blocker": "Literal brand checks and motion scene attestation exist; independent claims, translation, decoded media and accessibility verification remain"
   },
   {
     "id": "E14",
     "name": "Digital Asset Management",
-    "goal": "Versioned asset, source, license, editable layers, render provenance and rendition",
+    "goal": "Canonical immutable creative sources, layer/timeline, media rights, decoded render and asset provenance",
     "release": "R1",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Immutable DAM, layered source, derived PNG lineage, exact byte verification and independent comparison review exist; production release and multimedia remain"
+    "blocker": "Layered PNG and motion storyboard lineage exist; isolated decoded multimedia rendition and rights remain"
   },
   {
     "id": "E15",
@@ -293,11 +293,11 @@ export const TARGET_ENGINES = [
   {
     "id": "E32",
     "name": "Brief & Design Coordination",
-    "goal": "Brief parsing, approved creative tasks, storyboard and editable layered handoff",
+    "goal": "Multimodal brief, reference motion analysis, storyboards, reviewed Motion.md templates and editable creative handoff",
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Persistent layered title/body/accent, deterministic SVG and derived PNG verification/review exist; multimodal brief and production render jobs remain"
+    "blocker": "Structured source and timed storyboard exist; authorized reference analysis, full editor, rendering and multimodal brief remain"
   },
   {
     "id": "E33",
@@ -384,8 +384,8 @@ export const TARGET_WORKFLOWS = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "goal": "Creative production with editable source, verified raster and rendition lineage",
-    "blocker": "Persistent editable source, derived PNG lineage, byte verification and independent rights review exist; production release and multimedia remain"
+    "goal": "Brief-to-editable creative production, timeline, image/audio/video variants and independently reviewed render",
+    "blocker": "Still and storyboard partial baseline; OpenMotion-first isolated render and multimedia editor remain"
   },
   {
     "id": "WF07",
@@ -496,8 +496,8 @@ export const TARGET_WORKFLOWS = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "goal": "Brief to layered editable design, verified render and independent rights review",
-    "blocker": "Persisted layered source, deterministic SVG, derived PNG lineage and independent comparison review exist; production rendition and multimedia remain"
+    "goal": "Brief to brand-aware reference analysis, editable graphic/video design, verified render and independent review",
+    "blocker": "Layered and timed storyboard draft baseline; reference intake, Motion.md package and production rendering remain"
   },
   {
     "id": "WF20",
@@ -555,7 +555,7 @@ export const TARGET_WORKFLOWS = [
     "release": "R4",
     "owner": "Loyalty & Retention",
     "state": "PARTIAL",
-    "blocker": "Channel-specific synthetic retention, renewal and win-back rehearsals; loyalty/reward ledger, actual customer lifecycle and financial liability remain."
+    "blocker": "Merged synthetic earning and redemption ledger and channel-specific retention rehearsals; actual customer lifecycle, real rewards and financial liability remain"
   },
   {
     "id": "WF27",
@@ -713,7 +713,7 @@ export const TARGET_STUDIOS = [
     "release": "R2",
     "owner": "Creative & DAM",
     "state": "PARTIAL",
-    "blocker": "Internal simulated operator surface exists; full external integration and independent acceptance remain"
+    "blocker": "Offline still and timed motion operator surfaces exist; full creative canvas, timeline, media generation, audio, render and independent acceptance remain"
   },
   {
     "id": "S05",
