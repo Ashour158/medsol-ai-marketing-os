@@ -61,7 +61,7 @@ export default function Home() {
   const [approvalInboxUnavailable,setApprovalInboxUnavailable]=useState(false);
   const [identity, setIdentity] = useState<{userId:string;organizationId:string;email:string;role:string}|null>(null);
   const [offlineHandoff,setOfflineHandoff]=useState<{
-   organizationId:string;manifest:string;revision:number
+   organizationId:string;userId:string;manifest:string;revision:number
   }|null>(null);
   const [approvalRationale, setApprovalRationale] = useState("");
   const [selectedApprovalId, setSelectedApprovalId] = useState("");
@@ -102,7 +102,7 @@ export default function Home() {
   // Presentation-only handoff: the receiving journey must re-read canonical
   // campaign data under its signed tenant session before taking any action.
   function openCampaign(id:string){
-    if(!identity||!overview||!campaigns.some(c=>c.id===id))return;
+    if(!identity||! /^[A-Za-z0-9_-]{1,128}$/.test(id))return;
     setCampaignHandoff(previous=>({organizationId:identity.organizationId,userId:identity.userId,campaignId:id,revision:(previous?.revision??0)+1}));
     navigateWorkspace("journey");
   }
@@ -409,11 +409,11 @@ export default function Home() {
         </>}
         <div id="blueprint-studio" style={{scrollMarginTop:120}}>{identity&&<BlueprintVirtualStudio key={identity.organizationId+":"+identity.userId}
          onPrepareOfflineWorkflow={manifest=>{setOfflineHandoff(previous=>({
-          organizationId:identity.organizationId,manifest,revision:(previous?.revision??0)+1
+          organizationId:identity.organizationId,userId:identity.userId,manifest,revision:(previous?.revision??0)+1
          }));navigateWorkspace("workflow-studio");}}/>}</div>
         <div id="workflow-studio" style={{scrollMarginTop:120}}><OfflineDagStudio
          key={identity?identity.organizationId+":"+identity.userId:"signed-out"} identity={identity}
-         importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId?
+         importedWorkflow={offlineHandoff?.organizationId===identity?.organizationId&&offlineHandoff?.userId===identity?.userId?
           offlineHandoff:null}/></div>
         <div style={{scrollMarginTop:120}}><MarketIntelligenceStudio
          key={identity?identity.organizationId+":"+identity.userId:"signed-out"}
