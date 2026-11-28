@@ -9,6 +9,7 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [name,setName]=useState(""),[slug,setSlug]=useState(""),[mission,setMission]=useState(""),[template,setTemplate]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [rehearsalAgent,setRehearsalAgent]=useState(""),[objective,setObjective]=useState(""),[market,setMarket]=useState("");
+ const [contextQuery,setContextQuery]=useState("");
  const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean}|null>(null);
  const lock=useRef(false),key=useRef(""),rehearsalKey=useRef("");
  async function api(path:string,body?:unknown){
@@ -44,11 +45,13 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
    <label>Rehearsal specialist<select value={rehearsalAgent} disabled={busy} onChange={e=>{setRehearsalAgent(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}><option value="">Choose paused specialist</option>{registry.records.map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
    <label>Fixture assessment objective<textarea maxLength={500} value={objective} disabled={busy} onChange={e=>{setObjective(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Fixture assessment market<input maxLength={100} value={market} disabled={busy} onChange={e=>{setMarket(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
-   <button type="button" disabled={busy||!rehearsalAgent||objective.trim().length<12||market.trim().length<2} onClick={()=>void run(async()=>{
+   <label>Optional reviewed specialist context query<input maxLength={200} value={contextQuery} disabled={busy} onChange={e=>{setContextQuery(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
+   <p className="alpha-subtle">If supplied, the exact source and memory citations must remain eligible at approval and execution. The engine receives references only, not raw knowledge text.</p>
+   <button type="button" disabled={busy||!rehearsalAgent||objective.trim().length<12||market.trim().length<2||(!!contextQuery&&contextQuery.trim().length<3)} onClick={()=>void run(async()=>{
     const requestKey=rehearsalKey.current||"fixture-"+crypto.randomUUID();rehearsalKey.current=requestKey;
-    const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true});
+    const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true,...(contextQuery.trim()?{contextQuery:contextQuery.trim()}:{})});
     if(v.fixtureOnly!==true||v.externalEffectsAuthorized!==false||v.autonomousExecutionAuthorized!==false)throw Error("Unexpected rehearsal authority");
-    setRehearsalRef(v.approvalId);setRehearsalResult(null);setNotice("Exact rehearsal review "+v.approvalId+" · "+v.decision+". A different administrator must approve through the Approval inbox.");
+    setRehearsalRef(v.approvalId);setRehearsalResult(null);setNotice("Exact rehearsal review "+v.approvalId+" · "+v.decision+(v.contextPin?" · "+v.contextPin.references.length+" pinned evidence references":"")+". A different administrator must approve through the Approval inbox.");
    })}>Request exact specialist rehearsal review</button>
    <label>Approved specialist rehearsal reference<input value={rehearsalRef} disabled={busy} onChange={e=>{setRehearsalRef(e.target.value);setRehearsalResult(null);}}/></label>
    <button type="button" disabled={busy||!/^specialist-run-[0-9a-f]{64}$/.test(rehearsalRef)} onClick={()=>void run(async()=>{

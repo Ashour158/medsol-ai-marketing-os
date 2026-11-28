@@ -4,18 +4,21 @@ import {createHash} from 'node:crypto';
 import {SPECIALIST_REGISTRATION,readSpecialist} from './offline-specialist.js';
 import {agentReleaseDigest,baselineAgentReleaseManifest,parseAgentReleaseManifest,verifyTrustedAgentReleaseSignature,agentReleaseTrustConfig} from './agent-manifest-release.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
+import type {MarketingLearningService} from './marketing-learning.service.js';
+import {contextPinTuple,parseContextPin,loadSpecialistContextPin,type SpecialistContextPin} from './specialist-context-pin.js';
 export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
 const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export function rehearsalInput(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist rehearsal required');
  const v=raw as Record<string,unknown>;
- if(Object.keys(v).sort().join(',')!=='agentId,fixtureOnly,market,objective,requestKey'||
+ if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
+ (Object.hasOwn(v,'contextQuery')&&(typeof v.contextQuery!=='string'||v.contextQuery.trim().length<3||v.contextQuery.length>200))||
  v.fixtureOnly!==true||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey)||
  typeof v.agentId!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(v.agentId)||
  typeof v.objective!=='string'||v.objective.trim().length<12||v.objective.length>500||
  typeof v.market!=='string'||v.market.trim().length<2||v.market.length>100)
  throw new BadRequestException('Bounded fixture objective, market and specialist identity required');
- return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const};
+ return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{})};
 }
 type Input=ReturnType<typeof rehearsalInput>;
 export const rehearsalId=(org:string,key:string)=>'specialist-run-'+hash([org,key]).slice(7);
@@ -54,9 +57,9 @@ export async function currentSpecialistTemplate(tx:Prisma.TransactionClient,org:
   templateDigest:agentReleaseDigest(manifest),templateInstalled:!!installed,capability:s.proposedCapability,maxInputBytes:manifest.maxInputBytes};
 }
 type Template=Awaited<ReturnType<typeof currentSpecialistTemplate>>;
-export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string){
+export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string,contextPin?:SpecialistContextPin){
  return{schema:'medsol.offline-specialist-rehearsal.v1',organizationId:org,requestedBy:actor,input,
-  ...template,expiresAt,fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
+  ...template,expiresAt,...(contextPin?{contextPin}:{}),fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
   modelCallsAuthorized:false as const,toolCallsAuthorized:false as const,memoryWritesAuthorized:false as const,externalEffectsAuthorized:false as const};
 }
 type Scope=ReturnType<typeof rehearsalScope>;
@@ -64,7 +67,7 @@ export function rehearsalDigest(s:Scope){
  const i=s.input;
  return hash([s.schema,s.organizationId,s.requestedBy,i.agentId,i.requestKey,i.objective,i.market,i.fixtureOnly,
   s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
-  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized]);
+  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[])]);
 }
 export function readRehearsal(a:Approval):Scope{
  try{
@@ -75,21 +78,23 @@ export function readRehearsal(a:Approval):Scope{
    s.schema!=='medsol.offline-specialist-rehearsal.v1'||s.fixtureOnly!==true||s.autonomousExecutionAuthorized!==false||
    s.modelCallsAuthorized!==false||s.toolCallsAuthorized!==false||s.memoryWritesAuthorized!==false||s.externalEffectsAuthorized!==false||
    rehearsalDigest(s)!==a.scopeDigest)throw Error('scope');
+  if(i.contextQuery===undefined&&s.contextPin!==undefined)throw Error('unexpected context');
   const exact=rehearsalScope(a.organizationId,a.requestedBy,i,{registrationId:s.registrationId,registrationDigest:s.registrationDigest,
    templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,templateInstalled:s.templateInstalled,
-   capability:s.capability,maxInputBytes:s.maxInputBytes},s.expiresAt);
+   capability:s.capability,maxInputBytes:s.maxInputBytes},s.expiresAt,i.contextQuery!==undefined?parseContextPin(s.contextPin,i.contextQuery):undefined);
   if(rehearsalDigest(exact)!==a.scopeDigest)throw Error('normalized scope');
   return exact;
  }catch{throw new ConflictException('Invalid exact specialist rehearsal evidence');}
 }
-export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date){
+export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date,learning?:MarketingLearningService){
  const s=readRehearsal(a);
  if(!a.scopeExpiresAt||a.scopeExpiresAt<=now)throw new ConflictException('Specialist rehearsal expired');
  const requester=await tx.user.findFirst({where:{organizationId:a.organizationId,id:s.requestedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
  if(!requester?.oidcSubject)throw new ForbiddenException('Current specialist requester required');
  await assertActorPermissionInTenantTransaction(tx,{organizationId:a.organizationId,userId:requester.id,email:requester.email,role:requester.role,subject:requester.oidcSubject},'MANAGE_TENANT');
  const current=await currentSpecialistTemplate(tx,a.organizationId,a.objectId);
- if(rehearsalDigest(rehearsalScope(a.organizationId,s.requestedBy,s.input,current,s.expiresAt))!==a.scopeDigest)
- throw new ConflictException('Specialist or template changed; request fresh review');
+ const pin=s.input.contextQuery!==undefined?await loadSpecialistContextPin(learning,tx,a.organizationId,a.objectId,s.input.contextQuery):undefined;
+ if(rehearsalDigest(rehearsalScope(a.organizationId,s.requestedBy,s.input,current,s.expiresAt,pin))!==a.scopeDigest)
+ throw new ConflictException('Specialist, template or reviewed context changed; request fresh review');
  return s;
 }
