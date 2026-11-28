@@ -173,6 +173,9 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
     try{const watch=await this.pulseReviewedWatches();if(watch.failed)this.log.warn('Reviewed watch evaluation failures: '+watch.failed);}
     catch{this.log.warn('Reviewed watch scan failed; brain work continues');}
    }
+   // A dedicated scheduler deployment can poll reviewed specialist grants
+   // without claiming general brain work. Default behavior is unchanged.
+   if(process.env.MARKETING_BRAIN_RUN_DISPATCH_ENABLED==='false')return{claimed:false,status:'SPECIALIST_OR_MAINTENANCE_ONLY'};
    const tenants=await this.db.organization.findMany({
     where:this.tenantScanCursor?{id:{gt:this.tenantScanCursor}}:{},
     orderBy:{id:'asc'},take:50,select:{id:true}
