@@ -100,6 +100,25 @@ export class GovernedModelService {
     }
     this.gateway = new BoundedModelGateway(adapter);
   }
+  /** Fixed, nonbillable protocol fixture. Never touches the configured live
+   * adapter or spending ledger; only the same bounded router and synthetic adapters.
+   * The caller must own the reviewed tenant execution and canonical template pin.
+   */
+  async rehearseSpecialistContracts(input:{organizationId:string;correlationId:string;agentId:string;decisionDigest:string}){
+    if(process.env.MARKETING_AI_REASONING_ENABLED==='true'||!/^sha256:[0-9a-f]{64}$/.test(input.decisionDigest))
+      throw new Error('Offline specialist contract rehearsal required');
+    const results=[];
+    for(const providerKey of ['OPENAI','ANTHROPIC','GEMINI','LOCAL'] as const){
+      const adapter=new SimulatedModelAdapter({providerKey,scenario:'SUCCESS'});
+      const route=new GovernedModelRouter({scopeMode:'EXACT_TENANT',routes:[{organizationId:input.organizationId,agentId:input.agentId,purpose:'INTERNAL_MARKETING_DRAFT',providerKey}],adapters:{[providerKey]:adapter}});
+      const gateway=new BoundedModelGateway(route);
+      const result=await gateway.complete({organizationId:input.organizationId,correlationId:input.correlationId,agentId:input.agentId,purpose:'INTERNAL_MARKETING_DRAFT',input:JSON.stringify({fixture:'specialist-contract-v1',decisionDigest:input.decisionDigest}),maxOutputTokens:256,timeoutMs:1000,estimatedCostMicros:0});
+      if(result.actualCostMicros!==0||result.model!=='synthetic:'+providerKey.toLowerCase()||!result.text.startsWith('[SYNTHETIC '+providerKey+' MODEL — NO AI INFERENCE]'))
+        throw new Error('Unexpected synthetic provider contract');
+      results.push({providerKey,model:result.model,inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCostMicros:0,passed:true as const});
+    }
+    return{schema:'medsol.specialist-provider-contracts.v1',decisionDigest:input.decisionDigest,results,providerRequestsMade:0,realModelInvocations:0,actualCostMicros:0,modelQualityEvaluated:false,externalEffectsAuthorized:false};
+  }
   // Adapter injection is restricted to server-side composition; no agent may select arbitrary network destinations.
   async complete(requestId: string, raw: unknown): Promise<ModelResult> {
     const request = ModelRequestSchema.parse(raw);

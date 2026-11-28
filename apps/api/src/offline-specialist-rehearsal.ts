@@ -15,7 +15,9 @@ const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v))
 export function rehearsalInput(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist rehearsal required');
  const v=raw as Record<string,unknown>;
- if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,handoverApprovalId,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,handoverApprovalId,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
+ const baseKeys=Object.keys(v).filter(k=>k!=='simulationMode').sort().join(',');
+ if(Object.hasOwn(v,'simulationMode')&&(v.simulationMode!=='PROVIDER_CONTRACT_V1'||v.brainMode!==SPECIALIST_DECISION_MODE))throw new BadRequestException('Explicit offline provider contract mode requires specialist decision policy');
+ if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,handoverApprovalId,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,handoverApprovalId,market,objective,requestKey'].includes(baseKeys)||
  (Object.hasOwn(v,'handoverApprovalId')&&(v.brainMode!==SPECIALIST_DECISION_MODE||typeof v.handoverApprovalId!=='string'||!/^specialist-run-[0-9a-f]{64}$/.test(v.handoverApprovalId)))||
  (Object.hasOwn(v,'brainMode')&&v.brainMode!==SPECIALIST_BRAIN_MODE&&v.brainMode!==SPECIALIST_DECISION_MODE)||
  (Object.hasOwn(v,'contextQuery')&&(typeof v.contextQuery!=='string'||v.contextQuery.trim().length<3||v.contextQuery.length>200))||
@@ -24,7 +26,7 @@ export function rehearsalInput(raw:unknown){
  typeof v.objective!=='string'||v.objective.trim().length<12||v.objective.length>500||
  typeof v.market!=='string'||v.market.trim().length<2||v.market.length>100)
  throw new BadRequestException('Bounded fixture objective, market and specialist identity required');
- return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE||v.brainMode===SPECIALIST_DECISION_MODE?{brainMode:v.brainMode}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{}),...(typeof v.handoverApprovalId==='string'?{handoverApprovalId:v.handoverApprovalId}:{})};
+ return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE||v.brainMode===SPECIALIST_DECISION_MODE?{brainMode:v.brainMode}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{}),...(typeof v.handoverApprovalId==='string'?{handoverApprovalId:v.handoverApprovalId}:{}),...(v.simulationMode==='PROVIDER_CONTRACT_V1'?{simulationMode:'PROVIDER_CONTRACT_V1' as const}:{})};
 }
 type Input=ReturnType<typeof rehearsalInput>;
 export const rehearsalId=(org:string,key:string)=>'specialist-run-'+hash([org,key]).slice(7);
@@ -90,7 +92,7 @@ export function rehearsalDigest(s:Scope){
  const i=s.input;
  return hash([s.schema,s.organizationId,s.requestedBy,i.agentId,i.requestKey,i.objective,i.market,i.fixtureOnly,
   s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
-  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[]),...(s.configuration!==undefined?['configuration',configPinTuple(s.configuration)]:[]),...(i.handoverApprovalId!==undefined?['handover',i.handoverApprovalId,handoverTuple(s.handover!)]:[])]);
+  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[]),...(s.configuration!==undefined?['configuration',configPinTuple(s.configuration)]:[]),...(i.handoverApprovalId!==undefined?['handover',i.handoverApprovalId,handoverTuple(s.handover!)]:[]),...(i.simulationMode!==undefined?['simulationMode',i.simulationMode]:[])]);
 }
 function normalizeConfigPin(p:ConfigPin):ConfigPin{configPinTuple(p);return{approvalId:p.approvalId,digest:p.digest,version:p.version,mission:p.mission,evidenceRequired:p.evidenceRequired,maxObjectiveChars:p.maxObjectiveChars,...(p.reviewSkills!==undefined?{reviewSkills:normalizeReviewSkills(p.reviewSkills)}:{})};}
 export function readRehearsal(a:Approval):Scope{
