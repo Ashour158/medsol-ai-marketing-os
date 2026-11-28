@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario, AnthropicMessagesAdapter, GeminiGenerateContentAdapter, type ModelRoute } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
+import {prepareStructuredDraftFixture,structuredDraftFixture,structuredDraftFixtureReceipt} from './specialist-structured-model-draft.js';
 
 
 /** Server-configured, simulation-only per-tenant/agent routing; never user-selected.
@@ -118,6 +119,17 @@ export class GovernedModelService {
       results.push({providerKey,model:result.model,inputTokens:result.inputTokens,outputTokens:result.outputTokens,actualCostMicros:0,passed:true as const});
     }
     return{schema:'medsol.specialist-provider-contracts.v1',decisionDigest:input.decisionDigest,results,providerRequestsMade:0,realModelInvocations:0,actualCostMicros:0,modelQualityEvaluated:false,externalEffectsAuthorized:false};
+  }
+  /** Reviewed nonbillable fixture only; cannot access the configured adapter. */
+  async rehearseStructuredSpecialistDraft(input:Parameters<typeof prepareStructuredDraftFixture>[0]){
+    if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new Error('Structured specialist fixture requires offline reasoning');
+    const prepared=prepareStructuredDraftFixture(input);
+    const adapter:ModelAdapter={complete:async(request,signal)=>{
+      if(signal.aborted||JSON.stringify(request)!==JSON.stringify(prepared.request))throw new Error('Unexpected structured fixture request');
+      return structuredDraftFixture(prepared);
+    }};
+    const gateway=new BoundedModelGateway(new GovernedModelRouter({scopeMode:'EXACT_TENANT',routes:[{organizationId:input.organizationId,agentId:input.templateAgentId,purpose:'INTERNAL_MARKETING_DRAFT',providerKey:'LOCAL'}],adapters:{LOCAL:adapter}}));
+    return structuredDraftFixtureReceipt(prepared,await gateway.complete(prepared.request));
   }
   // Adapter injection is restricted to server-side composition; no agent may select arbitrary network destinations.
   async complete(requestId: string, raw: unknown): Promise<ModelResult> {
