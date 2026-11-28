@@ -358,6 +358,19 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const contextualResult=await invoke(r,executePath,contextualCommand);
  expect(contextualResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{contextEvidence:{pin:contextual.data.contextPin,independentlyVerified:false,sourceTextCopied:false},templateDecision:{payload:{evidence:{references:contextual.data.contextPin.references.map((x:any)=>x.citationRef),verified:false}}}}}});
  expect(contextualResult.data.decision).toMatchObject({configuration:{version:1,mission:config.mission,evidenceRequired:true},missionPlan:{mode:'MISSION_PLAN_V1',mission:config.mission,objective:task.objective,reviewSkills:['CLAIM_LIMITATIONS','EVIDENCE_GAPS'],tasks:expect.arrayContaining([expect.objectContaining({kind:'CLAIM_LIMITATIONS'}),expect.objectContaining({kind:'EVIDENCE_GAPS'})]),evidenceStatus:'REFERENCES_ONLY_UNVERIFIED',humanReviewRequired:true,scientificVerification:false,externalEffectsAuthorized:false},missionPlanDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)});
+ // Explicit decision mode must produce a bounded specialist disposition, not just a template draft.
+ const decisionTask={...contextualTask,requestKey:'fixture-'+randomUUID(),brainMode:'SPECIALIST_DECISION_V1'};
+ const decisionApproval=await invoke(r,taskPath,decisionTask);
+ expect(decisionApproval).toMatchObject({status:201,data:{decision:'PENDING',input:{brainMode:'SPECIALIST_DECISION_V1'}}});
+ expect((await invoke(reviewer,'approvals/decide',decide(decisionApproval.data.approvalId,'reviewer'))).status).toBe(201);
+ const decisionCommand={approvalId:decisionApproval.data.approvalId,fixtureOnly:true};
+ const decisionResult=await invoke(r,executePath,decisionCommand);
+ expect(decisionResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{specialistDecision:{mode:'SPECIALIST_DECISION_V1',disposition:'DRAFT_FOR_REVIEW',draftEligible:true,semanticAlignmentVerified:false,scientificVerification:false,humanReviewRequired:true,externalEffectsAuthorized:false},specialistDecisionDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)}}});
+ expect((await invoke(r,executePath,decisionCommand)).data.replayed).toBe(true);
+ const unrelated=await invoke(r,taskPath,{...decisionTask,requestKey:'fixture-'+randomUUID(),objective:'Compose unrelated advertisements'});
+ expect(unrelated.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(unrelated.data.approvalId,'reviewer'))).status).toBe(201);
+ expect(await invoke(r,executePath,{approvalId:unrelated.data.approvalId,fixtureOnly:true})).toMatchObject({status:201,data:{status:'BLOCKED',decision:{specialistDecision:{disposition:'ESCALATE_SCOPE',draftEligible:false}}}});
  expect(JSON.stringify(contextualResult.data)).not.toContain(source.text);
  expect(JSON.stringify(contextualResult.data)).not.toContain(memory.content);
  expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);
@@ -378,6 +391,10 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect((await invoke(reviewer,'approvals/decide',decide(config2.data.approvalId,'reviewer'))).status).toBe(201);
  expect((await invoke(r,specialistPath)).data.records[0]).toMatchObject({configuration:{version:2,evidenceRequired:false}});
  expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);
+ const noEvidence=await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID(),brainMode:'SPECIALIST_DECISION_V1'});
+ expect(noEvidence.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(noEvidence.data.approvalId,'reviewer'))).status).toBe(201);
+ expect(await invoke(r,executePath,{approvalId:noEvidence.data.approvalId,fixtureOnly:true})).toMatchObject({status:201,data:{status:'BLOCKED',decision:{specialistDecision:{disposition:'REQUEST_EVIDENCE',draftEligible:false}}}});
  // Retirement must fence even previously approved but unexecuted context-free tasks.
  const beforeRetirement=await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID()});
  expect(beforeRetirement.status).toBe(201);

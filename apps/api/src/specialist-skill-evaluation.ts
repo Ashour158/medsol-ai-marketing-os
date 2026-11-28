@@ -1,4 +1,5 @@
 import {ConflictException} from '@nestjs/common';
+import {SPECIALIST_DECISION_MODE} from './specialist-decision-brain.js';
 import {normalizeReviewSkills,specialistMissionPlan,type SpecialistReviewSkill} from './specialist-mission-brain.js';
 /** Fixed synthetic safety corpus, not a model-quality or scientific verification test. */
 export function evaluateSpecialistReviewSkills(raw:unknown){
@@ -18,5 +19,5 @@ export function evaluateSpecialistReviewSkills(raw:unknown){
  return{schema:'medsol.specialist-review-skill-safety.v1',skills,results,passed:true as const,modelQualityEvaluated:false as const,scientificVerification:false as const,capabilityExpansionAuthorized:false as const};
 }
 export function assertSkillMode(skills:readonly SpecialistReviewSkill[]|undefined,mode:unknown){
- if(skills?.length&&mode!=='MISSION_PLAN_V1')throw new ConflictException('Reviewed specialist skills require mission planning mode');
+ if(skills?.length&&mode!=='MISSION_PLAN_V1'&&mode!==SPECIALIST_DECISION_MODE)throw new ConflictException('Reviewed specialist skills require mission planning mode');
 }

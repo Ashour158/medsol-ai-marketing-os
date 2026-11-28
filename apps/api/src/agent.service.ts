@@ -9,6 +9,7 @@ import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.ser
 import {SPECIALIST_REHEARSAL,rehearsalInput,rehearsalId,rehearsalScope,rehearsalDigest,readRehearsal,currentSpecialistTemplate,validateRehearsal} from './offline-specialist-rehearsal.js';
 import {lockSpecialist,readSpecialist,SPECIALIST_REGISTRATION} from './offline-specialist.js';
 import {SPECIALIST_BRAIN_MODE,specialistMissionPlan,specialistPlanDigest} from './specialist-mission-brain.js';
+import {SPECIALIST_DECISION_MODE,specialistDecision} from './specialist-decision-brain.js';
 import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
@@ -66,10 +67,16 @@ import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin
     }
     if(scope.configuration){if(!d.configuration||JSON.stringify(configPinTuple(d.configuration as ConfigPin))!==JSON.stringify(configPinTuple(scope.configuration)))throw new ConflictException('Historical specialist configuration evidence invalid');}
     else if(d.configuration!==undefined)throw new ConflictException('Unexpected historical specialist configuration');
-    if(scope.input.brainMode===SPECIALIST_BRAIN_MODE){
+    if(scope.input.brainMode===SPECIALIST_BRAIN_MODE||scope.input.brainMode===SPECIALIST_DECISION_MODE){
      const plan=d.missionPlan as Record<string,unknown>|undefined;
      if(!plan||plan.mode!==SPECIALIST_BRAIN_MODE||plan.humanReviewRequired!==true||plan.scientificVerification!==false||plan.externalEffectsAuthorized!==false||plan.modelCallsAuthorized!==false||plan.toolCallsAuthorized!==false||plan.memoryWritesAuthorized!==false||plan.autonomousExecutionAuthorized!==false||specialistPlanDigest(plan)!==d.missionPlanDigest)throw new ConflictException('Historical specialist mission plan invalid');
     }else if(d.missionPlan!==undefined||d.missionPlanDigest!==undefined)throw new ConflictException('Unexpected historical specialist mission plan');
+    if(scope.input.brainMode===SPECIALIST_DECISION_MODE){
+     const template=d.templateDecision as {executionAllowed?:unknown}|undefined;
+     if(typeof template?.executionAllowed!=='boolean'||!d.specialistDecision||!d.missionPlan)throw new ConflictException('Historical specialist decision missing');
+     const expected=specialistDecision(d.missionPlan as ReturnType<typeof specialistMissionPlan>,template.executionAllowed);
+     if(specialistPlanDigest(expected)!==d.specialistDecisionDigest||specialistPlanDigest(d.specialistDecision)!==d.specialistDecisionDigest||prior.status!==(expected.draftEligible?'COMPLETED':'BLOCKED'))throw new ConflictException('Historical specialist decision integrity invalid');
+    }else if(d.specialistDecision!==undefined||d.specialistDecisionDigest!==undefined)throw new ConflictException('Unexpected historical specialist decision');
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
    await validateRehearsal(tx,a,new Date(),this.learning);
@@ -85,17 +92,19 @@ import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin
    // paused specialist, not general activation or a second engine.
    const templateDecision=await this.runtime.execute(scope.templateId,{executionId,organizationId:org,correlationId:id,input,capabilities:[scope.capability]});
    let missionPlan:ReturnType<typeof specialistMissionPlan>|undefined;
-   if(scope.input.brainMode===SPECIALIST_BRAIN_MODE){
+   if(scope.input.brainMode===SPECIALIST_BRAIN_MODE||scope.input.brainMode===SPECIALIST_DECISION_MODE){
     const registration=await tx.approval.findFirst({where:{organizationId:org,id:scope.registrationId,objectType:SPECIALIST_REGISTRATION,objectId:scope.input.agentId,decision:'APPROVED'}});
     if(!registration||registration.scopeDigest!==scope.registrationDigest)throw new ConflictException('Specialist mission registration changed');
     const registered=readSpecialist(registration);
     missionPlan=specialistMissionPlan({mission:scope.configuration?.mission??registered.input.mission,objective:scope.input.objective,market:scope.input.market,capability:scope.capability,references:scope.contextPin?.references.map(r=>r.citationRef)??[],...(scope.configuration?.reviewSkills!==undefined?{reviewSkills:scope.configuration.reviewSkills}:{})});
    }
+   const independentDecision=scope.input.brainMode===SPECIALIST_DECISION_MODE&&missionPlan?specialistDecision(missionPlan,templateDecision.executionAllowed):undefined;
+   if(scope.input.brainMode===SPECIALIST_DECISION_MODE&&!independentDecision)throw new ConflictException('Specialist decision missing');
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
-    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
     autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
-   const status=templateDecision.executionAllowed?'COMPLETED':'BLOCKED';
+   const status=(independentDecision?independentDecision.draftEligible:templateDecision.executionAllowed)?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
     input,decision:decision as unknown as Prisma.InputJsonValue,status,completedAt:new Date()}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_EXECUTED',objectType:'AgentExecution',objectId:executionId,correlationId:id,after:{scopeDigest:a.scopeDigest,status,externalEffectsAuthorized:false}}});
