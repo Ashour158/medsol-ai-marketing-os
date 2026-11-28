@@ -351,6 +351,24 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect((await invoke(r,taskPath,{...contextualTask,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
  expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);
  expect((await invoke(r,'learning/knowledge/evaluate',{agentId:specialistId,k:1,cases})).status).toBe(409);
+ // Retirement must fence even previously approved but unexecuted context-free tasks.
+ const beforeRetirement=await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID()});
+ expect(beforeRetirement.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(beforeRetirement.data.approvalId,'reviewer'))).status).toBe(201);
+ const retirement={action:'RETIRE',agentId:specialistId,requestKey:'fixture-'+randomUUID(),reason:'Retire synthetic specialist after completed rehearsal',fixtureOnly:true};
+ const retire=await invoke(r,specialistPath,retirement);
+ expect(retire).toMatchObject({status:201,data:{decision:'PENDING',targetStatus:'RETIRED',executionAuthorized:false}});
+ expect(await invoke(r,specialistPath,retirement)).toMatchObject({status:201,data:{approvalId:retire.data.approvalId,replayed:true}});
+ expect((await invoke(r,specialistPath,{...retirement,reason:'Different synthetic reason for retirement'})).status).toBe(409);
+ expect((await invoke(r,'approvals/decide',decide(retire.data.approvalId,'admin'))).status).toBe(403);
+ expect((await invoke(r,specialistPath)).data.records[0].status).toBe('PAUSED');
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:retire.data.approvalId,specialistRetirement:expect.objectContaining({agentId:specialistId,targetStatus:'RETIRED',reason:retirement.reason})}));
+ expect((await invoke(reviewer,'approvals/decide',decide(retire.data.approvalId,'reviewer'))).status).toBe(201);
+ expect((await invoke(r,specialistPath)).data.records[0]).toMatchObject({agentId:specialistId,status:'RETIRED',retirementApprovalId:retire.data.approvalId,executionAuthorized:false});
+ expect((await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
+ expect((await invoke(r,executePath,{approvalId:beforeRetirement.data.approvalId,fixtureOnly:true})).status).toBe(409);
+ expect((await context(r)).status).toBe(403);
+ expect((await invoke(r,executePath,executeCommand)).data.replayed).toBe(true);
  const foreign=await provisionedSession(request,'foreign');
  const foreignContext=await request.post(api+'/marketing/'+contextPath,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId},data:{agentId:specialistId,query:marker}});
  expect(foreignContext.status()).toBe(403);

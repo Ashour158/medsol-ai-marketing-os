@@ -3,7 +3,7 @@ import {useRef,useState} from "react";
 type Identity={organizationId:string;userId:string;role:string};
 type Agent={id:string;name:string};
 type Row={agentId:string;approvalId:string;decision?:string;status?:string;input:{name:string;slug:string;mission:string;templateAgentId:string};proposedCapability:string;templateRisk:string;executionAuthorized:false;reviewExpiresAt:string};
-type Registry={organizationId:string;records:Row[];reviews:Row[];historyCapped:boolean;fixtureOnly:true;executionAuthorized:false;externalEffectsAuthorized:false};
+type Registry={organizationId:string;records:Row[];reviews:Row[];historyCapped:boolean;retirements?:{approvalId:string;decision:string;input:{agentId:string;reason:string}}[];retirementHistoryCapped?:boolean;fixtureOnly:true;executionAuthorized:false;externalEffectsAuthorized:false};
 export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [roster,setRoster]=useState<Agent[]>([]),[registry,setRegistry]=useState<Registry|null>(null);
  const [name,setName]=useState(""),[slug,setSlug]=useState(""),[mission,setMission]=useState(""),[template,setTemplate]=useState("");
@@ -11,7 +11,8 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [rehearsalAgent,setRehearsalAgent]=useState(""),[objective,setObjective]=useState(""),[market,setMarket]=useState("");
  const [contextQuery,setContextQuery]=useState(""),[missionPlanEnabled,setMissionPlanEnabled]=useState(false);
  const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean;missionPlan?:{alignmentSignal:string;evidenceStatus:string;sharedTerms:string[];tasks:{kind:string;description:string}[]}}|null>(null);
- const lock=useRef(false),key=useRef(""),rehearsalKey=useRef("");
+ const [retireAgent,setRetireAgent]=useState(""),[retireReason,setRetireReason]=useState("");
+ const lock=useRef(false),key=useRef(""),rehearsalKey=useRef(""),retirementKey=useRef("");
  async function api(path:string,body?:unknown){
   const r=await fetch("/api/marketing/agents"+path,{method:body===undefined?"GET":"POST",cache:"no-store",credentials:"same-origin",...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
   const data=await r.json();if(!r.ok)throw Error(typeof data.message==="string"?data.message:"Specialist operation denied");return data;
@@ -37,18 +38,32 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
     if(v.executionAuthorized!==false||v.externalEffectsAuthorized!==false||v.memoryWritesAuthorized!==false)throw Error("Unexpected specialist authority");
     await refresh();setNotice("Registration review "+v.approvalId+" · "+v.decision+". Use the existing Approval inbox with a different administrator.");
    })}>Request independent specialist registration</button>
-  </div><h4>Registered paused identities ({registry.records.length})</h4>
+  </div><h4>Registered specialist identities ({registry.records.length})</h4>
   {registry.records.map(row=><article key={row.agentId}><strong>{row.input.name}</strong> · {row.status}<p>{row.agentId} · template {row.input.templateAgentId} · risk {row.templateRisk}</p><p>{row.input.mission}</p></article>)}
+  <h4>Retire specialist identity</h4>
+  <p>Retirement is irreversible and requires a different administrator. It blocks new rehearsals and specialist knowledge access; historical records are retained.</p>
+  <div className="alpha-grid">
+   <label>Specialist to retire<select disabled={busy} value={retireAgent} onChange={e=>{setRetireAgent(e.target.value);retirementKey.current="";}}><option value="">Choose paused specialist</option>{registry.records.filter(row=>row.status==="PAUSED").map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
+   <label>Retirement reason<textarea disabled={busy} maxLength={500} value={retireReason} onChange={e=>{setRetireReason(e.target.value);retirementKey.current="";}}/></label>
+   <button type="button" disabled={busy||!registry.records.some(row=>row.agentId===retireAgent&&row.status==="PAUSED")||retireReason.trim().length<12} onClick={()=>void run(async()=>{
+    const requestKey=retirementKey.current||"fixture-"+crypto.randomUUID();retirementKey.current=requestKey;
+    const v=await api("/specialists",{action:"RETIRE",agentId:retireAgent,requestKey,reason:retireReason,fixtureOnly:true});
+    if(v.executionAuthorized!==false||v.externalEffectsAuthorized!==false||v.targetStatus!=="RETIRED")throw Error("Unexpected retirement authority");
+    await refresh();setNotice("Retirement review "+v.approvalId+" · "+v.decision+". A different administrator must approve.");
+   })}>Request independent specialist retirement</button>
+  </div>
+  {registry.retirementHistoryCapped&&<p>Showing latest 100 retirement reviews.</p>}
+  {registry.retirements?.map(row=><p key={row.approvalId} style={{overflowWrap:"anywhere"}}>{row.input.agentId} · {row.decision} · {row.input.reason} · {row.approvalId}</p>)}
   <h4>Independently reviewed specialist rehearsal</h4>
   <p>One approved fixture assessment through the canonical template. This does not activate the specialist, change permissions or approve its output. Do not enter confidential or real customer data.</p>
   <div className="alpha-grid">
-   <label>Rehearsal specialist<select value={rehearsalAgent} disabled={busy} onChange={e=>{setRehearsalAgent(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}><option value="">Choose paused specialist</option>{registry.records.map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
+   <label>Rehearsal specialist<select value={rehearsalAgent} disabled={busy} onChange={e=>{setRehearsalAgent(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}><option value="">Choose paused specialist</option>{registry.records.filter(row=>row.status==="PAUSED").map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
    <label>Fixture assessment objective<textarea maxLength={500} value={objective} disabled={busy} onChange={e=>{setObjective(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Fixture assessment market<input maxLength={100} value={market} disabled={busy} onChange={e=>{setMarket(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Optional reviewed specialist context query<input maxLength={200} value={contextQuery} disabled={busy} onChange={e=>{setContextQuery(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label><input type="checkbox" checked={missionPlanEnabled} disabled={busy} onChange={e=>{setMissionPlanEnabled(e.target.checked);rehearsalKey.current="";setRehearsalResult(null);}}/> Include mission-specific offline planning (review required)</label>
    <p className="alpha-subtle">If supplied, the exact source and memory citations must remain eligible at approval and execution. The engine receives references only, not raw knowledge text.</p>
-   <button type="button" disabled={busy||!rehearsalAgent||objective.trim().length<12||market.trim().length<2||(!!contextQuery&&contextQuery.trim().length<3)} onClick={()=>void run(async()=>{
+   <button type="button" disabled={busy||!registry.records.some(row=>row.agentId===rehearsalAgent&&row.status==="PAUSED")||objective.trim().length<12||market.trim().length<2||(!!contextQuery&&contextQuery.trim().length<3)} onClick={()=>void run(async()=>{
     const requestKey=rehearsalKey.current||"fixture-"+crypto.randomUUID();rehearsalKey.current=requestKey;
     const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true,...(missionPlanEnabled?{brainMode:"MISSION_PLAN_V1"}:{}),...(contextQuery.trim()?{contextQuery:contextQuery.trim()}:{})});
     if(v.fixtureOnly!==true||v.externalEffectsAuthorized!==false||v.autonomousExecutionAuthorized!==false)throw Error("Unexpected rehearsal authority");

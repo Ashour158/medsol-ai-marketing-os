@@ -13,6 +13,7 @@ import {agentReleaseDigest,agentReleaseTrustConfig,
 import {parseTeamAssembly,assembleOfflineTeam,type TeamMemberEvidence} from './offline-team-assembly.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {SPECIALIST_REGISTRATION,specialistInput,specialistScope,specialistDigest,specialistApprovalId,readSpecialist,lockSpecialist} from './offline-specialist.js';
+import {SPECIALIST_RETIREMENT,retirementInput,retirementId,retirementScope,retirementDigest,readRetirement,currentRetirementRegistration} from './offline-specialist-retirement.js';
 const agent=(id:unknown)=>{
  const base=AGENT_ROSTER.find(a=>a.id===id);
  if(!base)throw new BadRequestException('Canonical agent ID required');
@@ -95,17 +96,47 @@ export class AgentManifestReleaseService{
     const approved=await tx.approval.findMany({where:{organizationId,objectType:SPECIALIST_REGISTRATION,objectId:row.id,decision:'APPROVED'},take:2});
     if(approved.length!==1||!approved[0]!.decidedBy||approved[0]!.decidedBy===approved[0]!.requestedBy||
      !approved[0]!.decidedAt||!approved[0]!.scopeExpiresAt||approved[0]!.decidedAt!>=approved[0]!.scopeExpiresAt!||
-     row.status!=='PAUSED'||row.version!==1||!Array.isArray(row.capabilities)||row.capabilities.length!==0)
+     !['PAUSED','RETIRED'].includes(row.status)||row.version!==1||!Array.isArray(row.capabilities)||row.capabilities.length!==0)
      throw new ConflictException('Invalid paused specialist evidence');
     const scope=readSpecialist(approved[0]!);
     if(row.name!==scope.input.name)throw new ConflictException('Specialist identity metadata changed');
-    records.push({approvalId:approved[0]!.id,...scope,status:'PAUSED',installedVersion:1});
+    const retirement=await tx.approval.findMany({where:{organizationId,objectType:SPECIALIST_RETIREMENT,objectId:row.id,decision:'APPROVED'},take:2});
+    if(row.status==='RETIRED'){
+     const retired=retirement[0];
+     if(retirement.length!==1||!retired?.decidedBy||retired.decidedBy===retired.requestedBy||!retired.decidedAt||!retired.scopeExpiresAt||retired.decidedAt>=retired.scopeExpiresAt)
+      throw new ConflictException('Invalid retired specialist evidence');
+     const rs=readRetirement(retired);
+     if(rs.registrationId!==approved[0]!.id||rs.registrationDigest!==approved[0]!.scopeDigest)throw new ConflictException('Retirement registration mismatch');
+    }else if(retirement.length)throw new ConflictException('Unexpected approved retirement');
+    records.push({approvalId:approved[0]!.id,...scope,status:row.status,installedVersion:1,...(row.status==='RETIRED'?{retirementApprovalId:retirement[0]!.id}:{})});
    }
-   return{organizationId,records,reviews:reviews.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readSpecialist(a)})),
+   const retirements=await tx.approval.findMany({where:{organizationId,objectType:SPECIALIST_RETIREMENT},orderBy:[{createdAt:'desc'},{id:'desc'}],take:101});
+   return{organizationId,records,retirements:retirements.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readRetirement(a)})),retirementHistoryCapped:retirements.length>100,reviews:reviews.slice(0,100).map(a=>({approvalId:a.id,decision:a.decision,...readSpecialist(a)})),
     historyCapped:reviews.length>100,fixtureOnly:true,executionAuthorized:false,externalEffectsAuthorized:false};
   });
  }
+ async requestSpecialistRetirement(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  const input=retirementInput(raw),approvalId=retirementId(organizationId,input.requestKey);
+  return this.db.$transaction(async tx=>{
+   await tx.$queryRaw`SELECT set_config('app.marketing_tenant_id', ${organizationId}, true)`;
+   await this.authorize(tx,organizationId,identity);
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await lockSpecialist(tx,organizationId);
+   const prior=await tx.approval.findFirst({where:{organizationId,id:approvalId}});
+   if(prior){
+    const scope=readRetirement(prior);
+    if(scope.requestedBy!==identity.userId||JSON.stringify(scope.input)!==JSON.stringify(input))throw new ConflictException('Immutable retirement request key already used');
+    return{approvalId,decision:prior.decision,...scope,replayed:true};
+   }
+   const registration=await currentRetirementRegistration(tx,organizationId,input.agentId);
+   const scope=retirementScope(organizationId,identity.userId,input,registration.id,registration.digest,new Date(Date.now()+86400000).toISOString());
+   await tx.approval.create({data:{id:approvalId,organizationId,objectType:SPECIALIST_RETIREMENT,objectId:input.agentId,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R3',requestedBy:identity.userId,scope,scopeDigest:retirementDigest(scope),scopeExpiresAt:new Date(scope.expiresAt)}});
+   await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_RETIREMENT_REQUESTED',objectType:SPECIALIST_RETIREMENT,objectId:input.agentId,correlationId:approvalId,after:{scopeDigest:retirementDigest(scope),executionAuthorized:false}}});
+   return{approvalId,decision:'PENDING',...scope,replayed:false};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.ReadCommitted});
+ }
  async requestSpecialist(organizationId:string,identity:VerifiedIdentity,raw:unknown){
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&Object.hasOwn(raw,'action'))return this.requestSpecialistRetirement(organizationId,identity,raw);
   const input=specialistInput(raw),approvalId=specialistApprovalId(organizationId,input.requestKey);
   // READ COMMITTED plus transaction-local advisory lock serializes proposals
   // and decisions using the same canonical tenant scope.
