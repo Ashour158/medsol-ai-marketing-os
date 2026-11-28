@@ -8,9 +8,11 @@ import type {Prisma} from '@prisma/client';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {SPECIALIST_REHEARSAL,rehearsalInput,rehearsalId,rehearsalScope,rehearsalDigest,readRehearsal,currentSpecialistTemplate,validateRehearsal} from './offline-specialist-rehearsal.js';
 import {lockSpecialist} from './offline-specialist.js';
+import {MarketingLearningService} from './marketing-learning.service.js';
+import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
- constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
+ constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService,@Optional() private readonly learning?:MarketingLearningService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
  async requestSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
   const input=rehearsalInput(raw),org=identity.organizationId,id=rehearsalId(org,input.requestKey);
   return withMarketingTenant(this.db,org,async tx=>{
@@ -23,7 +25,8 @@ import {lockSpecialist} from './offline-specialist.js';
     return{approvalId:id,decision:prior.decision,...scope,replayed:true};
    }
    const template=await currentSpecialistTemplate(tx,org,input.agentId);
-   const scope=rehearsalScope(org,identity.userId,input,template,new Date(Date.now()+86400000).toISOString());
+   const contextPin=input.contextQuery!==undefined?await loadSpecialistContextPin(this.learning,tx,org,input.agentId,input.contextQuery):undefined;
+   const scope=rehearsalScope(org,identity.userId,input,template,new Date(Date.now()+86400000).toISOString(),contextPin);
    await tx.approval.create({data:{id,organizationId:org,objectType:SPECIALIST_REHEARSAL,objectId:input.agentId,
     requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R3',requestedBy:identity.userId,scope,scopeDigest:rehearsalDigest(scope),
     scopeExpiresAt:new Date(scope.expiresAt)}});
@@ -54,15 +57,20 @@ import {lockSpecialist} from './offline-specialist.js';
      d.fixtureOnly!==true||d.outputHumanApproved!==false||d.autonomousExecutionAuthorized!==false||d.modelCallsAuthorized!==false||
      d.toolCallsAuthorized!==false||d.memoryWritesAuthorized!==false||d.externalEffectsAuthorized!==false)
      throw new ConflictException('Historical specialist execution provenance invalid');
+    if(scope.contextPin&&JSON.stringify(d.contextEvidence)!==JSON.stringify({pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false})){
+     // JSONB property order is not authoritative. Normalize the tuple before comparison.
+     const ev=d.contextEvidence as {pin?:typeof scope.contextPin;independentlyVerified?:unknown;sourceTextCopied?:unknown}|undefined;
+     if(!ev?.pin||ev.independentlyVerified!==false||ev.sourceTextCopied!==false||JSON.stringify(contextPinTuple(ev.pin))!==JSON.stringify(contextPinTuple(scope.contextPin)))throw new ConflictException('Historical specialist context evidence invalid');
+    }
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
-   await validateRehearsal(tx,a,new Date());
+   await validateRehearsal(tx,a,new Date(),this.learning);
    const reviewer=await tx.user.findFirst({where:{organizationId:org,id:a.decidedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
    if(!reviewer?.oidcSubject)throw new ForbiddenException('Current independent reviewer required');
    const reviewerIdentity={organizationId:org,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
    await assertActorPermissionInTenantTransaction(tx,reviewerIdentity,'MANAGE_TENANT');
    await assertActorPermissionInTenantTransaction(tx,reviewerIdentity,'DECIDE_APPROVAL');
-   const input={objective:scope.input.objective,market:scope.input.market,fixtureOnly:true};
+   const input={objective:scope.input.objective,market:scope.input.market,fixtureOnly:true,...(scope.contextPin?{evidenceReferences:scope.contextPin.references.map(r=>r.citationRef)}:{})};
    validateAgentInput(input,scope.maxInputBytes);
    // Invoke only the existing deterministic runtime's canonical template,
    // never its governed model gateway. This is an explicit rehearsal of a
@@ -70,7 +78,7 @@ import {lockSpecialist} from './offline-specialist.js';
    const templateDecision=await this.runtime.execute(scope.templateId,{executionId,organizationId:org,correlationId:id,input,capabilities:[scope.capability]});
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
-    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,fixtureOnly:true,outputHumanApproved:false,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
     autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
    const status=templateDecision.executionAllowed?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
