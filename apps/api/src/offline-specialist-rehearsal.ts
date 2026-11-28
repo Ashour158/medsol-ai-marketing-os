@@ -6,7 +6,8 @@ import {agentReleaseDigest,baselineAgentReleaseManifest,parseAgentReleaseManifes
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {MarketingLearningService} from './marketing-learning.service.js';
 import {contextPinTuple,parseContextPin,loadSpecialistContextPin,type SpecialistContextPin} from './specialist-context-pin.js';
-import {SPECIALIST_BRAIN_MODE} from './specialist-mission-brain.js';
+import {SPECIALIST_BRAIN_MODE,normalizeReviewSkills} from './specialist-mission-brain.js';
+import {assertSkillMode} from './specialist-skill-evaluation.js';
 import {currentConfig,configPinTuple,assertConfigPolicy,type ConfigPin} from './offline-specialist-config.js';
 export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
 const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -63,6 +64,7 @@ export async function currentSpecialistTemplate(tx:Prisma.TransactionClient,org:
 type Template=Awaited<ReturnType<typeof currentSpecialistTemplate>>;
 export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string,contextPin?:SpecialistContextPin){
  assertConfigPolicy(template.configuration,input.objective,input.contextQuery);
+ assertSkillMode(template.configuration?.reviewSkills,input.brainMode);
  return{schema:'medsol.offline-specialist-rehearsal.v1',organizationId:org,requestedBy:actor,input,
   ...template,expiresAt,...(contextPin?{contextPin}:{}),fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
   modelCallsAuthorized:false as const,toolCallsAuthorized:false as const,memoryWritesAuthorized:false as const,externalEffectsAuthorized:false as const};
@@ -74,7 +76,7 @@ export function rehearsalDigest(s:Scope){
   s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
   s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[]),...(s.configuration!==undefined?['configuration',configPinTuple(s.configuration)]:[])]);
 }
-function normalizeConfigPin(p:ConfigPin):ConfigPin{configPinTuple(p);return{approvalId:p.approvalId,digest:p.digest,version:p.version,mission:p.mission,evidenceRequired:p.evidenceRequired,maxObjectiveChars:p.maxObjectiveChars};}
+function normalizeConfigPin(p:ConfigPin):ConfigPin{configPinTuple(p);return{approvalId:p.approvalId,digest:p.digest,version:p.version,mission:p.mission,evidenceRequired:p.evidenceRequired,maxObjectiveChars:p.maxObjectiveChars,...(p.reviewSkills!==undefined?{reviewSkills:normalizeReviewSkills(p.reviewSkills)}:{})};}
 export function readRehearsal(a:Approval):Scope{
  try{
   const s=a.scope as unknown as Scope,i=rehearsalInput(s.input);

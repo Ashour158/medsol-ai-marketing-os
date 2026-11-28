@@ -153,6 +153,7 @@ export class AgentManifestReleaseService{
    }
    const reg=await currentRetirementRegistration(tx,organizationId,input.agentId);
    const current=await currentConfig(tx,organizationId,input.agentId,reg);
+   if(current?.reviewSkills!==undefined&&input.reviewSkills===undefined)throw new ConflictException('Explicit review skill selection required for revised configuration');
    if(input.expectedVersion!==(current?.version??0))throw new ConflictException('Specialist configuration version changed');
    const scope=configScope(organizationId,identity.userId,input,reg.id,reg.digest,current?.digest??null,new Date(Date.now()+86400000).toISOString());
    await tx.approval.create({data:{id:approvalId,organizationId,objectType:SPECIALIST_CONFIG,objectId:input.agentId,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R3',requestedBy:identity.userId,scope,scopeDigest:configDigest(scope),scopeExpiresAt:new Date(scope.expiresAt)}});

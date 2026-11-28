@@ -89,7 +89,7 @@ import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin
     const registration=await tx.approval.findFirst({where:{organizationId:org,id:scope.registrationId,objectType:SPECIALIST_REGISTRATION,objectId:scope.input.agentId,decision:'APPROVED'}});
     if(!registration||registration.scopeDigest!==scope.registrationDigest)throw new ConflictException('Specialist mission registration changed');
     const registered=readSpecialist(registration);
-    missionPlan=specialistMissionPlan({mission:scope.configuration?.mission??registered.input.mission,objective:scope.input.objective,market:scope.input.market,capability:scope.capability,references:scope.contextPin?.references.map(r=>r.citationRef)??[]});
+    missionPlan=specialistMissionPlan({mission:scope.configuration?.mission??registered.input.mission,objective:scope.input.objective,market:scope.input.market,capability:scope.capability,references:scope.contextPin?.references.map(r=>r.citationRef)??[],...(scope.configuration?.reviewSkills!==undefined?{reviewSkills:scope.configuration.reviewSkills}:{})});
    }
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
