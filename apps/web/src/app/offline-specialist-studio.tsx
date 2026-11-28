@@ -15,6 +15,7 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [retireAgent,setRetireAgent]=useState(""),[retireReason,setRetireReason]=useState("");
  const [configAgent,setConfigAgent]=useState(""),[configMission,setConfigMission]=useState(""),[configEvidence,setConfigEvidence]=useState(false),[configLimit,setConfigLimit]=useState("500"),[configVersion,setConfigVersion]=useState(0);
  const [configSkills,setConfigSkills]=useState<string[]>([]);
+ const [configLearningId,setConfigLearningId]=useState("");
  const configKey=useRef("");
  const lock=useRef(false),key=useRef(""),rehearsalKey=useRef(""),retirementKey=useRef("");
  async function api(path:string,body?:unknown){
@@ -47,17 +48,19 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
   <h4>Versioned specialist configuration</h4>
   <p>A different administrator must approve each revision. Changes cannot grant capabilities; they apply to future rehearsals and invalidate outstanding approvals.</p>
   <div className="alpha-grid">
-   <label>Specialist to configure<select disabled={busy} value={configAgent} onChange={e=>{const row=registry.records.find(r=>r.agentId===e.target.value);setConfigAgent(e.target.value);setConfigMission(row?.configuration?.mission??row?.input.mission??"");setConfigEvidence(row?.configuration?.evidenceRequired??false);setConfigLimit(String(row?.configuration?.maxObjectiveChars??500));setConfigVersion(row?.configuration?.version??0);setConfigSkills(row?.configuration?.reviewSkills??[]);configKey.current="";}}><option value="">Choose paused specialist</option>{registry.records.filter(r=>r.status==="PAUSED").map(r=><option key={r.agentId} value={r.agentId}>{r.input.name}</option>)}</select></label>
+   <label>Specialist to configure<select disabled={busy} value={configAgent} onChange={e=>{const row=registry.records.find(r=>r.agentId===e.target.value);setConfigAgent(e.target.value);setConfigMission(row?.configuration?.mission??row?.input.mission??"");setConfigEvidence(row?.configuration?.evidenceRequired??false);setConfigLimit(String(row?.configuration?.maxObjectiveChars??500));setConfigVersion(row?.configuration?.version??0);setConfigSkills(row?.configuration?.reviewSkills??[]);setConfigLearningId("");configKey.current="";}}><option value="">Choose paused specialist</option>{registry.records.filter(r=>r.status==="PAUSED").map(r=><option key={r.agentId} value={r.agentId}>{r.input.name}</option>)}</select></label>
    <label>Revised specialist mission<textarea disabled={busy} maxLength={500} value={configMission} onChange={e=>{setConfigMission(e.target.value);configKey.current="";}}/></label>
    <label><input type="checkbox" checked={configEvidence} disabled={busy} onChange={e=>{setConfigEvidence(e.target.checked);configKey.current="";}}/> Require reviewed knowledge context</label>
    <label>Maximum objective characters<input type="number" min={12} max={500} disabled={busy} value={configLimit} onChange={e=>{setConfigLimit(e.target.value);configKey.current="";}}/></label>
    <fieldset disabled={busy}><legend>Reviewed planning competencies (draft checklists only)</legend>{["CLAIM_LIMITATIONS","EVIDENCE_GAPS","AUDIENCE_FIT","MEASUREMENT_DESIGN"].map(skill=><label key={skill} style={{display:"block"}}><input type="checkbox" checked={configSkills.includes(skill)} onChange={e=>{setConfigSkills(prev=>e.target.checked?[...prev,skill]:prev.filter(x=>x!==skill));configKey.current="";}}/> {skill.replaceAll("_"," ")}</label>)}</fieldset>
+   <label>Optional specialist retrieval evaluation ID<input maxLength={36} disabled={busy} value={configLearningId} onChange={e=>{setConfigLearningId(e.target.value);configKey.current="";}} placeholder="Recorded evaluation ID"/></label>
+   <p>For evidence-linked changes, use a specialist retrieval evaluation from the last seven days. Select EVIDENCE GAPS for recall or precision below 1; otherwise select CLAIM LIMITATIONS. Retrieval metrics are not claim verification or model-quality evaluation.</p>
    <p>Reviewing revision {configVersion+1} from version {configVersion}. Reload and reselect the specialist after approval.</p>
-   <button type="button" disabled={busy||!registry.records.some(r=>r.agentId===configAgent&&r.status==="PAUSED"&&(r.configuration?.version??0)===configVersion)||configMission.trim().length<12||!Number.isInteger(Number(configLimit))||Number(configLimit)<12||Number(configLimit)>500||configVersion>=50} onClick={()=>void run(async()=>{
+   <button type="button" disabled={busy||!registry.records.some(r=>r.agentId===configAgent&&r.status==="PAUSED"&&(r.configuration?.version??0)===configVersion)||configMission.trim().length<12||!Number.isInteger(Number(configLimit))||Number(configLimit)<12||Number(configLimit)>500||configVersion>=50|| (!!configLearningId.trim()&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(configLearningId.trim()))} onClick={()=>void run(async()=>{
     const requestKey=configKey.current||"fixture-"+crypto.randomUUID();configKey.current=requestKey;
-    const v=await api("/specialists",{action:"CONFIGURE",agentId:configAgent,requestKey,mission:configMission,evidenceRequired:configEvidence,maxObjectiveChars:Number(configLimit),expectedVersion:configVersion,reviewSkills:configSkills,fixtureOnly:true});
+    const v=await api("/specialists",{action:"CONFIGURE",agentId:configAgent,requestKey,mission:configMission,evidenceRequired:configEvidence,maxObjectiveChars:Number(configLimit),expectedVersion:configVersion,reviewSkills:configSkills,fixtureOnly:true,...(configLearningId.trim()?{learningEvaluationId:configLearningId.trim()}:{})});
     if(v.executionAuthorized!==false||v.externalEffectsAuthorized!==false||v.version!==configVersion+1)throw Error("Unexpected configuration authority");
-    await refresh();setNotice("Configuration review "+v.approvalId+" · "+v.decision+". A different administrator must approve.");
+    await refresh();setNotice("Configuration review "+v.approvalId+" · "+v.decision+(v.learningEvidence?" · diagnostic recommendation "+v.learningEvidence.recommendedSkill:"")+". A different administrator must approve.");
    })}>Request specialist configuration review</button>
   </div>
   {registry.configurationHistoryCapped&&<p>Showing latest 100 configuration reviews.</p>}

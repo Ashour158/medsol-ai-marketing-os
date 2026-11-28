@@ -15,6 +15,7 @@ import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.ser
 import {SPECIALIST_REGISTRATION,specialistInput,specialistScope,specialistDigest,specialistApprovalId,readSpecialist,lockSpecialist} from './offline-specialist.js';
 import {SPECIALIST_RETIREMENT,retirementInput,retirementId,retirementScope,retirementDigest,readRetirement,currentRetirementRegistration} from './offline-specialist-retirement.js';
 import {SPECIALIST_CONFIG,configInput,configId,configScope,configDigest,readConfig,currentConfig} from './offline-specialist-config.js';
+import {loadLearningEvidence} from './specialist-learning-evidence.js';
 const agent=(id:unknown)=>{
  const base=AGENT_ROSTER.find(a=>a.id===id);
  if(!base)throw new BadRequestException('Canonical agent ID required');
@@ -155,7 +156,8 @@ export class AgentManifestReleaseService{
    const current=await currentConfig(tx,organizationId,input.agentId,reg);
    if(current?.reviewSkills!==undefined&&input.reviewSkills===undefined)throw new ConflictException('Explicit review skill selection required for revised configuration');
    if(input.expectedVersion!==(current?.version??0))throw new ConflictException('Specialist configuration version changed');
-   const scope=configScope(organizationId,identity.userId,input,reg.id,reg.digest,current?.digest??null,new Date(Date.now()+86400000).toISOString());
+   const learningEvidence=input.learningEvaluationId!==undefined?await loadLearningEvidence(tx,organizationId,input.agentId,input.learningEvaluationId,new Date()):undefined;
+   const scope=configScope(organizationId,identity.userId,input,reg.id,reg.digest,current?.digest??null,new Date(Date.now()+86400000).toISOString(),learningEvidence);
    await tx.approval.create({data:{id:approvalId,organizationId,objectType:SPECIALIST_CONFIG,objectId:input.agentId,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R3',requestedBy:identity.userId,scope,scopeDigest:configDigest(scope),scopeExpiresAt:new Date(scope.expiresAt)}});
    await tx.auditEvent.create({data:{organizationId,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_CONFIG_REQUESTED',objectType:SPECIALIST_CONFIG,objectId:input.agentId,correlationId:approvalId,after:{scopeDigest:configDigest(scope),version:scope.version,executionAuthorized:false}}});
    return{approvalId,decision:'PENDING',...scope,replayed:false};

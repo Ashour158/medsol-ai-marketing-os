@@ -330,11 +330,15 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(legacyApproved.status).toBe(201);
  expect((await invoke(reviewer,'approvals/decide',decide(legacyApproved.data.approvalId,'reviewer'))).status).toBe(201);
  const config={action:'CONFIGURE',agentId:specialistId,requestKey:'fixture-'+randomUUID(),mission:'Review synthetic scientific evidence and document research limitations',expectedVersion:0,evidenceRequired:true,maxObjectiveChars:100,reviewSkills:['EVIDENCE_GAPS','CLAIM_LIMITATIONS'],fixtureOnly:true};
- const cfg=await invoke(r,specialistPath,config);
+ const linkedConfig={...config,learningEvaluationId:evaluation.data.evaluationId};
+ expect((await invoke(r,specialistPath,{...linkedConfig,requestKey:'fixture-'+randomUUID(),learningEvaluationId:randomUUID()})).status).toBe(409);
+ expect((await invoke(r,specialistPath,{...linkedConfig,requestKey:'fixture-'+randomUUID(),reviewSkills:['EVIDENCE_GAPS']})).status).toBe(409);
+ const cfg=await invoke(r,specialistPath,linkedConfig);
+ expect(cfg.data.learningEvidence).toMatchObject({evaluationId:evaluation.data.evaluationId,recallAtK:1,precisionAtK:1,recommendedSkill:'CLAIM_LIMITATIONS',independentlyVerified:false,automaticPromotion:false});
  expect(cfg).toMatchObject({status:201,data:{decision:'PENDING',version:1,executionAuthorized:false,skillEvaluation:{passed:true,modelQualityEvaluated:false,scientificVerification:false,capabilityExpansionAuthorized:false,results:expect.arrayContaining([expect.objectContaining({id:'DUPLICATE_REFERENCE_DENIAL',passed:true})])}}});
- expect(await invoke(r,specialistPath,config)).toMatchObject({status:201,data:{approvalId:cfg.data.approvalId,replayed:true}});
+ expect(await invoke(r,specialistPath,linkedConfig)).toMatchObject({status:201,data:{approvalId:cfg.data.approvalId,replayed:true}});
  expect((await invoke(r,'approvals/decide',decide(cfg.data.approvalId,'admin'))).status).toBe(403);
- expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:cfg.data.approvalId,specialistConfiguration:expect.objectContaining({version:1,mission:config.mission,evidenceRequired:true,reviewSkills:['CLAIM_LIMITATIONS','EVIDENCE_GAPS'],skillEvaluation:expect.objectContaining({passed:true})})}));
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:cfg.data.approvalId,specialistConfiguration:expect.objectContaining({version:1,mission:config.mission,evidenceRequired:true,reviewSkills:['CLAIM_LIMITATIONS','EVIDENCE_GAPS'],learningEvidence:expect.objectContaining({evaluationId:evaluation.data.evaluationId,recommendedSkill:'CLAIM_LIMITATIONS',automaticPromotion:false}),skillEvaluation:expect.objectContaining({passed:true})})}));
  expect((await invoke(reviewer,'approvals/decide',decide(cfg.data.approvalId,'reviewer'))).status).toBe(201);
  expect((await invoke(r,specialistPath)).data.records[0]).toMatchObject({configuration:{version:1,mission:config.mission,evidenceRequired:true}});
  expect((await invoke(r,specialistPath,{...config,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
