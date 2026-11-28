@@ -15,6 +15,7 @@ import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
 import {parseSpecialistBatch,dispatchSpecialistBatch} from './specialist-batch-dispatch.js';
+import {parseDurableBatch,batchCommandId,durableBatchState,reconstructDurableBatch,durableBatchView,DURABLE_SPECIALIST_BATCH,DURABLE_SPECIALIST_STAGE,batchStageId} from './specialist-durable-dispatch.js';
 import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreviewDigest,allocationRequestDigest,type AllocationInput,type AllocationCandidate} from './specialist-allocation.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
@@ -84,32 +85,83 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
    return{approvalId:id,decision:'PENDING',...scope,replayed:false};
  }
  async executeSpecialistBatch(identity:VerifiedIdentity,raw:unknown){
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw)&&Object.hasOwn(raw,'action'))return this.coordinateSpecialistBatch(identity,raw);
   const batch=parseSpecialistBatch(raw),org=identity.organizationId;
   if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist batch requires offline reasoning');
   await withMarketingTenant(this.db,org,async tx=>{
    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
-   const rows=await tx.approval.findMany({where:{organizationId:org,objectType:SPECIALIST_REHEARSAL,id:{in:batch.approvalIds}}});
-   if(rows.length!==batch.approvalIds.length)throw new ConflictException('All batch approvals must be present in tenant');
-   const agents=new Set<string>();
-   for(const id of batch.approvalIds){
+   await this.specialistBatchPins(tx,identity,batch.approvalIds);
+  });
+  return dispatchSpecialistBatch(batch.approvalIds,id=>this.executeSpecialistRehearsal(identity,{approvalId:id,fixtureOnly:true}));
+ }
+ private async specialistBatchPins(tx:Prisma.TransactionClient,identity:VerifiedIdentity,ids:string[]){
+   const org=identity.organizationId;
+   const rows=await tx.approval.findMany({where:{organizationId:org,objectType:SPECIALIST_REHEARSAL,id:{in:ids}}});
+   if(rows.length!==ids.length)throw new ConflictException('All batch approvals must be present in tenant');
+   const agents=new Set<string>(),pins:string[]=[];
+   for(const id of ids){
     const a=rows.find(row=>row.id===id)!;
     const s=readRehearsal(a);
     if(a.requestedBy!==identity.userId||a.decision!=='APPROVED'||!a.decidedBy||a.decidedBy===a.requestedBy||!a.decidedAt||!a.scopeExpiresAt||a.decidedAt>=a.scopeExpiresAt||s.input.brainMode!==SPECIALIST_DECISION_MODE||agents.has(a.objectId))
      throw new ConflictException('Batch requires distinct specialists and exact independent operator approvals');
-    agents.add(a.objectId);
+    if(!a.scopeDigest)throw new ConflictException('Missing exact batch scope digest');
+    agents.add(a.objectId);pins.push(a.scopeDigest);
     // No new execution rights are granted. Current scope and reviewer are
     // rechecked by the canonical execution method at each dispatch.
    }
+   return pins;
+ }
+ async coordinateSpecialistBatch(identity:VerifiedIdentity,raw:unknown){
+  const cmd=parseDurableBatch(raw),org=identity.organizationId,commandId=batchCommandId(cmd.requestKey);
+  if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist batch requires offline reasoning');
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${org+':'+commandId})::bigint)::text AS lock_result`;
+   const prior=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:org,commandId}}});
+   if(!prior){
+    if(cmd.action!=='CREATE')throw new NotFoundException('Durable specialist batch not found');
+    const pins=await this.specialistBatchPins(tx,identity,cmd.approvalIds);
+    const state=durableBatchState(org,identity.userId,cmd.requestKey,cmd.approvalIds,pins);
+    const view=durableBatchView(state);
+    await tx.commandReceipt.create({data:{organizationId:org,commandId,commandType:DURABLE_SPECIALIST_BATCH,correlationId:commandId,status:view.status,response:state}});
+    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_BATCH_REGISTERED',objectType:'CommandReceipt',objectId:commandId,correlationId:commandId,after:{planDigest:state.planDigest,externalEffectsAuthorized:false}}});
+    return{...view,advanced:false};
+   }
+   if(prior.commandType!==DURABLE_SPECIALIST_BATCH||prior.correlationId!==commandId)throw new ConflictException('Invalid durable command receipt');
+   if(prior.status!=='REGISTERED')throw new ConflictException('Immutable batch root status mismatch');
+   const stageRows=await tx.commandReceipt.findMany({where:{organizationId:org,correlationId:commandId,commandType:DURABLE_SPECIALIST_STAGE},take:5});
+   const state=reconstructDurableBatch(prior.response,stageRows,org,identity.userId,cmd.requestKey),view=durableBatchView(state);
+   if(cmd.action==='CREATE'&&JSON.stringify(cmd.approvalIds)!==JSON.stringify(state.approvalIds))throw new ConflictException('Immutable batch key already used');
+   const pins=await this.specialistBatchPins(tx,identity,state.approvalIds);
+   if(JSON.stringify(pins)!==JSON.stringify(state.scopeDigests))throw new ConflictException('Durable batch approval scope changed');
+   // Verify completed prefix using authoritative execution records; no duplicated decisions.
+   for(const stage of state.stages){
+    const existing=await tx.agentExecution.findFirst({where:{organizationId:org,id:stage.executionId,correlationId:stage.approvalId}});
+    if(!existing||existing.status!==stage.status)throw new ConflictException('Durable batch execution receipt missing or changed');
+    const replay=await this.executeSpecialistInTransaction(tx,identity,stage.approvalId);
+    if(!replay.replayed||replay.executionId!==stage.executionId||replay.status!==stage.status)throw new ConflictException('Durable batch replay mismatch');
+   }
+   if(cmd.action!=='ADVANCE')return{...view,advanced:false};
+   if(cmd.expectedCursor>view.cursor)throw new ConflictException('Durable batch cursor mismatch');
+   if(cmd.expectedCursor<view.cursor||!view.nextApprovalId)return{...view,advanced:false};
+   const result=await this.executeSpecialistInTransaction(tx,identity,view.nextApprovalId);
+   if(result.status!=='COMPLETED'&&result.status!=='BLOCKED')throw new ConflictException('Invalid durable batch stage result');
+   state.stages.push({approvalId:view.nextApprovalId,executionId:result.executionId,status:result.status});
+   const updated=durableBatchView(state);
+   await tx.commandReceipt.create({data:{organizationId:org,commandId:batchStageId(cmd.requestKey,view.cursor),commandType:DURABLE_SPECIALIST_STAGE,correlationId:commandId,status:result.status,response:{schema:'medsol.specialist-batch-stage.v1',planDigest:state.planDigest,index:view.cursor,stage:state.stages[view.cursor]!}}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_BATCH_ADVANCED',objectType:'CommandReceipt',objectId:commandId,correlationId:commandId,after:{planDigest:state.planDigest,cursor:updated.cursor,stageStatus:result.status,externalEffectsAuthorized:false}}});
+   return{...updated,advanced:true};
   });
-  return dispatchSpecialistBatch(batch.approvalIds,id=>this.executeSpecialistRehearsal(identity,{approvalId:id,fixtureOnly:true}));
  }
  async executeSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='approvalId,fixtureOnly')throw new BadRequestException('Exact approved rehearsal reference required');
   const v=raw as {approvalId?:unknown;fixtureOnly?:unknown};
   if(v.fixtureOnly!==true||typeof v.approvalId!=='string'||!/^specialist-run-[0-9a-f]{64}$/.test(v.approvalId))throw new BadRequestException('Invalid rehearsal reference');
-  const id=v.approvalId,org=identity.organizationId,executionId=id+'-execution';
   if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist rehearsal requires offline reasoning');
-  return withMarketingTenant(this.db,org,async tx=>{
+  return withMarketingTenant(this.db,identity.organizationId,tx=>this.executeSpecialistInTransaction(tx,identity,v.approvalId as string));
+ }
+ private async executeSpecialistInTransaction(tx:Prisma.TransactionClient,identity:VerifiedIdentity,id:string){
+   const org=identity.organizationId,executionId=id+'-execution';
    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
    await tx.$queryRaw`SELECT "id" FROM "Approval" WHERE "organizationId"=${org} AND "id"=${id} FOR UPDATE`;
    const a=await tx.approval.findFirst({where:{organizationId:org,id,objectType:SPECIALIST_REHEARSAL}});
@@ -194,7 +246,6 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
     input,decision:decision as unknown as Prisma.InputJsonValue,status,completedAt:new Date()}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_EXECUTED',objectType:'AgentExecution',objectId:executionId,correlationId:id,after:{scopeDigest:a.scopeDigest,status,externalEffectsAuthorized:false}}});
    return{executionId,status,decision,replayed:false,externalEffectsAuthorized:false};
-  });
  }
  async execute(agentId:string,i:{organizationId:string;correlationId:string;causationId?:string;input:unknown;capabilities:string[]}){
  const manifest=AGENT_ROSTER.find(a=>a.id===agentId);
