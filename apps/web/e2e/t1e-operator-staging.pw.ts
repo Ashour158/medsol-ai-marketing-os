@@ -490,7 +490,7 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(await invoke(r,batchPath,inspectDurable)).toMatchObject({status:201,data:{cursor:1,status:'IN_PROGRESS',advanced:false}});
  expect(await invoke(r,batchPath,{...advanceDurable,expectedCursor:1})).toMatchObject({status:201,data:{status:'COMPLETED',cursor:2,advanced:true,nextApprovalId:null,items:[{status:'COMPLETED'},{status:'COMPLETED'}]}});
  expect((await invoke(r,executePath,{approvalId:durableFresh.data.approvalId,fixtureOnly:true})).data.replayed).toBe(true);
- const scheduledFresh=await invoke(r,taskPath,{...chainTask,requestKey:'fixture-'+randomUUID()});
+ const scheduledFresh=await invoke(r,taskPath,{...chainTask,requestKey:'fixture-'+randomUUID(),structuredDraftMode:'STRUCTURED_DRAFT_FIXTURE_V1'});
  expect(scheduledFresh.status).toBe(201);
  expect((await invoke(reviewer,'approvals/decide',decide(scheduledFresh.data.approvalId,'reviewer'))).status).toBe(201);
  const scheduledKey='fixture-'+randomUUID(),scheduledInspect={action:'INSPECT',requestKey:scheduledKey,fixtureOnly:true};
@@ -499,7 +499,11 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(await invoke(r,batchPath,{action:'SCHEDULE',requestKey:scheduledKey,expectedCursor:0,fixtureOnly:true})).toMatchObject({status:201,data:{scheduleStatus:'ACTIVE',cursor:0,advanced:false,externalEffectsAuthorized:false}});
  await expect.poll(async()=>{const result=await invoke(r,batchPath,scheduledInspect);return result.data.scheduleStatus;},{timeout:45000,intervals:[500,1000]}).toBe('COMPLETED');
  expect(await invoke(r,batchPath,scheduledInspect)).toMatchObject({status:201,data:{status:'COMPLETED',cursor:2,scheduleStatus:'COMPLETED',items:[{status:'COMPLETED'},{status:'COMPLETED'}]}});
- expect((await invoke(r,executePath,{approvalId:scheduledFresh.data.approvalId,fixtureOnly:true})).data.replayed).toBe(true);
+ const scheduledDraft=await invoke(r,executePath,{approvalId:scheduledFresh.data.approvalId,fixtureOnly:true});
+ expect(scheduledDraft).toMatchObject({status:201,data:{status:'COMPLETED',replayed:true,decision:{structuredDraft:{fixtureOnly:true,providerRequestsMade:0,realModelInvocations:0,outputHumanApproved:false,externalEffectsAuthorized:false},outputReviewId:expect.stringMatching(/^specialist-output-/)}}});
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:scheduledDraft.data.decision.outputReviewId,objectType:'OfflineSpecialistOutputReview',specialistOutputReview:expect.objectContaining({sourceApprovalId:scheduledFresh.data.approvalId,externalEffectsAuthorized:false})}));
+ expect((await invoke(r,'approvals/decide',decide(scheduledDraft.data.decision.outputReviewId,'admin'))).status).toBe(403);
+ expect(await invoke(reviewer,'approvals/decide',decide(scheduledDraft.data.decision.outputReviewId,'reviewer'))).toMatchObject({status:201,data:{approvalId:scheduledDraft.data.decision.outputReviewId,decision:'APPROVED'}});
  expect((await invoke(r,batchPath,{action:'SCHEDULE',requestKey:scheduledKey,expectedCursor:0,fixtureOnly:true})).status).toBe(409);
  const blockedKey='fixture-'+randomUUID();
  expect((await invoke(r,batchPath,{action:'CREATE',requestKey:blockedKey,approvalIds:[unrelated.data.approvalId,handover.data.approvalId],fixtureOnly:true})).status).toBe(201);
