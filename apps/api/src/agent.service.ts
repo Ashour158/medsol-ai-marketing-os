@@ -80,6 +80,11 @@ import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin
      const expected=specialistDecision(d.missionPlan as ReturnType<typeof specialistMissionPlan>,template.executionAllowed);
      if(specialistPlanDigest(expected)!==d.specialistDecisionDigest||specialistPlanDigest(d.specialistDecision)!==d.specialistDecisionDigest||prior.status!==(expected.draftEligible?'COMPLETED':'BLOCKED'))throw new ConflictException('Historical specialist decision integrity invalid');
     }else if(d.specialistDecision!==undefined||d.specialistDecisionDigest!==undefined)throw new ConflictException('Unexpected historical specialist decision');
+    if(scope.input.simulationMode==='PROVIDER_CONTRACT_V1'&&prior.status==='COMPLETED'){
+     const contracts=d.providerContracts as {schema?:unknown;decisionDigest?:unknown;results?:{providerKey?:unknown;model?:unknown;inputTokens?:unknown;outputTokens?:unknown;actualCostMicros?:unknown;passed?:unknown}[];providerRequestsMade?:unknown;realModelInvocations?:unknown;actualCostMicros?:unknown;modelQualityEvaluated?:unknown;externalEffectsAuthorized?:unknown}|undefined;
+     const keys=['OPENAI','ANTHROPIC','GEMINI','LOCAL'];
+     if(!contracts||contracts.schema!=='medsol.specialist-provider-contracts.v1'||contracts.decisionDigest!==d.specialistDecisionDigest||contracts.providerRequestsMade!==0||contracts.realModelInvocations!==0||contracts.actualCostMicros!==0||contracts.modelQualityEvaluated!==false||contracts.externalEffectsAuthorized!==false||!Array.isArray(contracts.results)||contracts.results.length!==4||contracts.results.some((r,i)=>r.providerKey!==keys[i]||r.model!=='synthetic:'+keys[i]!.toLowerCase()||r.actualCostMicros!==0||r.passed!==true||typeof r.inputTokens!=='number'||!Number.isSafeInteger(r.inputTokens)||r.inputTokens<0||typeof r.outputTokens!=='number'||!Number.isSafeInteger(r.outputTokens)||r.outputTokens<0||r.outputTokens>256)||specialistPlanDigest(contracts)!==d.providerContractsDigest)throw new ConflictException('Historical synthetic provider contracts invalid');
+    }else if(d.providerContracts!==undefined||d.providerContractsDigest!==undefined)throw new ConflictException('Unexpected historical provider contracts');
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
    await validateRehearsal(tx,a,new Date(),this.learning);
@@ -103,9 +108,14 @@ import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin
    }
    const independentDecision=scope.input.brainMode===SPECIALIST_DECISION_MODE&&missionPlan?specialistDecision(missionPlan,templateDecision.executionAllowed):undefined;
    if(scope.input.brainMode===SPECIALIST_DECISION_MODE&&!independentDecision)throw new ConflictException('Specialist decision missing');
+   let providerContracts:Awaited<ReturnType<GovernedModelService['rehearseSpecialistContracts']>>|undefined;
+   if(scope.input.simulationMode==='PROVIDER_CONTRACT_V1'&&independentDecision?.draftEligible){
+    if(!this.model)throw new ConflictException('Governed model fixture service unavailable');
+    providerContracts=await this.model.rehearseSpecialistContracts({organizationId:org,correlationId:id,agentId:scope.templateId,decisionDigest:specialistPlanDigest(independentDecision)});
+   }
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
-    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
     autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
    const status=(independentDecision?independentDecision.draftEligible:templateDecision.executionAllowed)?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
