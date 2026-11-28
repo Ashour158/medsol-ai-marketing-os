@@ -325,6 +325,23 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const cases=[{id:'specialist-fixture',query:marker,relevantDocumentIds:[doc.data.id]}];
  const evaluation=await invoke(r,'learning/knowledge/evaluate',{agentId:specialistId,k:1,cases});
  expect(evaluation).toMatchObject({status:201,data:{specialistAgentId:specialistId,recallAtK:1,automaticSkillRelease:false}});
+ // Versioned configuration supersedes unexecuted legacy tasks without changing historical receipts.
+ const legacyApproved=await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID()});
+ expect(legacyApproved.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(legacyApproved.data.approvalId,'reviewer'))).status).toBe(201);
+ const config={action:'CONFIGURE',agentId:specialistId,requestKey:'fixture-'+randomUUID(),mission:'Review synthetic scientific evidence and document research limitations',expectedVersion:0,evidenceRequired:true,maxObjectiveChars:100,fixtureOnly:true};
+ const cfg=await invoke(r,specialistPath,config);
+ expect(cfg).toMatchObject({status:201,data:{decision:'PENDING',version:1,executionAuthorized:false}});
+ expect(await invoke(r,specialistPath,config)).toMatchObject({status:201,data:{approvalId:cfg.data.approvalId,replayed:true}});
+ expect((await invoke(r,'approvals/decide',decide(cfg.data.approvalId,'admin'))).status).toBe(403);
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:cfg.data.approvalId,specialistConfiguration:expect.objectContaining({version:1,mission:config.mission,evidenceRequired:true})}));
+ expect((await invoke(reviewer,'approvals/decide',decide(cfg.data.approvalId,'reviewer'))).status).toBe(201);
+ expect((await invoke(r,specialistPath)).data.records[0]).toMatchObject({configuration:{version:1,mission:config.mission,evidenceRequired:true}});
+ expect((await invoke(r,specialistPath,{...config,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
+ expect((await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
+ expect((await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID(),contextQuery:marker,objective:'x'.repeat(101)})).status).toBe(409);
+ expect((await invoke(r,executePath,{approvalId:legacyApproved.data.approvalId,fixtureOnly:true})).status).toBe(409);
+ expect((await invoke(r,executePath,executeCommand)).data.replayed).toBe(true);
  // Context-bound execution pins only reviewed citation metadata, not raw source or memory text.
  const contextualTask={...task,requestKey:'fixture-'+randomUUID(),contextQuery:marker,brainMode:'MISSION_PLAN_V1'};
  const contextual=await invoke(r,taskPath,contextualTask);
@@ -335,7 +352,7 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const contextualCommand={approvalId:contextual.data.approvalId,fixtureOnly:true};
  const contextualResult=await invoke(r,executePath,contextualCommand);
  expect(contextualResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{contextEvidence:{pin:contextual.data.contextPin,independentlyVerified:false,sourceTextCopied:false},templateDecision:{payload:{evidence:{references:contextual.data.contextPin.references.map((x:any)=>x.citationRef),verified:false}}}}}});
- expect(contextualResult.data.decision).toMatchObject({missionPlan:{mode:'MISSION_PLAN_V1',objective:task.objective,evidenceStatus:'REFERENCES_ONLY_UNVERIFIED',humanReviewRequired:true,scientificVerification:false,externalEffectsAuthorized:false},missionPlanDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)});
+ expect(contextualResult.data.decision).toMatchObject({configuration:{version:1,mission:config.mission,evidenceRequired:true},missionPlan:{mode:'MISSION_PLAN_V1',mission:config.mission,objective:task.objective,evidenceStatus:'REFERENCES_ONLY_UNVERIFIED',humanReviewRequired:true,scientificVerification:false,externalEffectsAuthorized:false},missionPlanDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)});
  expect(JSON.stringify(contextualResult.data)).not.toContain(source.text);
  expect(JSON.stringify(contextualResult.data)).not.toContain(memory.content);
  expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);
@@ -351,6 +368,11 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect((await invoke(r,taskPath,{...contextualTask,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
  expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);
  expect((await invoke(r,'learning/knowledge/evaluate',{agentId:specialistId,k:1,cases})).status).toBe(409);
+ const config2=await invoke(r,specialistPath,{...config,requestKey:'fixture-'+randomUUID(),expectedVersion:1,evidenceRequired:false});
+ expect(config2).toMatchObject({status:201,data:{version:2,previousDigest:expect.stringMatching(/^sha256:/)}});
+ expect((await invoke(reviewer,'approvals/decide',decide(config2.data.approvalId,'reviewer'))).status).toBe(201);
+ expect((await invoke(r,specialistPath)).data.records[0]).toMatchObject({configuration:{version:2,evidenceRequired:false}});
+ expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);
  // Retirement must fence even previously approved but unexecuted context-free tasks.
  const beforeRetirement=await invoke(r,taskPath,{...task,requestKey:'fixture-'+randomUUID()});
  expect(beforeRetirement.status).toBe(201);
