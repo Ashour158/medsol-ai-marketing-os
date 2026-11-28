@@ -7,6 +7,7 @@ import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.ser
 import type {MarketingLearningService} from './marketing-learning.service.js';
 import {contextPinTuple,parseContextPin,loadSpecialistContextPin,type SpecialistContextPin} from './specialist-context-pin.js';
 import {SPECIALIST_BRAIN_MODE,normalizeReviewSkills} from './specialist-mission-brain.js';
+import {SPECIALIST_DECISION_MODE} from './specialist-decision-brain.js';
 import {assertSkillMode} from './specialist-skill-evaluation.js';
 import {currentConfig,configPinTuple,assertConfigPolicy,type ConfigPin} from './offline-specialist-config.js';
 export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
@@ -15,14 +16,14 @@ export function rehearsalInput(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist rehearsal required');
  const v=raw as Record<string,unknown>;
  if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
- (Object.hasOwn(v,'brainMode')&&v.brainMode!==SPECIALIST_BRAIN_MODE)||
+ (Object.hasOwn(v,'brainMode')&&v.brainMode!==SPECIALIST_BRAIN_MODE&&v.brainMode!==SPECIALIST_DECISION_MODE)||
  (Object.hasOwn(v,'contextQuery')&&(typeof v.contextQuery!=='string'||v.contextQuery.trim().length<3||v.contextQuery.length>200))||
  v.fixtureOnly!==true||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey)||
  typeof v.agentId!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(v.agentId)||
  typeof v.objective!=='string'||v.objective.trim().length<12||v.objective.length>500||
  typeof v.market!=='string'||v.market.trim().length<2||v.market.length>100)
  throw new BadRequestException('Bounded fixture objective, market and specialist identity required');
- return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE?{brainMode:SPECIALIST_BRAIN_MODE}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{})};
+ return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE||v.brainMode===SPECIALIST_DECISION_MODE?{brainMode:v.brainMode}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{})};
 }
 type Input=ReturnType<typeof rehearsalInput>;
 export const rehearsalId=(org:string,key:string)=>'specialist-run-'+hash([org,key]).slice(7);
