@@ -2,8 +2,9 @@
 import {useRef,useState} from "react";
 type Identity={organizationId:string;userId:string;role:string};
 type Agent={id:string;name:string};
-type Row={agentId:string;approvalId:string;decision?:string;status?:string;input:{name:string;slug:string;mission:string;templateAgentId:string};proposedCapability:string;templateRisk:string;executionAuthorized:false;reviewExpiresAt:string};
-type Registry={organizationId:string;records:Row[];reviews:Row[];historyCapped:boolean;retirements?:{approvalId:string;decision:string;input:{agentId:string;reason:string}}[];retirementHistoryCapped?:boolean;fixtureOnly:true;executionAuthorized:false;externalEffectsAuthorized:false};
+type Configuration={version:number;mission:string;evidenceRequired:boolean;maxObjectiveChars:number};
+type Row={configuration?:Configuration|null;agentId:string;approvalId:string;decision?:string;status?:string;input:{name:string;slug:string;mission:string;templateAgentId:string};proposedCapability:string;templateRisk:string;executionAuthorized:false;reviewExpiresAt:string};
+type Registry={organizationId:string;records:Row[];reviews:Row[];historyCapped:boolean;configurations?:{approvalId:string;decision:string;version:number;input:{agentId:string;mission:string}}[];configurationHistoryCapped?:boolean;retirements?:{approvalId:string;decision:string;input:{agentId:string;reason:string}}[];retirementHistoryCapped?:boolean;fixtureOnly:true;executionAuthorized:false;externalEffectsAuthorized:false};
 export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [roster,setRoster]=useState<Agent[]>([]),[registry,setRegistry]=useState<Registry|null>(null);
  const [name,setName]=useState(""),[slug,setSlug]=useState(""),[mission,setMission]=useState(""),[template,setTemplate]=useState("");
@@ -12,6 +13,8 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [contextQuery,setContextQuery]=useState(""),[missionPlanEnabled,setMissionPlanEnabled]=useState(false);
  const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean;missionPlan?:{alignmentSignal:string;evidenceStatus:string;sharedTerms:string[];tasks:{kind:string;description:string}[]}}|null>(null);
  const [retireAgent,setRetireAgent]=useState(""),[retireReason,setRetireReason]=useState("");
+ const [configAgent,setConfigAgent]=useState(""),[configMission,setConfigMission]=useState(""),[configEvidence,setConfigEvidence]=useState(false),[configLimit,setConfigLimit]=useState("500"),[configVersion,setConfigVersion]=useState(0);
+ const configKey=useRef("");
  const lock=useRef(false),key=useRef(""),rehearsalKey=useRef(""),retirementKey=useRef("");
  async function api(path:string,body?:unknown){
   const r=await fetch("/api/marketing/agents"+path,{method:body===undefined?"GET":"POST",cache:"no-store",credentials:"same-origin",...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
@@ -39,7 +42,24 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
     await refresh();setNotice("Registration review "+v.approvalId+" · "+v.decision+". Use the existing Approval inbox with a different administrator.");
    })}>Request independent specialist registration</button>
   </div><h4>Registered specialist identities ({registry.records.length})</h4>
-  {registry.records.map(row=><article key={row.agentId}><strong>{row.input.name}</strong> · {row.status}<p>{row.agentId} · template {row.input.templateAgentId} · risk {row.templateRisk}</p><p>{row.input.mission}</p></article>)}
+  {registry.records.map(row=><article key={row.agentId}><strong>{row.input.name}</strong> · {row.status}<p>{row.agentId} · template {row.input.templateAgentId} · risk {row.templateRisk}</p><p>{row.configuration?.mission??row.input.mission}</p><p>Configuration v{row.configuration?.version??0} · {row.configuration?.evidenceRequired?"Reviewed context required":"Reviewed context optional"} · objective limit {row.configuration?.maxObjectiveChars??500}</p></article>)}
+  <h4>Versioned specialist configuration</h4>
+  <p>A different administrator must approve each revision. Changes cannot grant capabilities; they apply to future rehearsals and invalidate outstanding approvals.</p>
+  <div className="alpha-grid">
+   <label>Specialist to configure<select disabled={busy} value={configAgent} onChange={e=>{const row=registry.records.find(r=>r.agentId===e.target.value);setConfigAgent(e.target.value);setConfigMission(row?.configuration?.mission??row?.input.mission??"");setConfigEvidence(row?.configuration?.evidenceRequired??false);setConfigLimit(String(row?.configuration?.maxObjectiveChars??500));setConfigVersion(row?.configuration?.version??0);configKey.current="";}}><option value="">Choose paused specialist</option>{registry.records.filter(r=>r.status==="PAUSED").map(r=><option key={r.agentId} value={r.agentId}>{r.input.name}</option>)}</select></label>
+   <label>Revised specialist mission<textarea disabled={busy} maxLength={500} value={configMission} onChange={e=>{setConfigMission(e.target.value);configKey.current="";}}/></label>
+   <label><input type="checkbox" checked={configEvidence} disabled={busy} onChange={e=>{setConfigEvidence(e.target.checked);configKey.current="";}}/> Require reviewed knowledge context</label>
+   <label>Maximum objective characters<input type="number" min={12} max={500} disabled={busy} value={configLimit} onChange={e=>{setConfigLimit(e.target.value);configKey.current="";}}/></label>
+   <p>Reviewing revision {configVersion+1} from version {configVersion}. Reload and reselect the specialist after approval.</p>
+   <button type="button" disabled={busy||!registry.records.some(r=>r.agentId===configAgent&&r.status==="PAUSED"&&(r.configuration?.version??0)===configVersion)||configMission.trim().length<12||!Number.isInteger(Number(configLimit))||Number(configLimit)<12||Number(configLimit)>500||configVersion>=50} onClick={()=>void run(async()=>{
+    const requestKey=configKey.current||"fixture-"+crypto.randomUUID();configKey.current=requestKey;
+    const v=await api("/specialists",{action:"CONFIGURE",agentId:configAgent,requestKey,mission:configMission,evidenceRequired:configEvidence,maxObjectiveChars:Number(configLimit),expectedVersion:configVersion,fixtureOnly:true});
+    if(v.executionAuthorized!==false||v.externalEffectsAuthorized!==false||v.version!==configVersion+1)throw Error("Unexpected configuration authority");
+    await refresh();setNotice("Configuration review "+v.approvalId+" · "+v.decision+". A different administrator must approve.");
+   })}>Request specialist configuration review</button>
+  </div>
+  {registry.configurationHistoryCapped&&<p>Showing latest 100 configuration reviews.</p>}
+  {registry.configurations?.map(r=><p key={r.approvalId} style={{overflowWrap:"anywhere"}}>{r.input.agentId} · v{r.version} · {r.decision} · {r.input.mission}</p>)}
   <h4>Retire specialist identity</h4>
   <p>Retirement is irreversible and requires a different administrator. It blocks new rehearsals and specialist knowledge access; historical records are retained.</p>
   <div className="alpha-grid">

@@ -7,6 +7,7 @@ import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.ser
 import type {MarketingLearningService} from './marketing-learning.service.js';
 import {contextPinTuple,parseContextPin,loadSpecialistContextPin,type SpecialistContextPin} from './specialist-context-pin.js';
 import {SPECIALIST_BRAIN_MODE} from './specialist-mission-brain.js';
+import {currentConfig,configPinTuple,assertConfigPolicy,type ConfigPin} from './offline-specialist-config.js';
 export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
 const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export function rehearsalInput(raw:unknown){
@@ -55,11 +56,13 @@ export async function currentSpecialistTemplate(tx:Prisma.TransactionClient,org:
  if(installed&&(!Array.isArray(installed.capabilities)||JSON.stringify([...installed.capabilities].sort())!==JSON.stringify([...manifest.capabilities].sort())))
  throw new ConflictException('Template capability metadata changed');
  if(!manifest.capabilities.includes(s.proposedCapability))throw new ConflictException('Template no longer permits specialist draft capability');
- return{registrationId:registration.id,registrationDigest:registration.scopeDigest!,templateId,templateVersion:version,
+ const configuration=await currentConfig(tx,org,agentId,{id:registration.id,digest:registration.scopeDigest!});
+ return{registrationId:registration.id,registrationDigest:registration.scopeDigest!,templateId,templateVersion:version,...(configuration?{configuration}:{}),
   templateDigest:agentReleaseDigest(manifest),templateInstalled:!!installed,capability:s.proposedCapability,maxInputBytes:manifest.maxInputBytes};
 }
 type Template=Awaited<ReturnType<typeof currentSpecialistTemplate>>;
 export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string,contextPin?:SpecialistContextPin){
+ assertConfigPolicy(template.configuration,input.objective,input.contextQuery);
  return{schema:'medsol.offline-specialist-rehearsal.v1',organizationId:org,requestedBy:actor,input,
   ...template,expiresAt,...(contextPin?{contextPin}:{}),fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
   modelCallsAuthorized:false as const,toolCallsAuthorized:false as const,memoryWritesAuthorized:false as const,externalEffectsAuthorized:false as const};
@@ -69,8 +72,9 @@ export function rehearsalDigest(s:Scope){
  const i=s.input;
  return hash([s.schema,s.organizationId,s.requestedBy,i.agentId,i.requestKey,i.objective,i.market,i.fixtureOnly,
   s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
-  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[])]);
+  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[]),...(s.configuration!==undefined?['configuration',configPinTuple(s.configuration)]:[])]);
 }
+function normalizeConfigPin(p:ConfigPin):ConfigPin{configPinTuple(p);return{approvalId:p.approvalId,digest:p.digest,version:p.version,mission:p.mission,evidenceRequired:p.evidenceRequired,maxObjectiveChars:p.maxObjectiveChars};}
 export function readRehearsal(a:Approval):Scope{
  try{
   const s=a.scope as unknown as Scope,i=rehearsalInput(s.input);
@@ -83,7 +87,7 @@ export function readRehearsal(a:Approval):Scope{
   if(i.contextQuery===undefined&&s.contextPin!==undefined)throw Error('unexpected context');
   const exact=rehearsalScope(a.organizationId,a.requestedBy,i,{registrationId:s.registrationId,registrationDigest:s.registrationDigest,
    templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,templateInstalled:s.templateInstalled,
-   capability:s.capability,maxInputBytes:s.maxInputBytes},s.expiresAt,i.contextQuery!==undefined?parseContextPin(s.contextPin,i.contextQuery):undefined);
+   capability:s.capability,maxInputBytes:s.maxInputBytes,...(s.configuration!==undefined?{configuration:normalizeConfigPin(s.configuration)}:{})},s.expiresAt,i.contextQuery!==undefined?parseContextPin(s.contextPin,i.contextQuery):undefined);
   if(rehearsalDigest(exact)!==a.scopeDigest)throw Error('normalized scope');
   return exact;
  }catch{throw new ConflictException('Invalid exact specialist rehearsal evidence');}
