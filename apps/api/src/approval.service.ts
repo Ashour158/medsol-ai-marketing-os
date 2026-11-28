@@ -1,4 +1,4 @@
-import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException,Optional} from '@nestjs/common';
 import {PrismaService,withMarketingTenant} from './prisma.service.js';
 import {ApproveObjectCommand} from '@medsol/contracts';
 import {assertCampaignTransition} from '@medsol/domain';
@@ -16,20 +16,25 @@ import {communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {assertIndependentCampaignReviewer} from './campaign-segregation.js';
 import {MarketingWorkflowService} from './marketing-workflow.service.js';
+import {MarketingLearningService} from './marketing-learning.service.js';
 import {offlineDagDigest,verifyOfflineDagSignature,offlineDagTrust}
  from './r3g-offline-dag.js';
 import {assertDagEvidenceCurrent} from './r3g-dag-evidence.js';
 import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreativeScope} from './exact-creative-scope.js';
 
 @Injectable() export class ApprovalService{
- constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService){}
+ constructor(private readonly db:PrismaService,private readonly workflows:MarketingWorkflowService,@Optional() private readonly learning?:MarketingLearningService){}
  async listPending(organizationId:string){return withMarketingTenant(this.db,organizationId,async tx=>{
   const pending=await tx.approval.findMany({where:{organizationId,decision:'PENDING'},orderBy:{createdAt:'asc'}});
   const ids=[...new Set(pending.filter(a=>a.objectType===COMMUNITY_REVIEW_OBJECT).map(a=>a.objectId))];
   const cases=ids.length?await tx.socialCommunityCase.findMany({where:{organizationId,id:{in:ids},status:'PENDING_REVIEW'}}):[];
   return pending.filter(a=>a.objectType!==COMMUNITY_REVIEW_OBJECT||cases.some(row=>communityReviewMatches(row,a)))
-   .map(({id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt})=>
-    ({id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt}));
+   .map(a=>{
+    const {id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt}=a;
+    const s=objectType===SPECIALIST_REHEARSAL?readRehearsal(a):undefined;
+    return{id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt,
+     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,externalEffectsAuthorized:false}}:{})};
+   });
  })}
 
  private async reconcile(organizationId:string,result:{approvalId:string;decision:string;workflowExecutionId:string|null}){
@@ -139,7 +144,7 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     const actor={organizationId:cmd.organizationId,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
     await assertActorPermissionInTenantTransaction(tx,actor,'MANAGE_TENANT');
     await assertActorPermissionInTenantTransaction(tx,actor,'DECIDE_APPROVAL');
-    if(cmd.decision==='APPROVED')await validateRehearsal(tx,a,new Date());
+    if(cmd.decision==='APPROVED')await validateRehearsal(tx,a,new Date(),this.learning);
    }
    if(a.objectType===SPECIALIST_REGISTRATION){
     const scope=readSpecialist(a);
