@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {parseDurableBatch,durableBatchState,readDurableBatch,durableBatchView} from './specialist-durable-dispatch.js';
+import {parseDurableBatch,durableBatchState,readDurableBatch,durableBatchView,reconstructDurableBatch,batchCommandId,batchStageId,DURABLE_SPECIALIST_STAGE} from './specialist-durable-dispatch.js';
 const ids=['a','b','c'].map(x=>'specialist-run-'+x.repeat(64)),pins=ids.map((_,i)=>'sha256:'+String(i).repeat(64)),key='fixture-durable-001';
 describe('durable specialist coordination',()=>{
  it('accepts only exact bounded commands',()=>{
@@ -26,4 +26,13 @@ describe('durable specialist coordination',()=>{
   state.stages.push({approvalId:ids[2]!,executionId:ids[2]+'-execution',status:'COMPLETED'});
   expect(()=>readDurableBatch(state,'tenant-a','operator',key)).toThrow();
  });
+});
+
+it('reconstructs an append-only prefix and refuses missing, forged or mutable root evidence',()=>{
+ const root=durableBatchState('tenant-a','operator',key,ids,pins);
+ const row=(index:number,status:'COMPLETED'|'BLOCKED'='COMPLETED')=>({commandId:batchStageId(key,index),commandType:DURABLE_SPECIALIST_STAGE,correlationId:batchCommandId(key),status,response:{schema:'medsol.specialist-batch-stage.v1',planDigest:root.planDigest,index,stage:{approvalId:ids[index]!,executionId:ids[index]+'-execution',status}}});
+ expect(durableBatchView(reconstructDurableBatch(root,[row(1),row(0)],'tenant-a','operator',key))).toMatchObject({cursor:2,status:'IN_PROGRESS'});
+ expect(root.stages).toHaveLength(0);
+ for(const records of [[row(1)],[row(0),row(0)],[row(0,'BLOCKED'),row(1)],[{...row(0),status:'WRONG'}],[{...row(0),response:{...row(0).response,planDigest:'forged'}}]])expect(()=>reconstructDurableBatch(root,records,'tenant-a','operator',key)).toThrow();
+ expect(()=>reconstructDurableBatch({...root,stages:[row(0).response.stage]},[],'tenant-a','operator',key)).toThrow();
 });
