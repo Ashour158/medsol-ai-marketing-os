@@ -8,6 +8,8 @@ import {MarketingIncidentResponseService,INCIDENT_ALERT_EVENT} from './marketing
 import {MarketingIncidentWebhookTransport} from './marketing-incident-webhook.transport.js';
 import {MarketingLearningService,reviewedWatchWorkerConfigured} from './marketing-learning.service.js';
 import {SocialCommunityCaseService,crisisSlaWorkerConfigured} from './social-community-case.service.js';
+import {AgentService} from './agent.service.js';
+import {specialistScheduleConfigured} from './specialist-schedule.js';
 
 /**
  * Optional polling scheduler. Run only on explicitly opted-in workers.
@@ -30,6 +32,8 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
  private watchBusy=false;
  private crisisCursor:string|null=null;
  private crisisBusy=false;
+ private specialistCursor:string|null=null;
+ private specialistBusy=false;
  private busy = false;
  private stopping = false;
  constructor(private readonly db:PrismaService, private readonly executor:BrainRunExecutorService,
@@ -38,7 +42,8 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
   @Optional() private readonly workerHealth?:MarketingWorkerHealthService,
   @Optional() private readonly incidentResponses?:MarketingIncidentResponseService,
   @Optional() private readonly learning?:MarketingLearningService,
-  @Optional() private readonly community?:SocialCommunityCaseService){}
+  @Optional() private readonly community?:SocialCommunityCaseService,
+  @Optional() private readonly agents?:AgentService){}
  private async deliverBrainEvents():Promise<void>{
    if(this.outbox&&this.handoffs&&process.env.MARKETING_BRAIN_EVENT_DELIVERY_ENABLED!=='false')
      await this.outbox.publishBatch(this.handoffs,25,BRAIN_INTERNAL_EVENTS);
@@ -140,11 +145,26 @@ export class BrainDispatchWorker implements OnModuleInit, OnModuleDestroy {
    return{status:'OBSERVED',escalated,failed};
   }finally{this.crisisBusy=false;}
  }
+ async pulseSpecialistSchedules(){
+  if(this.stopping||!specialistScheduleConfigured()||!this.agents||this.specialistBusy)return{status:'DISABLED_OR_BUSY',observed:0,failed:0};
+  this.specialistBusy=true;
+  let observed=0,failed=0;
+  try{
+   const tenants=await this.db.organization.findMany({where:this.specialistCursor?{id:{gt:this.specialistCursor}}:{},orderBy:{id:'asc'},take:5,select:{id:true}});
+   if(!tenants.length)this.specialistCursor=null;
+   for(const tenant of tenants){this.specialistCursor=tenant.id;try{const result=await this.agents.runDueSpecialistSchedule(tenant.id);observed++;if(result.status==='NEEDS_INTERVENTION')failed++;}catch{failed++;}}
+   return{status:'OBSERVED',observed,failed};
+  }finally{this.specialistBusy=false;}
+ }
  async tick():Promise<{claimed:boolean;runId?:string;status:string}>{
   if(this.stopping)return {claimed:false,status:'STOPPING'};
   if(this.busy)return {claimed:false,status:'BUSY'};
   this.busy=true;
   try{
+   if(specialistScheduleConfigured()){
+    try{const pulse=await this.pulseSpecialistSchedules();if(pulse.failed)this.log.warn('Specialist schedule intervention required: '+pulse.failed);}
+    catch{this.log.warn('Specialist scheduler scan failed; brain work continues');}
+   }
    if(crisisSlaWorkerConfigured()){
     try{const crisis=await this.pulseCommunitySla();if(crisis.failed)this.log.warn('Community SLA evaluation failures: '+crisis.failed);}
     catch{this.log.warn('Community SLA scan failed; brain work continues');}
