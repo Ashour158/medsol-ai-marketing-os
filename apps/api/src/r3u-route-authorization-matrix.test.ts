@@ -13,9 +13,9 @@ const actor=(role:string):VerifiedIdentity=>({
  email:"offline@example.invalid",subject:"oidc-offline",role
 });
 describe("R3-U exhaustive controller permission and danger-route matrix",()=>{
- it("T03-025 covers all 187 real API method/path decorators in the single permission registry",()=>{
-  expect(endpoints).toHaveLength(187);
-  for(const action of ['rehearse','execute-rehearsal'])expect(permissionForMarketingRoute('POST','/marketing/agents/specialists/'+action)).toBe('MANAGE_TENANT');
+ it("T03-025 covers all 188 real API method/path decorators in the single permission registry",()=>{
+  expect(endpoints).toHaveLength(188);
+  for(const action of ['rehearse','execute-rehearsal','execute-batch'])expect(permissionForMarketingRoute('POST','/marketing/agents/specialists/'+action)).toBe('MANAGE_TENANT');
   expect(permissionForMarketingRoute('GET','/marketing/agents/specialists')).toBe('READ_TENANCY');
   expect(permissionForMarketingRoute('POST','/marketing/agents/specialists')).toBe('MANAGE_TENANT');
   expect(permissionForMarketingRoute('POST','/marketing/agents/team-preview')).toBe('MANAGE_TENANT');
