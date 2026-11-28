@@ -391,6 +391,13 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const targetSource=await invoke(r,'learning/knowledge',{...source,sourceKey:'specialist-fixture-'+randomUUID(),agentScope:[targetId],text:marker+' independent synthetic target evidence for internal handover review.'});
  expect(targetSource.status).toBe(201);
  expect((await invoke(reviewer,'learning/knowledge/'+targetSource.data.id+'/review',{decision:'REVIEW',reason})).status).toBe(201);
+ const allocationPath=specialistPath+'/allocation-preview';
+ const allocation={candidateIds:[targetId,specialistId],objective:task.objective,market:task.market,contextQuery:marker,requiredSkills:['CLAIM_LIMITATIONS'],fixtureOnly:true};
+ const allocationResult=await invoke(r,allocationPath,allocation);
+ expect(allocationResult).toMatchObject({status:201,data:{recommendedAgentId:specialistId,previewOnly:true,automaticAssignment:false,executionAuthorized:false,externalEffectsAuthorized:false,candidates:[expect.objectContaining({agentId:specialistId,eligible:true,referenceCount:2}),expect.objectContaining({agentId:targetId,eligible:false,referenceCount:1,reasons:expect.arrayContaining(['REQUIRED_SKILLS_MISSING'])})]}});
+ expect(JSON.stringify(allocationResult.data)).not.toContain(doc.data.id);
+ expect(JSON.stringify(allocationResult.data)).not.toContain(targetSource.data.id);
+ expect((await invoke(r,allocationPath,{...allocation,candidateIds:[specialistId,specialistId]})).status).toBe(400);
  const handoverTask={...decisionTask,requestKey:'fixture-'+randomUUID(),agentId:targetId,handoverApprovalId:decisionApproval.data.approvalId};
  expect((await invoke(r,taskPath,{...handoverTask,agentId:specialistId,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
  expect((await invoke(r,taskPath,{...handoverTask,requestKey:'fixture-'+randomUUID(),handoverApprovalId:unrelated.data.approvalId})).status).toBe(409);
@@ -454,6 +461,7 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const revoked=await invoke(reviewer,'learning/knowledge/'+doc.data.id+'/revoke',{reason:'Withdraw exclusive specialist synthetic evidence after evaluation'});
  expect(revoked).toMatchObject({status:201,data:{status:'REVOKED',scrubbedMemories:1}});
  expect((await context(r)).data).toMatchObject({results:[],memories:[]});
+ expect(await invoke(r,allocationPath,allocation)).toMatchObject({status:201,data:{recommendedAgentId:null,candidates:expect.arrayContaining([expect.objectContaining({agentId:specialistId,eligible:false,referenceCount:0,reasons:expect.arrayContaining(['NO_REVIEWED_REFERENCES'])})])}});
  expect((await invoke(reviewer,'approvals/decide',decide(pendingHandover.data.approvalId,'reviewer'))).status).toBe(409);
  expect((await invoke(r,executePath,{approvalId:approvedHandover.data.approvalId,fixtureOnly:true})).status).toBe(409);
  expect((await invoke(r,executePath,handoverCommand)).data.replayed).toBe(true);
@@ -493,6 +501,8 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect((await context(r)).status).toBe(403);
  expect((await invoke(r,executePath,executeCommand)).data.replayed).toBe(true);
  const foreign=await provisionedSession(request,'foreign');
+ const foreignAllocation=await request.post(api+'/marketing/'+allocationPath,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId},data:allocation});
+ expect(foreignAllocation.status()).toBe(409);
  const foreignContext=await request.post(api+'/marketing/'+contextPath,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId},data:{agentId:specialistId,query:marker}});
  expect(foreignContext.status()).toBe(403);
  const foreignExecution=await request.get(api+'/marketing/agents/executions/'+execution.data.executionId,{headers:{authorization:'Bearer '+foreign.token,'x-organization-id':tenant('foreign'),'x-marketing-session-id':foreign.sessionId}});
