@@ -15,7 +15,7 @@ import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
 import {parseSpecialistBatch,dispatchSpecialistBatch} from './specialist-batch-dispatch.js';
-import {allocationInput,rankSpecialists,type AllocationCandidate} from './specialist-allocation.js';
+import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreviewDigest,allocationRequestDigest,type AllocationInput,type AllocationCandidate} from './specialist-allocation.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
  constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService,@Optional() private readonly learning?:MarketingLearningService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
@@ -23,25 +23,50 @@ import {allocationInput,rankSpecialists,type AllocationCandidate} from './specia
   const input=allocationInput(raw),org=identity.organizationId;
   return withMarketingTenant(this.db,org,async tx=>{
    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
-   if(!this.learning)throw new ConflictException('Canonical knowledge fabric unavailable');
    await lockSpecialist(tx,org);
-   const candidates:AllocationCandidate[]=[];
+   return this.allocateSpecialists(tx,identity,input);
+  });
+ }
+ private async allocateSpecialists(tx:Prisma.TransactionClient,identity:VerifiedIdentity,input:AllocationInput){
+   const org=identity.organizationId;
+   if(!this.learning)throw new ConflictException('Canonical knowledge fabric unavailable');
+   const candidates:AllocationCandidate[]=[],pins:unknown[]=[];
    for(const agentId of input.candidateIds){
     const template=await currentSpecialistTemplate(tx,org,agentId);
     const reg=await tx.approval.findFirst({where:{organizationId:org,id:template.registrationId,objectType:SPECIALIST_REGISTRATION,objectId:agentId,decision:'APPROVED'}});
     if(!reg||reg.scopeDigest!==template.registrationDigest)throw new ConflictException('Specialist registration changed');
     const observed=await this.learning.contextForAgent(org,agentId,input.contextQuery,tx);
     const pin=observed.results.length||observed.memories.length?await loadSpecialistContextPin(this.learning,tx,org,agentId,input.contextQuery):undefined;
+    pins.push([agentId,template,pin?contextPinTuple(pin):null]);
     candidates.push({agentId,mission:template.configuration?.mission??readSpecialist(reg).input.mission,capability:template.capability,configurationVersion:template.configuration?.version??0,maxObjectiveChars:template.configuration?.maxObjectiveChars??500,skills:template.configuration?.reviewSkills??[],referenceCount:pin?.references.length??0});
    }
-   return rankSpecialists(input,candidates);
-  });
+   const result=rankSpecialists(input,candidates);
+   return{...result,previewDigest:allocationPreviewDigest(org,identity.userId,input,result,pins)};
  }
  async requestSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
-  const input=rehearsalInput(raw),org=identity.organizationId,id=rehearsalId(org,input.requestKey);
+  const input=rehearsalInput(raw),org=identity.organizationId;
+  if(input.allocationRequestDigest!==undefined)throw new BadRequestException('Allocation origin is server-derived');
   return withMarketingTenant(this.db,org,async tx=>{
    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
    await lockSpecialist(tx,org);
+   return this.persistSpecialistRehearsal(tx,identity,input);
+  });
+ }
+ async requestAllocatedSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
+  const command=allocationRequestInput(raw),org=identity.organizationId;
+  const input=rehearsalInput({agentId:command.expectedAgentId,requestKey:command.requestKey,objective:command.allocation.objective,market:command.allocation.market,contextQuery:command.allocation.contextQuery,fixtureOnly:true,brainMode:SPECIALIST_DECISION_MODE,allocationRequestDigest:allocationRequestDigest(org,identity.userId,command)});
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   await lockSpecialist(tx,org);
+   const prior=await tx.approval.findFirst({where:{organizationId:org,id:rehearsalId(org,input.requestKey)}});
+   if(prior)return this.persistSpecialistRehearsal(tx,identity,input);
+   const preview=await this.allocateSpecialists(tx,identity,command.allocation);
+   if(preview.previewDigest!==command.expectedPreviewDigest||preview.recommendedAgentId!==input.agentId)throw new ConflictException('Allocation preview changed; review current candidates again');
+   return this.persistSpecialistRehearsal(tx,identity,input);
+  });
+ }
+ private async persistSpecialistRehearsal(tx:Prisma.TransactionClient,identity:VerifiedIdentity,input:ReturnType<typeof rehearsalInput>){
+   const org=identity.organizationId,id=rehearsalId(org,input.requestKey);
    const prior=await tx.approval.findFirst({where:{organizationId:org,id}});
    if(prior){
     const scope=readRehearsal(prior);
@@ -57,7 +82,6 @@ import {allocationInput,rankSpecialists,type AllocationCandidate} from './specia
     scopeExpiresAt:new Date(scope.expiresAt)}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_REQUESTED',objectType:'Agent',objectId:input.agentId,correlationId:id,after:{scopeDigest:rehearsalDigest(scope),externalEffectsAuthorized:false}}});
    return{approvalId:id,decision:'PENDING',...scope,replayed:false};
-  });
  }
  async executeSpecialistBatch(identity:VerifiedIdentity,raw:unknown){
   const batch=parseSpecialistBatch(raw),org=identity.organizationId;
