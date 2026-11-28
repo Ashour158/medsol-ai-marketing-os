@@ -15,7 +15,7 @@ import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
 import {parseSpecialistBatch,dispatchSpecialistBatch} from './specialist-batch-dispatch.js';
-import {parseDurableBatch,batchCommandId,durableBatchState,readDurableBatch,durableBatchView,DURABLE_SPECIALIST_BATCH} from './specialist-durable-dispatch.js';
+import {parseDurableBatch,batchCommandId,durableBatchState,reconstructDurableBatch,durableBatchView,DURABLE_SPECIALIST_BATCH,DURABLE_SPECIALIST_STAGE,batchStageId} from './specialist-durable-dispatch.js';
 import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreviewDigest,allocationRequestDigest,type AllocationInput,type AllocationCandidate} from './specialist-allocation.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
@@ -128,8 +128,9 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
     return{...view,advanced:false};
    }
    if(prior.commandType!==DURABLE_SPECIALIST_BATCH||prior.correlationId!==commandId)throw new ConflictException('Invalid durable command receipt');
-   const state=readDurableBatch(prior.response,org,identity.userId,cmd.requestKey),view=durableBatchView(state);
-   if(prior.status!==view.status)throw new ConflictException('Durable batch status mismatch');
+   if(prior.status!=='REGISTERED')throw new ConflictException('Immutable batch root status mismatch');
+   const stageRows=await tx.commandReceipt.findMany({where:{organizationId:org,correlationId:commandId,commandType:DURABLE_SPECIALIST_STAGE},take:5});
+   const state=reconstructDurableBatch(prior.response,stageRows,org,identity.userId,cmd.requestKey),view=durableBatchView(state);
    if(cmd.action==='CREATE'&&JSON.stringify(cmd.approvalIds)!==JSON.stringify(state.approvalIds))throw new ConflictException('Immutable batch key already used');
    const pins=await this.specialistBatchPins(tx,identity,state.approvalIds);
    if(JSON.stringify(pins)!==JSON.stringify(state.scopeDigests))throw new ConflictException('Durable batch approval scope changed');
@@ -147,7 +148,7 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
    if(result.status!=='COMPLETED'&&result.status!=='BLOCKED')throw new ConflictException('Invalid durable batch stage result');
    state.stages.push({approvalId:view.nextApprovalId,executionId:result.executionId,status:result.status});
    const updated=durableBatchView(state);
-   await tx.commandReceipt.update({where:{organizationId_commandId:{organizationId:org,commandId}},data:{status:updated.status,response:state}});
+   await tx.commandReceipt.create({data:{organizationId:org,commandId:batchStageId(cmd.requestKey,view.cursor),commandType:DURABLE_SPECIALIST_STAGE,correlationId:commandId,status:result.status,response:{schema:'medsol.specialist-batch-stage.v1',planDigest:state.planDigest,index:view.cursor,stage:state.stages[view.cursor]!}}});
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_BATCH_ADVANCED',objectType:'CommandReceipt',objectId:commandId,correlationId:commandId,after:{planDigest:state.planDigest,cursor:updated.cursor,stageStatus:result.status,externalEffectsAuthorized:false}}});
    return{...updated,advanced:true};
   });
