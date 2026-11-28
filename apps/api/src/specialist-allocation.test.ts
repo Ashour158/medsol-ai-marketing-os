@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {allocationInput,rankSpecialists,type AllocationCandidate} from './specialist-allocation.js';
+import {allocationInput,rankSpecialists,allocationRequestInput,allocationRequestDigest,allocationPreviewDigest,type AllocationCandidate} from './specialist-allocation.js';
 const a='MKT-SPECIALIST-alpha',b='MKT-SPECIALIST-beta',c='MKT-SPECIALIST-gamma';
 const raw={candidateIds:[b,a,c],objective:'Review scientific evidence',market:'Egypt',contextQuery:'scientific evidence',requiredSkills:['EVIDENCE_GAPS'],fixtureOnly:true};
 const candidate:AllocationCandidate={agentId:a,mission:'Review scientific evidence',capability:'CHECK_EVIDENCE',configurationVersion:1,maxObjectiveChars:100,skills:['EVIDENCE_GAPS'],referenceCount:2};
@@ -21,5 +21,20 @@ describe('specialist allocation preview',()=>{
  });
  it('denies duplicates, unreviewable inputs and unexpected authority',()=>{
   for(const invalid of [{...raw,candidateIds:[a,a]},{...raw,candidateIds:['MKT-SCI-001']},{...raw,candidateIds:[]},{...raw,requiredSkills:['UNKNOWN']},{...raw,contextQuery:''},{...raw,fixtureOnly:false},{...raw,autoApprove:true}])expect(()=>allocationInput(invalid)).toThrow();
+ });
+});
+
+describe('allocation review origin',()=>{
+ it('pins preview identity and evidence and immutable request identity',()=>{
+  const input=allocationInput(raw),result=rankSpecialists(input,[candidate]);
+  const digest=allocationPreviewDigest('tenant-a','operator',input,result,[['pin-a']]);
+  expect(digest).not.toBe(allocationPreviewDigest('tenant-b','operator',input,result,[['pin-a']]));
+  expect(digest).not.toBe(allocationPreviewDigest('tenant-a','operator',input,result,[['pin-b']]));
+  const command={allocation:raw,expectedAgentId:a,expectedPreviewDigest:digest,requestKey:'fixture-allocation-001',fixtureOnly:true};
+  const exact=allocationRequestInput(command);
+  expect(allocationRequestDigest('tenant-a','operator',exact)).not.toBe(allocationRequestDigest('tenant-a','other',exact));
+  expect(()=>allocationRequestInput({...command,autoApprove:true})).toThrow();
+  expect(()=>allocationRequestInput({...command,expectedAgentId:'MKT-SPECIALIST-other'})).toThrow();
+  expect(()=>allocationRequestInput({...command,expectedPreviewDigest:'forged'})).toThrow();
  });
 });
