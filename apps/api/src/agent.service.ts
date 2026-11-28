@@ -12,6 +12,7 @@ import {SPECIALIST_BRAIN_MODE,specialistMissionPlan,specialistPlanDigest} from '
 import {SPECIALIST_DECISION_MODE,specialistDecision} from './specialist-decision-brain.js';
 import {REASONING_EVALUATION_MODE,evaluateSpecialistReasoning} from './specialist-reasoning-evaluation.js';
 import {STRUCTURED_DRAFT_MODE,prepareStructuredDraftFixture,structuredDraftFixture,structuredDraftFixtureReceipt} from './specialist-structured-model-draft.js';
+import {SPECIALIST_OUTPUT_REVIEW,outputReviewId,outputReviewScope,readOutputReview} from './specialist-output-review.js';
 import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
@@ -161,7 +162,12 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
      const prepared=prepareStructuredDraftFixture({organizationId:org,approvalId:id,scopeDigest:a.scopeDigest,templateAgentId:scope.templateId,plan:d.missionPlan as ReturnType<typeof specialistMissionPlan>,decision:d.specialistDecision as ReturnType<typeof specialistDecision>,contextPin:scope.contextPin});
      const expected=structuredDraftFixtureReceipt(prepared,structuredDraftFixture(prepared));
      if(specialistPlanDigest(expected)!==d.structuredDraftDigest||specialistPlanDigest(d.structuredDraft)!==d.structuredDraftDigest)throw new ConflictException('Historical structured draft integrity invalid');
-    }else if(d.structuredDraft!==undefined||d.structuredDraftDigest!==undefined)throw new ConflictException('Unexpected historical structured draft');
+     const reviewId=outputReviewId(org,id);
+     const outputReview=await tx.approval.findFirst({where:{organizationId:org,id:reviewId,objectType:SPECIALIST_OUTPUT_REVIEW}});
+     if(!outputReview||d.outputReviewId!==reviewId)throw new ConflictException('Historical output review missing');
+     const reviewScope=readOutputReview(outputReview);
+     if(reviewScope.sourceScopeDigest!==a.scopeDigest||reviewScope.structuredDraftDigest!==d.structuredDraftDigest||specialistPlanDigest(reviewScope.draft)!==specialistPlanDigest(expected.draft))throw new ConflictException('Historical output review integrity invalid');
+    }else if(d.structuredDraft!==undefined||d.structuredDraftDigest!==undefined||d.outputReviewId!==undefined)throw new ConflictException('Unexpected historical structured draft');
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
    await validateRehearsal(tx,a,new Date(),this.learning);
@@ -197,13 +203,19 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
    }
    const reasoningEvaluation=scope.input.evaluationMode===REASONING_EVALUATION_MODE&&missionPlan&&independentDecision?evaluateSpecialistReasoning(missionPlan,independentDecision,scope.contextPin):undefined;
    if(scope.input.evaluationMode===REASONING_EVALUATION_MODE&&!reasoningEvaluation)throw new ConflictException('Specialist decision evaluation missing');
+   const outputReview=structuredDraft&&a.scopeDigest?outputReviewScope({organizationId:org,requestedBy:identity.userId,agentId:scope.input.agentId,sourceApprovalId:id,sourceScopeDigest:a.scopeDigest,fixture:structuredDraft,expiresAt:scope.expiresAt}):undefined;
+   const reviewId=outputReview?outputReviewId(org,id):undefined;
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
-    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(structuredDraft?{structuredDraft,structuredDraftDigest:specialistPlanDigest(structuredDraft)}:{}),...(reasoningEvaluation?{reasoningEvaluation,reasoningEvaluationDigest:specialistPlanDigest(reasoningEvaluation)}:{}),...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(structuredDraft?{structuredDraft,structuredDraftDigest:specialistPlanDigest(structuredDraft),outputReviewId:reviewId!}:{}),...(reasoningEvaluation?{reasoningEvaluation,reasoningEvaluationDigest:specialistPlanDigest(reasoningEvaluation)}:{}),...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
     autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
    const status=(independentDecision?independentDecision.draftEligible:templateDecision.executionAllowed)?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
     input,decision:decision as unknown as Prisma.InputJsonValue,status,completedAt:new Date()}});
+   if(outputReview&&reviewId){
+    await tx.approval.create({data:{id:reviewId,organizationId:org,objectType:SPECIALIST_OUTPUT_REVIEW,objectId:scope.input.agentId,requiredAuthority:'HUMAN_MARKETING_AUTHORITY',riskLevel:'R3',requestedBy:identity.userId,scope:outputReview as unknown as Prisma.InputJsonValue,scopeDigest:specialistPlanDigest(outputReview),scopeExpiresAt:new Date(outputReview.expiresAt)}});
+    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_OUTPUT_REVIEW_REQUESTED',objectType:SPECIALIST_OUTPUT_REVIEW,objectId:scope.input.agentId,correlationId:reviewId,after:{sourceApprovalId:id,scopeDigest:specialistPlanDigest(outputReview),externalEffectsAuthorized:false}}});
+   }
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_EXECUTED',objectType:'AgentExecution',objectId:executionId,correlationId:id,after:{scopeDigest:a.scopeDigest,status,externalEffectsAuthorized:false}}});
    return{executionId,status,decision,replayed:false,externalEffectsAuthorized:false};
   });
