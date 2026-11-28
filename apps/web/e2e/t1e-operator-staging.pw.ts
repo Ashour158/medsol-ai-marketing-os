@@ -367,6 +367,19 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const decisionResult=await invoke(r,executePath,decisionCommand);
  expect(decisionResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{specialistDecision:{mode:'SPECIALIST_DECISION_V1',disposition:'DRAFT_FOR_REVIEW',draftEligible:true,semanticAlignmentVerified:false,scientificVerification:false,humanReviewRequired:true,externalEffectsAuthorized:false},specialistDecisionDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)}}});
  expect((await invoke(r,executePath,decisionCommand)).data.replayed).toBe(true);
+ // Disposable signed operator tenant has no model budget: a reviewed capacity exercise must fail closed.
+ expect((await invoke(r,'agents/budget')).data.enabled).toBe(false);
+ const budgetTask={...decisionTask,requestKey:'fixture-'+randomUUID(),structuredDraftMode:'STRUCTURED_DRAFT_FIXTURE_V1',budgetRehearsalMode:'BUDGET_RESERVATION_FIXTURE_V1'};
+ expect((await invoke(r,taskPath,{...decisionTask,requestKey:'fixture-'+randomUUID(),budgetRehearsalMode:'BUDGET_RESERVATION_FIXTURE_V1'})).status).toBe(400);
+ expect((await invoke(r,taskPath,{...budgetTask,budgetRehearsalMode:'LIVE'})).status).toBe(400);
+ const budgetApproval=await invoke(r,taskPath,budgetTask);
+ expect(budgetApproval).toMatchObject({status:201,data:{decision:'PENDING',input:{budgetRehearsalMode:'BUDGET_RESERVATION_FIXTURE_V1'}}});
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:budgetApproval.data.approvalId,specialistReview:expect.objectContaining({budgetRehearsalMode:'BUDGET_RESERVATION_FIXTURE_V1',externalEffectsAuthorized:false})}));
+ expect((await invoke(reviewer,'approvals/decide',decide(budgetApproval.data.approvalId,'reviewer'))).status).toBe(201);
+ const budgetCommand={approvalId:budgetApproval.data.approvalId,fixtureOnly:true};
+ expect((await invoke(r,executePath,budgetCommand)).status).toBe(403);
+ expect((await invoke(r,executePath,budgetCommand)).status).toBe(403);
+ expect((await invoke(r,'agents/budget')).data.enabled).toBe(false);
  const contractTask={...decisionTask,requestKey:'fixture-'+randomUUID(),simulationMode:'PROVIDER_CONTRACT_V1',evaluationMode:'DECISION_EVALUATION_V1',structuredDraftMode:'STRUCTURED_DRAFT_FIXTURE_V1'};
  const contractApproval=await invoke(r,taskPath,contractTask);
  expect(contractApproval).toMatchObject({status:201,data:{decision:'PENDING',input:{simulationMode:'PROVIDER_CONTRACT_V1',structuredDraftMode:'STRUCTURED_DRAFT_FIXTURE_V1'}}});

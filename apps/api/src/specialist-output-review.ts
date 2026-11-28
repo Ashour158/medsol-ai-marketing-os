@@ -5,6 +5,7 @@ import {SPECIALIST_REHEARSAL,readRehearsal,validateRehearsal} from './offline-sp
 import {specialistMissionPlan,specialistPlanDigest} from './specialist-mission-brain.js';
 import {specialistDecision} from './specialist-decision-brain.js';
 import {STRUCTURED_DRAFT_MODE,prepareStructuredDraftFixture,structuredDraftFixture,structuredDraftFixtureReceipt} from './specialist-structured-model-draft.js';
+import {SPECIALIST_BUDGET_MODE,verifySpecialistBudgetReceipt} from './specialist-model-budget-rehearsal.js';
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 export const SPECIALIST_OUTPUT_REVIEW='OfflineSpecialistOutputReview';
 type Fixture=ReturnType<typeof structuredDraftFixtureReceipt>;
@@ -39,6 +40,8 @@ export async function validateOutputReview(tx:Prisma.TransactionClient,a:Approva
  const d=row?.decision as Record<string,unknown>|null|undefined;
  if(!d||d.approvalId!==source.id||d.scopeDigest!==source.scopeDigest||d.agentId!==s.agentId||d.templateAgentId!==scope.templateId||d.templateDigest!==scope.templateDigest||d.outputHumanApproved!==false||d.externalEffectsAuthorized!==false||d.modelCallsAuthorized!==false||!d.missionPlan||!d.specialistDecision||!d.structuredDraft||d.structuredDraftDigest!==s.structuredDraftDigest||d.outputReviewId!==a.id)throw new ConflictException('Exact completed structured fixture required');
  const prepared=prepareStructuredDraftFixture({organizationId:a.organizationId,approvalId:source.id,scopeDigest:s.sourceScopeDigest,templateAgentId:scope.templateId,plan:d.missionPlan as ReturnType<typeof specialistMissionPlan>,decision:d.specialistDecision as ReturnType<typeof specialistDecision>,contextPin:scope.contextPin});
+ if(scope.input.budgetRehearsalMode===SPECIALIST_BUDGET_MODE)await verifySpecialistBudgetReceipt(tx,{organizationId:a.organizationId,approvalId:source.id,scopeDigest:s.sourceScopeDigest,requestDigest:prepared.requestDigest,templateAgentId:scope.templateId},d.budgetReceipt);
+ else if(d.budgetReceipt!==undefined)throw new ConflictException('Unexpected budget rehearsal receipt');
  const expected=structuredDraftFixtureReceipt(prepared,structuredDraftFixture(prepared));
  if(specialistPlanDigest(expected)!==s.structuredDraftDigest||specialistPlanDigest(d.structuredDraft)!==s.structuredDraftDigest||specialistPlanDigest(expected.draft)!==specialistPlanDigest(s.draft))throw new ConflictException('Structured draft changed since review request');
  return s;

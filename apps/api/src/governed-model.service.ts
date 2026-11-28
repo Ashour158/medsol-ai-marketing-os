@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { BoundedModelGateway, DisabledModelAdapter, ModelRequestSchema, type ModelAdapter, type ModelResult, OpenAIResponsesAdapter, AGENT_ROSTER, GovernedModelRouter, SimulatedModelAdapter, assertModelProviderKey, assertModelSimulationScenario, AnthropicMessagesAdapter, GeminiGenerateContentAdapter, type ModelRoute } from '@medsol/agent-runtime';
 import { ModelBudgetService } from './model-budget.service.js';
+import type {Prisma} from '@prisma/client';
+import {specialistBudgetRequestId,specialistBudgetReceipt,SPECIALIST_FIXTURE_RESERVE_MICROS} from './specialist-model-budget-rehearsal.js';
 import {prepareStructuredDraftFixture,structuredDraftFixture,structuredDraftFixtureReceipt} from './specialist-structured-model-draft.js';
 
 
@@ -130,6 +132,23 @@ export class GovernedModelService {
     }};
     const gateway=new BoundedModelGateway(new GovernedModelRouter({scopeMode:'EXACT_TENANT',routes:[{organizationId:input.organizationId,agentId:input.templateAgentId,purpose:'INTERNAL_MARKETING_DRAFT',providerKey:'LOCAL'}],adapters:{LOCAL:adapter}}));
     return structuredDraftFixtureReceipt(prepared,await gateway.complete(prepared.request));
+  }
+  /** Explicit reviewed capacity rehearsal. A real budget reservation is made
+   * and released in the caller's transaction; only a fixed local response is
+   * executed. No external disclosure, configured provider, billed usage or
+   * nested transaction. A failure rolls back both reservation and execution.
+   */
+  async rehearseBudgetedSpecialistDraft(tx:Prisma.TransactionClient,input:Parameters<typeof prepareStructuredDraftFixture>[0]){
+    if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new Error('Offline budget rehearsal required');
+    const prepared=prepareStructuredDraftFixture(input);
+    const requestId=specialistBudgetRequestId(input.organizationId,input.approvalId,input.scopeDigest,prepared.requestDigest);
+    const reserved=await this.budgets.reserveInTransaction(tx,{organizationId:input.organizationId,requestId,agentId:input.templateAgentId,costMicros:SPECIALIST_FIXTURE_RESERVE_MICROS});
+    if(reserved.replay||reserved.status!=='RESERVED')throw new Error('Unexpected existing offline budget reservation');
+    const draft=await this.rehearseStructuredSpecialistDraft(input);
+    if(draft.requestDigest!==prepared.requestDigest||draft.actualCostMicros!==0||draft.providerRequestsMade!==0||draft.realModelInvocations!==0)throw new Error('Offline budget rehearsal must remain nonbillable');
+    const released=await this.budgets.settleInTransaction(tx,input.organizationId,reserved.id,null);
+    if(released.replay||released.status!=='RELEASED')throw new Error('Offline model budget release failed');
+    return{draft,budgetReceipt:specialistBudgetReceipt(requestId,reserved.id)};
   }
   // Adapter injection is restricted to server-side composition; no agent may select arbitrary network destinations.
   async complete(requestId: string, raw: unknown): Promise<ModelResult> {
