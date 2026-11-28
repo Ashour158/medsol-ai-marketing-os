@@ -6,30 +6,32 @@ import {currentRetirementRegistration} from './offline-specialist-retirement.js'
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import {normalizeReviewSkills,type SpecialistReviewSkill} from './specialist-mission-brain.js';
 import {evaluateSpecialistReviewSkills} from './specialist-skill-evaluation.js';
+import {learningEvaluationId,learningEvidenceTuple,normalizeLearningEvidence,assertLearningSelection,loadLearningEvidence,type LearningEvidence} from './specialist-learning-evidence.js';
 export const SPECIALIST_CONFIG='OfflineSpecialistConfiguration';
 const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export function configInput(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist configuration required');
  const v=raw as Record<string,unknown>;
- if(!['action,agentId,evidenceRequired,expectedVersion,fixtureOnly,maxObjectiveChars,mission,requestKey','action,agentId,evidenceRequired,expectedVersion,fixtureOnly,maxObjectiveChars,mission,requestKey,reviewSkills'].includes(Object.keys(v).sort().join(','))||v.action!=='CONFIGURE'||v.fixtureOnly!==true||
+ if(!['action,agentId,evidenceRequired,expectedVersion,fixtureOnly,maxObjectiveChars,mission,requestKey','action,agentId,evidenceRequired,expectedVersion,fixtureOnly,maxObjectiveChars,mission,requestKey,reviewSkills','action,agentId,evidenceRequired,expectedVersion,fixtureOnly,learningEvaluationId,maxObjectiveChars,mission,requestKey,reviewSkills'].includes(Object.keys(v).sort().join(','))||v.action!=='CONFIGURE'||v.fixtureOnly!==true||
  !isSpecialistId(v.agentId)||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey)||
  typeof v.mission!=='string'||v.mission.trim().length<12||v.mission.length>500||typeof v.evidenceRequired!=='boolean'||
  typeof v.expectedVersion!=='number'||!Number.isSafeInteger(v.expectedVersion)||v.expectedVersion<0||v.expectedVersion>=50||
  typeof v.maxObjectiveChars!=='number'||!Number.isSafeInteger(v.maxObjectiveChars)||v.maxObjectiveChars<12||v.maxObjectiveChars>500)
   throw new BadRequestException('Bounded mission, evidence policy, objective limit and expected configuration version required');
- return{action:'CONFIGURE' as const,agentId:v.agentId,requestKey:v.requestKey,mission:v.mission.trim(),evidenceRequired:v.evidenceRequired,expectedVersion:v.expectedVersion,maxObjectiveChars:v.maxObjectiveChars,fixtureOnly:true as const,...(Object.hasOwn(v,'reviewSkills')?{reviewSkills:normalizeReviewSkills(v.reviewSkills)}:{})};
+ return{action:'CONFIGURE' as const,agentId:v.agentId,requestKey:v.requestKey,mission:v.mission.trim(),evidenceRequired:v.evidenceRequired,expectedVersion:v.expectedVersion,maxObjectiveChars:v.maxObjectiveChars,fixtureOnly:true as const,...(Object.hasOwn(v,'reviewSkills')?{reviewSkills:normalizeReviewSkills(v.reviewSkills)}:{}),...(Object.hasOwn(v,'learningEvaluationId')?{learningEvaluationId:learningEvaluationId(v.learningEvaluationId)}:{})};
 }
 type Input=ReturnType<typeof configInput>;
 export type ConfigPin={approvalId:string;digest:string;version:number;mission:string;evidenceRequired:boolean;maxObjectiveChars:number;reviewSkills?:SpecialistReviewSkill[]};
 export const configId=(org:string,key:string)=>'specialist-config-'+hash([org,key]).slice(7);
-export function configScope(org:string,actor:string,input:Input,registrationId:string,registrationDigest:string,previousDigest:string|null,expiresAt:string){
- return{schema:'medsol.offline-specialist-config.v1',organizationId:org,requestedBy:actor,input,registrationId,registrationDigest,previousDigest,expiresAt,version:input.expectedVersion+1,...(input.reviewSkills!==undefined?{skillEvaluation:evaluateSpecialistReviewSkills(input.reviewSkills)}:{}),
+export function configScope(org:string,actor:string,input:Input,registrationId:string,registrationDigest:string,previousDigest:string|null,expiresAt:string,learningEvidence?:LearningEvidence){
+ if(input.learningEvaluationId!==undefined){if(!learningEvidence||learningEvidence.evaluationId!==input.learningEvaluationId)throw new ConflictException('Exact specialist learning evidence required');assertLearningSelection(learningEvidence,input.reviewSkills);}else if(learningEvidence!==undefined)throw new ConflictException('Unexpected specialist learning evidence');
+ return{schema:'medsol.offline-specialist-config.v1',organizationId:org,requestedBy:actor,input,registrationId,registrationDigest,previousDigest,expiresAt,version:input.expectedVersion+1,...(learningEvidence?{learningEvidence:normalizeLearningEvidence(learningEvidence)}:{}),...(input.reviewSkills!==undefined?{skillEvaluation:evaluateSpecialistReviewSkills(input.reviewSkills)}:{}),
   executionAuthorized:false as const,modelCallsAuthorized:false as const,toolCallsAuthorized:false as const,memoryWritesAuthorized:false as const,externalEffectsAuthorized:false as const};
 }
 type Scope=ReturnType<typeof configScope>;
 export function configDigest(s:Scope){
  const i=s.input;
- return hash([s.schema,s.organizationId,s.requestedBy,i.action,i.agentId,i.requestKey,i.mission,i.evidenceRequired,i.expectedVersion,i.maxObjectiveChars,i.fixtureOnly,s.registrationId,s.registrationDigest,s.previousDigest,s.expiresAt,s.version,s.executionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.reviewSkills!==undefined?['reviewSkills',normalizeReviewSkills(i.reviewSkills),s.skillEvaluation?.schema,s.skillEvaluation?.skills,s.skillEvaluation?.results.map(r=>[r.id,r.passed]),s.skillEvaluation?.passed,s.skillEvaluation?.modelQualityEvaluated,s.skillEvaluation?.scientificVerification,s.skillEvaluation?.capabilityExpansionAuthorized]:[])]);
+ return hash([s.schema,s.organizationId,s.requestedBy,i.action,i.agentId,i.requestKey,i.mission,i.evidenceRequired,i.expectedVersion,i.maxObjectiveChars,i.fixtureOnly,s.registrationId,s.registrationDigest,s.previousDigest,s.expiresAt,s.version,s.executionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.reviewSkills!==undefined?['reviewSkills',normalizeReviewSkills(i.reviewSkills),s.skillEvaluation?.schema,s.skillEvaluation?.skills,s.skillEvaluation?.results.map(r=>[r.id,r.passed]),s.skillEvaluation?.passed,s.skillEvaluation?.modelQualityEvaluated,s.skillEvaluation?.scientificVerification,s.skillEvaluation?.capabilityExpansionAuthorized]:[]),...(i.learningEvaluationId!==undefined?['learningEvaluationId',i.learningEvaluationId,learningEvidenceTuple(s.learningEvidence!)]:[])]);
 }
 const validDigest=(v:unknown):v is string=>typeof v==='string'&&/^sha256:[0-9a-f]{64}$/.test(v);
 export function readConfig(a:Approval){
@@ -37,7 +39,8 @@ export function readConfig(a:Approval){
   const s=a.scope as unknown as Scope,i=configInput(s.input);
   if(!a.requestedBy||!a.scopeExpiresAt||typeof s.registrationId!=='string'||!/^specialist-[0-9a-f]{64}$/.test(s.registrationId)||!validDigest(s.registrationDigest)||
    (i.expectedVersion===0?s.previousDigest!==null:!validDigest(s.previousDigest)))throw Error('scope');
-  const exact=configScope(a.organizationId,a.requestedBy,i,s.registrationId,s.registrationDigest,s.previousDigest,a.scopeExpiresAt.toISOString());
+  const exact=configScope(a.organizationId,a.requestedBy,i,s.registrationId,s.registrationDigest,s.previousDigest,a.scopeExpiresAt.toISOString(),i.learningEvaluationId!==undefined?normalizeLearningEvidence(s.learningEvidence!):undefined);
+  if(i.learningEvaluationId===undefined&&s.learningEvidence!==undefined)throw Error('unexpected learning evidence');
   if(a.objectType!==SPECIALIST_CONFIG||a.id!==configId(a.organizationId,i.requestKey)||a.objectId!==i.agentId||
    a.requiredAuthority!=='HUMAN_MARKETING_AUTHORITY'||configDigest(s)!==a.scopeDigest||configDigest(exact)!==a.scopeDigest)throw Error('scope');
   return exact;
@@ -78,5 +81,6 @@ export async function approveSpecialistConfig(tx:Prisma.TransactionClient,a:Appr
  if(current?.reviewSkills!==undefined&&s.input.reviewSkills===undefined)throw new ConflictException('Explicit review skill selection required for revised configuration');
  if(reg.id!==s.registrationId||reg.digest!==s.registrationDigest||(current?.version??0)!==s.input.expectedVersion||(current?.digest??null)!==s.previousDigest)
   throw new ConflictException('Specialist configuration changed; request fresh review');
+ if(s.input.learningEvaluationId!==undefined){const evidence=await loadLearningEvidence(tx,org,id,s.input.learningEvaluationId,now);if(JSON.stringify(learningEvidenceTuple(evidence))!==JSON.stringify(learningEvidenceTuple(s.learningEvidence!)))throw new ConflictException('Specialist learning evidence changed; request fresh review');}
  await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:reviewer,action:'OFFLINE_SPECIALIST_CONFIG_APPROVED',objectType:'Agent',objectId:id,correlationId:a.id,before:{version:current?.version??0},after:{version:s.version,scopeDigest:a.scopeDigest,executionAuthorized:false,externalEffectsAuthorized:false}}});
 }
