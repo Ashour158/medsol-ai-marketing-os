@@ -17,7 +17,11 @@ const staging={
  MARKETING_OIDC_JWKS_URL:issuer+'/.well-known/jwks.json',
  MARKETING_OIDC_CLIENT_ID:'r3y-disposable-browser',
  MARKETING_OIDC_AUDIENCE:'api://medsol-r3y',
- MARKETING_T1E_STAGING_CI_ONLY:'1'
+ MARKETING_T1E_STAGING_CI_ONLY:'1',
+ MARKETING_BRAIN_WORKER_ENABLED:'true',
+ MARKETING_SPECIALIST_SCHEDULER_ENABLED:'true',
+ MARKETING_BRAIN_RUN_DISPATCH_ENABLED:'false',
+ MARKETING_BRAIN_POLL_MS:'1000'
 };
 const servers=Array.isArray(existing.webServer)?existing.webServer:
  [existing.webServer! as WebServerConfig];
