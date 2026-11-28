@@ -75,6 +75,7 @@ export async function approveSpecialistConfig(tx:Prisma.TransactionClient,a:Appr
  await assertActorPermissionInTenantTransaction(tx,{organizationId:org,userId:requester.id,email:requester.email,role:requester.role,subject:requester.oidcSubject},'MANAGE_TENANT');
  await tx.$queryRaw`SELECT "id" FROM "Agent" WHERE "organizationId"=${org} AND "id"=${id} FOR UPDATE`;
  const reg=await currentRetirementRegistration(tx,org,id),current=await currentConfig(tx,org,id,reg);
+ if(current?.reviewSkills!==undefined&&s.input.reviewSkills===undefined)throw new ConflictException('Explicit review skill selection required for revised configuration');
  if(reg.id!==s.registrationId||reg.digest!==s.registrationDigest||(current?.version??0)!==s.input.expectedVersion||(current?.digest??null)!==s.previousDigest)
   throw new ConflictException('Specialist configuration changed; request fresh review');
  await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:reviewer,action:'OFFLINE_SPECIALIST_CONFIG_APPROVED',objectType:'Agent',objectId:id,correlationId:a.id,before:{version:current?.version??0},after:{version:s.version,scopeDigest:a.scopeDigest,executionAuthorized:false,externalEffectsAuthorized:false}}});
