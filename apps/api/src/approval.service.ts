@@ -33,7 +33,7 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     const {id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt}=a;
     const s=objectType===SPECIALIST_REHEARSAL?readRehearsal(a):undefined;
     return{id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt,
-     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,externalEffectsAuthorized:false}}:{})};
+     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,brainMode:s.input.brainMode??null,externalEffectsAuthorized:false}}:{})};
    });
  })}
 
