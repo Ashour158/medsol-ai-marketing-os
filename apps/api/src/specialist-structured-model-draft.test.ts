@@ -2,7 +2,7 @@ import {describe,it,expect,vi} from 'vitest';
 import {AGENT_ROSTER,BoundedModelGateway,GovernedModelRouter,type ModelResult,type ModelRequest,type ModelProviderKey} from '@medsol/agent-runtime';
 import {specialistMissionPlan} from './specialist-mission-brain.js';
 import {specialistDecision} from './specialist-decision-brain.js';
-import {prepareSpecialistModelDraft,validateSpecialistModelDraft,runStructuredSpecialistDraft} from './specialist-structured-model-draft.js';
+import {prepareSpecialistModelDraft,validateSpecialistModelDraft,runStructuredSpecialistDraft,prepareStructuredDraftFixture,structuredDraftFixture,structuredDraftFixtureReceipt} from './specialist-structured-model-draft.js';
 const digest='sha256:'+'a'.repeat(64);
 const contextPin={query:'synthetic evidence',references:[{kind:'SOURCE' as const,documentId:'document-private',recordId:'chunk-private',citationRef:'PRIVATE-CITATION-1',digest,sourceDigest:digest}]};
 const plan=specialistMissionPlan({mission:'Review marketing evidence carefully',objective:'Review marketing evidence for draft',market:'Egypt',capability:'INTERNAL_REVIEW',references:contextPin.references.map(x=>x.citationRef)});
@@ -50,4 +50,13 @@ describe('structured specialist model boundary',()=>{
    expect(complete).toHaveBeenCalledTimes(1);
   }
  });
+});
+
+it('reconstructs an exact zero-cost fixture receipt and refuses arbitrary fixture outputs',()=>{
+ const fixture=prepareStructuredDraftFixture(input),response=structuredDraftFixture(fixture);
+ const receipt=structuredDraftFixtureReceipt(fixture,response);
+ expect(receipt).toMatchObject({mode:'STRUCTURED_DRAFT_FIXTURE_V1',fixtureOnly:true,providerRequestsMade:0,realModelInvocations:0,actualCostMicros:0,outputHumanApproved:false,externalEffectsAuthorized:false});
+ expect(structuredDraftFixtureReceipt(fixture,structuredDraftFixture(fixture))).toEqual(receipt);
+ expect(()=>structuredDraftFixtureReceipt(fixture,{...response,model:'unreviewed-model'})).toThrow();
+ expect(()=>structuredDraftFixtureReceipt(fixture,{...response,text:JSON.stringify({...JSON.parse(response.text),summary:'Different but well formed summary.'})})).toThrow();
 });
