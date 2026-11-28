@@ -64,17 +64,21 @@ export async function currentSpecialistTemplate(tx:Prisma.TransactionClient,org:
   templateDigest:agentReleaseDigest(manifest),templateInstalled:!!installed,capability:s.proposedCapability,maxInputBytes:manifest.maxInputBytes};
 }
 type Template=Awaited<ReturnType<typeof currentSpecialistTemplate>>;
-export type HandoverPin={approvalId:string;executionId:string;sourceAgentId:string;sourceScopeDigest:string;sourceDecisionDigest:string;disposition:'DRAFT_FOR_REVIEW';sourceEvidenceTransferred:false;externalEffectsAuthorized:false};
+export const MAX_SPECIALIST_STAGES=4;
+export type HandoverPin={ancestorAgentIds?:string[];approvalId:string;executionId:string;sourceAgentId:string;sourceScopeDigest:string;sourceDecisionDigest:string;disposition:'DRAFT_FOR_REVIEW';sourceEvidenceTransferred:false;externalEffectsAuthorized:false};
 export function handoverTuple(p:HandoverPin){
  if(!p||typeof p.approvalId!=='string'||!/^specialist-run-[0-9a-f]{64}$/.test(p.approvalId)||p.executionId!==p.approvalId+'-execution'||
  typeof p.sourceAgentId!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(p.sourceAgentId)||
  !/^sha256:[0-9a-f]{64}$/.test(p.sourceScopeDigest)||!/^sha256:[0-9a-f]{64}$/.test(p.sourceDecisionDigest)||p.disposition!=='DRAFT_FOR_REVIEW'||p.sourceEvidenceTransferred!==false||p.externalEffectsAuthorized!==false)
  throw new ConflictException('Invalid specialist handover pin');
- return[p.approvalId,p.executionId,p.sourceAgentId,p.sourceScopeDigest,p.sourceDecisionDigest,p.disposition,p.sourceEvidenceTransferred,p.externalEffectsAuthorized];
+ const ancestors=p.ancestorAgentIds;
+ if(ancestors!==undefined&&(!Array.isArray(ancestors)||ancestors.length<2||ancestors.length>=MAX_SPECIALIST_STAGES||ancestors[ancestors.length-1]!==p.sourceAgentId||new Set(ancestors).size!==ancestors.length||ancestors.some(id=>typeof id!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(id))))
+  throw new ConflictException('Invalid bounded specialist ancestry');
+ return[p.approvalId,p.executionId,p.sourceAgentId,p.sourceScopeDigest,p.sourceDecisionDigest,p.disposition,p.sourceEvidenceTransferred,p.externalEffectsAuthorized,...(ancestors!==undefined?['ancestorAgentIds',ancestors]:[])];
 }
-function normalizeHandover(p:HandoverPin):HandoverPin{handoverTuple(p);return{approvalId:p.approvalId,executionId:p.executionId,sourceAgentId:p.sourceAgentId,sourceScopeDigest:p.sourceScopeDigest,sourceDecisionDigest:p.sourceDecisionDigest,disposition:p.disposition,sourceEvidenceTransferred:false,externalEffectsAuthorized:false};}
+function normalizeHandover(p:HandoverPin):HandoverPin{handoverTuple(p);return{...(p.ancestorAgentIds!==undefined?{ancestorAgentIds:[...p.ancestorAgentIds]}:{}),approvalId:p.approvalId,executionId:p.executionId,sourceAgentId:p.sourceAgentId,sourceScopeDigest:p.sourceScopeDigest,sourceDecisionDigest:p.sourceDecisionDigest,disposition:p.disposition,sourceEvidenceTransferred:false,externalEffectsAuthorized:false};}
 export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string,contextPin?:SpecialistContextPin,handover?:HandoverPin){
- if(input.handoverApprovalId!==undefined){if(!handover||handover.approvalId!==input.handoverApprovalId||handover.sourceAgentId===input.agentId)throw new ConflictException('Distinct reviewed source specialist handover required');handoverTuple(handover);}else if(handover!==undefined)throw new ConflictException('Unexpected specialist handover');
+ if(input.handoverApprovalId!==undefined){if(!handover||handover.approvalId!==input.handoverApprovalId||(handover.ancestorAgentIds??[handover.sourceAgentId]).includes(input.agentId))throw new ConflictException('Distinct reviewed source specialist handover required');handoverTuple(handover);}else if(handover!==undefined)throw new ConflictException('Unexpected specialist handover');
  assertConfigPolicy(template.configuration,input.objective,input.contextQuery);
  assertSkillMode(template.configuration?.reviewSkills,input.brainMode);
  return{schema:'medsol.offline-specialist-rehearsal.v1',organizationId:org,requestedBy:actor,input,
@@ -107,30 +111,35 @@ export function readRehearsal(a:Approval):Scope{
   return exact;
  }catch{throw new ConflictException('Invalid exact specialist rehearsal evidence');}
 }
-export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date,learning?:MarketingLearningService):Promise<Scope>{
+export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date,learning?:MarketingLearningService,downstream:readonly string[]=[]):Promise<Scope>{
  const s=readRehearsal(a);
+ if(downstream.includes(s.input.agentId)||downstream.length>=MAX_SPECIALIST_STAGES)throw new ConflictException('Repeated specialist or excessive collaboration depth');
  if(!a.scopeExpiresAt||a.scopeExpiresAt<=now)throw new ConflictException('Specialist rehearsal expired');
  const requester=await tx.user.findFirst({where:{organizationId:a.organizationId,id:s.requestedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
  if(!requester?.oidcSubject)throw new ForbiddenException('Current specialist requester required');
  await assertActorPermissionInTenantTransaction(tx,{organizationId:a.organizationId,userId:requester.id,email:requester.email,role:requester.role,subject:requester.oidcSubject},'MANAGE_TENANT');
  const current=await currentSpecialistTemplate(tx,a.organizationId,a.objectId);
  const pin=s.input.contextQuery!==undefined?await loadSpecialistContextPin(learning,tx,a.organizationId,a.objectId,s.input.contextQuery):undefined;
- const handover=s.input.handoverApprovalId!==undefined?await loadHandoverPin(tx,a.organizationId,s.requestedBy,s.input.agentId,s.input.handoverApprovalId,now,learning):undefined;
+ const handover=s.input.handoverApprovalId!==undefined?await loadHandoverPin(tx,a.organizationId,s.requestedBy,s.input.agentId,s.input.handoverApprovalId,now,learning,downstream):undefined;
  if(rehearsalDigest(rehearsalScope(a.organizationId,s.requestedBy,s.input,current,s.expiresAt,pin,handover))!==a.scopeDigest)
  throw new ConflictException('Specialist, template or reviewed context changed; request fresh review');
  return s;
 }
 
-/** Single-hop handover, revalidated at request, independent approval and execution.
+/** Bounded multi-stage handover, revalidated at request, independent approval and execution.
  * No source content, context references or capability inheritance crosses the boundary.
  */
-export async function loadHandoverPin(tx:Prisma.TransactionClient,org:string,actor:string,targetAgentId:string,id:string,now:Date,learning?:MarketingLearningService):Promise<HandoverPin>{
+export async function loadHandoverPin(tx:Prisma.TransactionClient,org:string,actor:string,targetAgentId:string,id:string,now:Date,learning?:MarketingLearningService,downstream:readonly string[]=[]):Promise<HandoverPin>{
+ const visited=[...downstream,targetAgentId];
+ if(new Set(visited).size!==visited.length||visited.length>=MAX_SPECIALIST_STAGES)throw new ConflictException('Repeated specialist or excessive collaboration depth');
  const source=await tx.approval.findFirst({where:{organizationId:org,id,objectType:SPECIALIST_REHEARSAL,decision:'APPROVED'}});
- if(!source||source.requestedBy!==actor||source.objectId===targetAgentId||!source.decidedBy||source.decidedBy===actor||!source.decidedAt||!source.scopeExpiresAt||source.decidedAt>=source.scopeExpiresAt||!source.scopeDigest)
+ if(!source||source.requestedBy!==actor||visited.includes(source.objectId)||!source.decidedBy||source.decidedBy===actor||!source.decidedAt||!source.scopeExpiresAt||source.decidedAt>=source.scopeExpiresAt||!source.scopeDigest)
  throw new ConflictException('Completed independent source specialist approval required');
  const s=readRehearsal(source);
- if(s.input.handoverApprovalId!==undefined||s.input.brainMode!==SPECIALIST_DECISION_MODE)throw new ConflictException('Only a single-hop decision rehearsal may be handed over');
- await validateRehearsal(tx,source,now,learning);
+ if(s.input.brainMode!==SPECIALIST_DECISION_MODE)throw new ConflictException('Only decision rehearsals may be handed over');
+ await validateRehearsal(tx,source,now,learning,visited);
+ const ancestors=[...(s.handover?(s.handover.ancestorAgentIds??[s.handover.sourceAgentId]):[]),s.input.agentId];
+ if(new Set([...ancestors,...visited]).size!==ancestors.length+visited.length||ancestors.length+visited.length>MAX_SPECIALIST_STAGES)throw new ConflictException('Repeated specialist or excessive collaboration depth');
  const reviewer=await tx.user.findFirst({where:{organizationId:org,id:source.decidedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
  if(!reviewer?.oidcSubject)throw new ConflictException('Current source reviewer required');
  const identity={organizationId:org,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
@@ -143,11 +152,12 @@ export async function loadHandoverPin(tx:Prisma.TransactionClient,org:string,act
  if(!d||d.schema!=='medsol.specialist-rehearsal-result.v1'||d.approvalId!==id||d.scopeDigest!==source.scopeDigest||d.agentId!==s.input.agentId||d.templateAgentId!==s.templateId||d.templateDigest!==s.templateDigest||
  d.fixtureOnly!==true||d.outputHumanApproved!==false||d.autonomousExecutionAuthorized!==false||d.modelCallsAuthorized!==false||d.toolCallsAuthorized!==false||d.memoryWritesAuthorized!==false||d.externalEffectsAuthorized!==false||template?.executionAllowed!==true||!d.missionPlan||!d.specialistDecision)
  throw new ConflictException('Source specialist execution provenance invalid');
+ if(s.handover){if(!d.handover||JSON.stringify(handoverTuple(d.handover as HandoverPin))!==JSON.stringify(handoverTuple(s.handover)))throw new ConflictException('Source handover receipt integrity invalid');}else if(d.handover!==undefined)throw new ConflictException('Unexpected source handover receipt');
  const reg=await tx.approval.findFirst({where:{organizationId:org,id:s.registrationId,objectType:SPECIALIST_REGISTRATION,decision:'APPROVED'}});
  if(!reg||reg.scopeDigest!==s.registrationDigest)throw new ConflictException('Source registration changed');
  const plan=specialistMissionPlan({mission:s.configuration?.mission??readSpecialist(reg).input.mission,objective:s.input.objective,market:s.input.market,capability:s.capability,references:s.contextPin?.references.map(r=>r.citationRef)??[],...(s.configuration?.reviewSkills!==undefined?{reviewSkills:s.configuration.reviewSkills}:{})});
  const expected=specialistDecision(plan,true),digest=specialistPlanDigest(expected);
  if(!expected.draftEligible||specialistPlanDigest(plan)!==d.missionPlanDigest||specialistPlanDigest(d.missionPlan)!==d.missionPlanDigest||digest!==d.specialistDecisionDigest||specialistPlanDigest(d.specialistDecision)!==digest)
  throw new ConflictException('Source specialist decision integrity invalid');
- return normalizeHandover({approvalId:id,executionId,sourceAgentId:s.input.agentId,sourceScopeDigest:source.scopeDigest,sourceDecisionDigest:digest,disposition:'DRAFT_FOR_REVIEW',sourceEvidenceTransferred:false,externalEffectsAuthorized:false});
+ return normalizeHandover({...(ancestors.length>1?{ancestorAgentIds:ancestors}:{}),approvalId:id,executionId,sourceAgentId:s.input.agentId,sourceScopeDigest:source.scopeDigest,sourceDecisionDigest:digest,disposition:'DRAFT_FOR_REVIEW',sourceEvidenceTransferred:false,externalEffectsAuthorized:false});
 }

@@ -394,6 +394,26 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(handoverResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{handover:handover.data.handover,specialistDecision:{disposition:'DRAFT_FOR_REVIEW'}}}});
  expect(JSON.stringify(handoverResult.data)).not.toContain(doc.data.id);
  expect((await invoke(r,executePath,handoverCommand)).data.replayed).toBe(true);
+ // A third specialist completes the reviewed chain with its own exclusive evidence.
+ const third=await invoke(r,specialistPath,{...definition,requestKey:'fixture-'+randomUUID(),slug:'zzzz-chain-'+randomUUID().slice(0,12),name:'Synthetic chain specialist'});
+ expect(third.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(third.data.approvalId,'reviewer'))).status).toBe(201);
+ const thirdId=third.data.agentId;
+ const thirdSource=await invoke(r,'learning/knowledge',{...source,sourceKey:'specialist-fixture-'+randomUUID(),agentScope:[thirdId],text:marker+' independent synthetic third stage evidence for internal review.'});
+ expect(thirdSource.status).toBe(201);
+ expect((await invoke(reviewer,'learning/knowledge/'+thirdSource.data.id+'/review',{decision:'REVIEW',reason})).status).toBe(201);
+ const chainTask={...handoverTask,requestKey:'fixture-'+randomUUID(),agentId:thirdId,handoverApprovalId:handover.data.approvalId};
+ const chain=await invoke(r,taskPath,chainTask);
+ expect(chain).toMatchObject({status:201,data:{handover:{ancestorAgentIds:[specialistId,targetId],sourceAgentId:targetId,sourceEvidenceTransferred:false},contextPin:{references:[expect.objectContaining({documentId:thirdSource.data.id})]}}});
+ expect(JSON.stringify(chain.data)).not.toContain(doc.data.id);
+ expect(JSON.stringify(chain.data)).not.toContain(targetSource.data.id);
+ expect((await invoke(r,taskPath,{...chainTask,requestKey:'fixture-'+randomUUID(),agentId:specialistId})).status).toBe(409);
+ expect((await invoke(reviewer,'approvals/decide',decide(chain.data.approvalId,'reviewer'))).status).toBe(201);
+ const chainCommand={approvalId:chain.data.approvalId,fixtureOnly:true};
+ expect(await invoke(r,executePath,chainCommand)).toMatchObject({status:201,data:{status:'COMPLETED',decision:{handover:chain.data.handover,specialistDecision:{disposition:'DRAFT_FOR_REVIEW'}}}});
+ const staleChain=await invoke(r,taskPath,{...chainTask,requestKey:'fixture-'+randomUUID()});
+ expect(staleChain.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(staleChain.data.approvalId,'reviewer'))).status).toBe(201);
  const pendingHandover=await invoke(r,taskPath,{...handoverTask,requestKey:'fixture-'+randomUUID()});
  expect(pendingHandover.status).toBe(201);
  const approvedHandover=await invoke(r,taskPath,{...handoverTask,requestKey:'fixture-'+randomUUID()});
@@ -412,6 +432,8 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect((await invoke(reviewer,'approvals/decide',decide(pendingHandover.data.approvalId,'reviewer'))).status).toBe(409);
  expect((await invoke(r,executePath,{approvalId:approvedHandover.data.approvalId,fixtureOnly:true})).status).toBe(409);
  expect((await invoke(r,executePath,handoverCommand)).data.replayed).toBe(true);
+ expect((await invoke(r,executePath,{approvalId:staleChain.data.approvalId,fixtureOnly:true})).status).toBe(409);
+ expect((await invoke(r,executePath,chainCommand)).data.replayed).toBe(true);
  expect((await invoke(r,executePath,{approvalId:stale.data.approvalId,fixtureOnly:true})).status).toBe(409);
  expect((await invoke(reviewer,'approvals/decide',decide(stalePending.data.approvalId,'reviewer'))).status).toBe(409);
  expect((await invoke(r,taskPath,{...contextualTask,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
