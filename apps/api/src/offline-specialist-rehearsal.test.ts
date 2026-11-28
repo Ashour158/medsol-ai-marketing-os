@@ -10,7 +10,8 @@ describe('Exact offline specialist rehearsal',()=>{
   const scope=rehearsalScope('tenant-a','actor-a',input,template,expiry,pin);
   expect(rehearsalDigest(scope)).not.toBe(rehearsalDigest(rehearsalScope('tenant-a','actor-a',rehearsalInput(raw),template,expiry)));
   expect(rehearsalDigest({...scope,contextPin:{...pin,references:pin.references.map(x=>({...x,sourceDigest:'sha256:'+'c'.repeat(64)}))}})).not.toBe(rehearsalDigest(scope));
-  expect(()=>rehearsalDigest({...scope,contextPin:undefined})).toThrow();
+  const {contextPin: _missingPin,...scopeWithoutPin}=scope;
+  expect(()=>rehearsalDigest(scopeWithoutPin)).toThrow();
   expect(()=>parseContextPin({...pin,references:[]},pin.query)).toThrow();
   expect(()=>parseContextPin({...pin,references:[...pin.references,...pin.references]},pin.query)).toThrow();
  });
