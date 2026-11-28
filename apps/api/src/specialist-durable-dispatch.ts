@@ -9,6 +9,8 @@ export function parseDurableBatch(raw:unknown){
  const v=raw as Record<string,unknown>,keys=Object.keys(v).sort().join(',');
  if(v.fixtureOnly!==true||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey))throw new BadRequestException('Immutable fixture batch key required');
  if(v.action==='CREATE'&&keys==='action,approvalIds,fixtureOnly,requestKey')return{action:'CREATE' as const,requestKey:v.requestKey,...parseSpecialistBatch({approvalIds:v.approvalIds,fixtureOnly:true})};
+ if(v.action==='CANCEL_SCHEDULE'&&keys==='action,fixtureOnly,requestKey')return{action:'CANCEL_SCHEDULE' as const,requestKey:v.requestKey};
+ if(v.action==='SCHEDULE'&&keys==='action,expectedCursor,fixtureOnly,requestKey'&&typeof v.expectedCursor==='number'&&Number.isInteger(v.expectedCursor)&&v.expectedCursor>=0&&v.expectedCursor<4)return{action:'SCHEDULE' as const,requestKey:v.requestKey,expectedCursor:v.expectedCursor};
  if(v.action==='INSPECT'&&keys==='action,fixtureOnly,requestKey')return{action:'INSPECT' as const,requestKey:v.requestKey};
  if(v.action==='ADVANCE'&&keys==='action,expectedCursor,fixtureOnly,requestKey'&&typeof v.expectedCursor==='number'&&Number.isInteger(v.expectedCursor)&&v.expectedCursor>=0&&v.expectedCursor<4)return{action:'ADVANCE' as const,requestKey:v.requestKey,expectedCursor:v.expectedCursor};
  throw new BadRequestException('Exact CREATE, INSPECT or ADVANCE command required');
