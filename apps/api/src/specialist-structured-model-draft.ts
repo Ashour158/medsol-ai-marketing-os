@@ -52,7 +52,7 @@ export function validateSpecialistModelDraft(prepared:Prepared,raw:unknown){
  const result=assertModelResult(prepared.request,raw);
  if(result.text.length<2||result.text.length>12000)fail('Bounded structured draft required');
  let parsed:unknown;try{parsed=JSON.parse(result.text);}catch{fail('Model draft must be exact JSON');}
- if(!exact(parsed,['schema','requestDigest','disposition','summary','recommendations','limitations','reviewQuestions'])||parsed.schema!==CONTRACT||parsed.requestDigest!==prepared.requestDigest||!['DRAFT_FOR_REVIEW','REQUEST_EVIDENCE','ESCALATE_SCOPE'].includes(String(parsed.disposition))||!bounded(parsed.summary,12,1200))fail('Model draft contract or request binding invalid');
+ if(!exact(parsed,['schema','requestDigest','disposition','summary','recommendations','limitations','reviewQuestions'])||parsed.schema!==CONTRACT||parsed.requestDigest!==prepared.requestDigest||(typeof parsed.disposition!=='string'||!['DRAFT_FOR_REVIEW','REQUEST_EVIDENCE','ESCALATE_SCOPE'].includes(parsed.disposition))||!bounded(parsed.summary,12,1200))fail('Model draft contract or request binding invalid');
  const suggestions=parsed.recommendations;
  if(!Array.isArray(suggestions)||suggestions.length>6||(parsed.disposition==='DRAFT_FOR_REVIEW'?suggestions.length<1:suggestions.length!==0))fail('Invalid draft recommendation count');
  const allowed=new Set(prepared.aliases.map(r=>r.alias));
