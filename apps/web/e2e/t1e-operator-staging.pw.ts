@@ -367,21 +367,23 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const decisionResult=await invoke(r,executePath,decisionCommand);
  expect(decisionResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{specialistDecision:{mode:'SPECIALIST_DECISION_V1',disposition:'DRAFT_FOR_REVIEW',draftEligible:true,semanticAlignmentVerified:false,scientificVerification:false,humanReviewRequired:true,externalEffectsAuthorized:false},specialistDecisionDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)}}});
  expect((await invoke(r,executePath,decisionCommand)).data.replayed).toBe(true);
- const contractTask={...decisionTask,requestKey:'fixture-'+randomUUID(),simulationMode:'PROVIDER_CONTRACT_V1'};
+ const contractTask={...decisionTask,requestKey:'fixture-'+randomUUID(),simulationMode:'PROVIDER_CONTRACT_V1',evaluationMode:'DECISION_EVALUATION_V1'};
  const contractApproval=await invoke(r,taskPath,contractTask);
  expect(contractApproval).toMatchObject({status:201,data:{decision:'PENDING',input:{simulationMode:'PROVIDER_CONTRACT_V1'}}});
- expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:contractApproval.data.approvalId,specialistReview:expect.objectContaining({simulationMode:'PROVIDER_CONTRACT_V1'})}));
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:contractApproval.data.approvalId,specialistReview:expect.objectContaining({simulationMode:'PROVIDER_CONTRACT_V1',evaluationMode:'DECISION_EVALUATION_V1'})}));
  expect((await invoke(reviewer,'approvals/decide',decide(contractApproval.data.approvalId,'reviewer'))).status).toBe(201);
  const contractCommand={approvalId:contractApproval.data.approvalId,fixtureOnly:true};
  const contractResult=await invoke(r,executePath,contractCommand);
  expect(contractResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{providerContracts:{schema:'medsol.specialist-provider-contracts.v1',decisionDigest:expect.stringMatching(/^sha256:/),providerRequestsMade:0,realModelInvocations:0,actualCostMicros:0,modelQualityEvaluated:false,externalEffectsAuthorized:false,results:['OPENAI','ANTHROPIC','GEMINI','LOCAL'].map(providerKey=>expect.objectContaining({providerKey,model:'synthetic:'+providerKey.toLowerCase(),passed:true,actualCostMicros:0}))},providerContractsDigest:expect.stringMatching(/^sha256:/)}}});
+ expect(contractResult.data.decision).toMatchObject({reasoningEvaluation:{mode:'DECISION_EVALUATION_V1',passedCases:8,totalCases:8,evidenceDiagnostics:{sourceReferences:1,memoryReferences:1,distinctDocuments:1,independentlyVerified:false},modelQualityEvaluated:false,scientificVerification:false,automaticLearning:false,externalEffectsAuthorized:false},reasoningEvaluationDigest:expect.stringMatching(/^sha256:/)});
  expect((await invoke(r,executePath,contractCommand)).data.replayed).toBe(true);
- const unrelated=await invoke(r,taskPath,{...decisionTask,requestKey:'fixture-'+randomUUID(),objective:'Compose unrelated advertisements',simulationMode:'PROVIDER_CONTRACT_V1'});
+ const unrelated=await invoke(r,taskPath,{...decisionTask,requestKey:'fixture-'+randomUUID(),objective:'Compose unrelated advertisements',simulationMode:'PROVIDER_CONTRACT_V1',evaluationMode:'DECISION_EVALUATION_V1'});
  expect(unrelated.status).toBe(201);
  expect((await invoke(reviewer,'approvals/decide',decide(unrelated.data.approvalId,'reviewer'))).status).toBe(201);
  const unrelatedResult=await invoke(r,executePath,{approvalId:unrelated.data.approvalId,fixtureOnly:true});
  expect(unrelatedResult).toMatchObject({status:201,data:{status:'BLOCKED',decision:{specialistDecision:{disposition:'ESCALATE_SCOPE',draftEligible:false}}}});
  expect(unrelatedResult.data.decision).not.toHaveProperty('providerContracts');
+ expect(unrelatedResult.data.decision.reasoningEvaluation).toMatchObject({passedCases:8,totalCases:8,modelQualityEvaluated:false,externalEffectsAuthorized:false});
  // Separate reviewed specialist receives provenance only; it retrieves its own evidence.
  const target=await invoke(r,specialistPath,{...definition,requestKey:'fixture-'+randomUUID(),slug:'zzz-handover-'+randomUUID().slice(0,12),name:'Synthetic handover specialist'});
  expect(target.status).toBe(201);
