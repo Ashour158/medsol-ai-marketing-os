@@ -11,6 +11,7 @@ import {ACTIVATION_REVIEW,readActivationReview,validateActivationReview} from '.
 import {SPECIALIST_REHEARSAL,readRehearsal,validateRehearsal} from './offline-specialist-rehearsal.js';
 import {SPECIALIST_REGISTRATION,readSpecialist,installReviewedSpecialist} from './offline-specialist.js';
 import {SPECIALIST_RETIREMENT,readRetirement,retireReviewedSpecialist} from './offline-specialist-retirement.js';
+import {SPECIALIST_CONFIG,readConfig,approveSpecialistConfig} from './offline-specialist-config.js';
 import {OFFLINE_SUBSCRIPTION,readSubscription,validateSubscriptionDecision} from './offline-subscription.js';
 import {LOYALTY,readLoyalty,validateLoyaltyApproval} from './synthetic-loyalty.js';
 import {communityReviewMatches,COMMUNITY_REVIEW_OBJECT} from './community-review-scope.js';
@@ -34,9 +35,11 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     const {id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt}=a;
     const s=objectType===SPECIALIST_REHEARSAL?readRehearsal(a):undefined;
     const retirement=objectType===SPECIALIST_RETIREMENT?readRetirement(a):undefined;
+    const configuration=objectType===SPECIALIST_CONFIG?readConfig(a):undefined;
     return{id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt,
+     ...(configuration?{specialistConfiguration:{agentId:configuration.input.agentId,mission:configuration.input.mission,evidenceRequired:configuration.input.evidenceRequired,maxObjectiveChars:configuration.input.maxObjectiveChars,version:configuration.version,requestedBy:configuration.requestedBy,externalEffectsAuthorized:false}}:{}),
      ...(retirement?{specialistRetirement:{agentId:retirement.input.agentId,reason:retirement.input.reason,requestedBy:retirement.requestedBy,expectedStatus:retirement.expectedStatus,targetStatus:retirement.targetStatus,externalEffectsAuthorized:false}}:{}),
-     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,brainMode:s.input.brainMode??null,externalEffectsAuthorized:false}}:{})};
+     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,brainMode:s.input.brainMode??null,configuration:s.configuration??null,externalEffectsAuthorized:false}}:{})};
    });
  })}
 
@@ -148,6 +151,14 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     await assertActorPermissionInTenantTransaction(tx,actor,'MANAGE_TENANT');
     await assertActorPermissionInTenantTransaction(tx,actor,'DECIDE_APPROVAL');
     if(cmd.decision==='APPROVED')await validateRehearsal(tx,a,new Date(),this.learning);
+   }
+   if(a.objectType===SPECIALIST_CONFIG){
+    const scope=readConfig(a);
+    if(cmd.approverUserId===scope.requestedBy||!reviewer.oidcSubject)throw new ForbiddenException('Independent OIDC configuration reviewer required');
+    const actor={organizationId:cmd.organizationId,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
+    await assertActorPermissionInTenantTransaction(tx,actor,'MANAGE_TENANT');
+    await assertActorPermissionInTenantTransaction(tx,actor,'DECIDE_APPROVAL');
+    if(cmd.decision==='APPROVED')await approveSpecialistConfig(tx,a,reviewer.id,new Date());
    }
    if(a.objectType===SPECIALIST_RETIREMENT){
     const scope=readRetirement(a);
