@@ -14,9 +14,28 @@ import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
 import {parseSpecialistBatch,dispatchSpecialistBatch} from './specialist-batch-dispatch.js';
+import {allocationInput,rankSpecialists,type AllocationCandidate} from './specialist-allocation.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
  constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService,@Optional() private readonly learning?:MarketingLearningService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
+ async previewSpecialistAllocation(identity:VerifiedIdentity,raw:unknown){
+  const input=allocationInput(raw),org=identity.organizationId;
+  return withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   if(!this.learning)throw new ConflictException('Canonical knowledge fabric unavailable');
+   await lockSpecialist(tx,org);
+   const candidates:AllocationCandidate[]=[];
+   for(const agentId of input.candidateIds){
+    const template=await currentSpecialistTemplate(tx,org,agentId);
+    const reg=await tx.approval.findFirst({where:{organizationId:org,id:template.registrationId,objectType:SPECIALIST_REGISTRATION,objectId:agentId,decision:'APPROVED'}});
+    if(!reg||reg.scopeDigest!==template.registrationDigest)throw new ConflictException('Specialist registration changed');
+    const observed=await this.learning.contextForAgent(org,agentId,input.contextQuery,tx);
+    const pin=observed.results.length||observed.memories.length?await loadSpecialistContextPin(this.learning,tx,org,agentId,input.contextQuery):undefined;
+    candidates.push({agentId,mission:template.configuration?.mission??readSpecialist(reg).input.mission,capability:template.capability,configurationVersion:template.configuration?.version??0,maxObjectiveChars:template.configuration?.maxObjectiveChars??500,skills:template.configuration?.reviewSkills??[],referenceCount:pin?.references.length??0});
+   }
+   return rankSpecialists(input,candidates);
+  });
+ }
  async requestSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
   const input=rehearsalInput(raw),org=identity.organizationId,id=rehearsalId(org,input.requestKey);
   return withMarketingTenant(this.db,org,async tx=>{
