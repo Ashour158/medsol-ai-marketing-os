@@ -6,8 +6,8 @@ import {agentReleaseDigest,baselineAgentReleaseManifest,parseAgentReleaseManifes
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {MarketingLearningService} from './marketing-learning.service.js';
 import {contextPinTuple,parseContextPin,loadSpecialistContextPin,type SpecialistContextPin} from './specialist-context-pin.js';
-import {SPECIALIST_BRAIN_MODE,normalizeReviewSkills} from './specialist-mission-brain.js';
-import {SPECIALIST_DECISION_MODE} from './specialist-decision-brain.js';
+import {SPECIALIST_BRAIN_MODE,normalizeReviewSkills,specialistMissionPlan,specialistPlanDigest} from './specialist-mission-brain.js';
+import {SPECIALIST_DECISION_MODE,specialistDecision} from './specialist-decision-brain.js';
 import {assertSkillMode} from './specialist-skill-evaluation.js';
 import {currentConfig,configPinTuple,assertConfigPolicy,type ConfigPin} from './offline-specialist-config.js';
 export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
@@ -15,7 +15,8 @@ const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v))
 export function rehearsalInput(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist rehearsal required');
  const v=raw as Record<string,unknown>;
- if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
+ if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,handoverApprovalId,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,handoverApprovalId,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
+ (Object.hasOwn(v,'handoverApprovalId')&&(v.brainMode!==SPECIALIST_DECISION_MODE||typeof v.handoverApprovalId!=='string'||!/^specialist-run-[0-9a-f]{64}$/.test(v.handoverApprovalId)))||
  (Object.hasOwn(v,'brainMode')&&v.brainMode!==SPECIALIST_BRAIN_MODE&&v.brainMode!==SPECIALIST_DECISION_MODE)||
  (Object.hasOwn(v,'contextQuery')&&(typeof v.contextQuery!=='string'||v.contextQuery.trim().length<3||v.contextQuery.length>200))||
  v.fixtureOnly!==true||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey)||
@@ -23,7 +24,7 @@ export function rehearsalInput(raw:unknown){
  typeof v.objective!=='string'||v.objective.trim().length<12||v.objective.length>500||
  typeof v.market!=='string'||v.market.trim().length<2||v.market.length>100)
  throw new BadRequestException('Bounded fixture objective, market and specialist identity required');
- return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE||v.brainMode===SPECIALIST_DECISION_MODE?{brainMode:v.brainMode}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{})};
+ return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE||v.brainMode===SPECIALIST_DECISION_MODE?{brainMode:v.brainMode}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{}),...(typeof v.handoverApprovalId==='string'?{handoverApprovalId:v.handoverApprovalId}:{})};
 }
 type Input=ReturnType<typeof rehearsalInput>;
 export const rehearsalId=(org:string,key:string)=>'specialist-run-'+hash([org,key]).slice(7);
@@ -63,11 +64,21 @@ export async function currentSpecialistTemplate(tx:Prisma.TransactionClient,org:
   templateDigest:agentReleaseDigest(manifest),templateInstalled:!!installed,capability:s.proposedCapability,maxInputBytes:manifest.maxInputBytes};
 }
 type Template=Awaited<ReturnType<typeof currentSpecialistTemplate>>;
-export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string,contextPin?:SpecialistContextPin){
+export type HandoverPin={approvalId:string;executionId:string;sourceAgentId:string;sourceScopeDigest:string;sourceDecisionDigest:string;disposition:'DRAFT_FOR_REVIEW';sourceEvidenceTransferred:false;externalEffectsAuthorized:false};
+export function handoverTuple(p:HandoverPin){
+ if(!p||typeof p.approvalId!=='string'||!/^specialist-run-[0-9a-f]{64}$/.test(p.approvalId)||p.executionId!==p.approvalId+'-execution'||
+ typeof p.sourceAgentId!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(p.sourceAgentId)||
+ !/^sha256:[0-9a-f]{64}$/.test(p.sourceScopeDigest)||!/^sha256:[0-9a-f]{64}$/.test(p.sourceDecisionDigest)||p.disposition!=='DRAFT_FOR_REVIEW'||p.sourceEvidenceTransferred!==false||p.externalEffectsAuthorized!==false)
+ throw new ConflictException('Invalid specialist handover pin');
+ return[p.approvalId,p.executionId,p.sourceAgentId,p.sourceScopeDigest,p.sourceDecisionDigest,p.disposition,p.sourceEvidenceTransferred,p.externalEffectsAuthorized];
+}
+function normalizeHandover(p:HandoverPin):HandoverPin{handoverTuple(p);return{approvalId:p.approvalId,executionId:p.executionId,sourceAgentId:p.sourceAgentId,sourceScopeDigest:p.sourceScopeDigest,sourceDecisionDigest:p.sourceDecisionDigest,disposition:p.disposition,sourceEvidenceTransferred:false,externalEffectsAuthorized:false};}
+export function rehearsalScope(org:string,actor:string,input:Input,template:Template,expiresAt:string,contextPin?:SpecialistContextPin,handover?:HandoverPin){
+ if(input.handoverApprovalId!==undefined){if(!handover||handover.approvalId!==input.handoverApprovalId||handover.sourceAgentId===input.agentId)throw new ConflictException('Distinct reviewed source specialist handover required');handoverTuple(handover);}else if(handover!==undefined)throw new ConflictException('Unexpected specialist handover');
  assertConfigPolicy(template.configuration,input.objective,input.contextQuery);
  assertSkillMode(template.configuration?.reviewSkills,input.brainMode);
  return{schema:'medsol.offline-specialist-rehearsal.v1',organizationId:org,requestedBy:actor,input,
-  ...template,expiresAt,...(contextPin?{contextPin}:{}),fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
+  ...template,expiresAt,...(contextPin?{contextPin}:{}),...(handover?{handover:normalizeHandover(handover)}:{}),fixtureOnly:true as const,autonomousExecutionAuthorized:false as const,
   modelCallsAuthorized:false as const,toolCallsAuthorized:false as const,memoryWritesAuthorized:false as const,externalEffectsAuthorized:false as const};
 }
 type Scope=ReturnType<typeof rehearsalScope>;
@@ -75,7 +86,7 @@ export function rehearsalDigest(s:Scope){
  const i=s.input;
  return hash([s.schema,s.organizationId,s.requestedBy,i.agentId,i.requestKey,i.objective,i.market,i.fixtureOnly,
   s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
-  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[]),...(s.configuration!==undefined?['configuration',configPinTuple(s.configuration)]:[])]);
+  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[]),...(s.configuration!==undefined?['configuration',configPinTuple(s.configuration)]:[]),...(i.handoverApprovalId!==undefined?['handover',i.handoverApprovalId,handoverTuple(s.handover!)]:[])]);
 }
 function normalizeConfigPin(p:ConfigPin):ConfigPin{configPinTuple(p);return{approvalId:p.approvalId,digest:p.digest,version:p.version,mission:p.mission,evidenceRequired:p.evidenceRequired,maxObjectiveChars:p.maxObjectiveChars,...(p.reviewSkills!==undefined?{reviewSkills:normalizeReviewSkills(p.reviewSkills)}:{})};}
 export function readRehearsal(a:Approval):Scope{
@@ -87,15 +98,16 @@ export function readRehearsal(a:Approval):Scope{
    s.schema!=='medsol.offline-specialist-rehearsal.v1'||s.fixtureOnly!==true||s.autonomousExecutionAuthorized!==false||
    s.modelCallsAuthorized!==false||s.toolCallsAuthorized!==false||s.memoryWritesAuthorized!==false||s.externalEffectsAuthorized!==false||
    rehearsalDigest(s)!==a.scopeDigest)throw Error('scope');
+  if(i.handoverApprovalId===undefined&&s.handover!==undefined)throw Error('unexpected handover');
   if(i.contextQuery===undefined&&s.contextPin!==undefined)throw Error('unexpected context');
   const exact=rehearsalScope(a.organizationId,a.requestedBy,i,{registrationId:s.registrationId,registrationDigest:s.registrationDigest,
    templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,templateInstalled:s.templateInstalled,
-   capability:s.capability,maxInputBytes:s.maxInputBytes,...(s.configuration!==undefined?{configuration:normalizeConfigPin(s.configuration)}:{})},s.expiresAt,i.contextQuery!==undefined?parseContextPin(s.contextPin,i.contextQuery):undefined);
+   capability:s.capability,maxInputBytes:s.maxInputBytes,...(s.configuration!==undefined?{configuration:normalizeConfigPin(s.configuration)}:{})},s.expiresAt,i.contextQuery!==undefined?parseContextPin(s.contextPin,i.contextQuery):undefined,i.handoverApprovalId!==undefined?normalizeHandover(s.handover!):undefined);
   if(rehearsalDigest(exact)!==a.scopeDigest)throw Error('normalized scope');
   return exact;
  }catch{throw new ConflictException('Invalid exact specialist rehearsal evidence');}
 }
-export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date,learning?:MarketingLearningService){
+export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,now:Date,learning?:MarketingLearningService):Promise<Scope>{
  const s=readRehearsal(a);
  if(!a.scopeExpiresAt||a.scopeExpiresAt<=now)throw new ConflictException('Specialist rehearsal expired');
  const requester=await tx.user.findFirst({where:{organizationId:a.organizationId,id:s.requestedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
@@ -103,7 +115,39 @@ export async function validateRehearsal(tx:Prisma.TransactionClient,a:Approval,n
  await assertActorPermissionInTenantTransaction(tx,{organizationId:a.organizationId,userId:requester.id,email:requester.email,role:requester.role,subject:requester.oidcSubject},'MANAGE_TENANT');
  const current=await currentSpecialistTemplate(tx,a.organizationId,a.objectId);
  const pin=s.input.contextQuery!==undefined?await loadSpecialistContextPin(learning,tx,a.organizationId,a.objectId,s.input.contextQuery):undefined;
- if(rehearsalDigest(rehearsalScope(a.organizationId,s.requestedBy,s.input,current,s.expiresAt,pin))!==a.scopeDigest)
+ const handover=s.input.handoverApprovalId!==undefined?await loadHandoverPin(tx,a.organizationId,s.requestedBy,s.input.agentId,s.input.handoverApprovalId,now,learning):undefined;
+ if(rehearsalDigest(rehearsalScope(a.organizationId,s.requestedBy,s.input,current,s.expiresAt,pin,handover))!==a.scopeDigest)
  throw new ConflictException('Specialist, template or reviewed context changed; request fresh review');
  return s;
+}
+
+/** Single-hop handover, revalidated at request, independent approval and execution.
+ * No source content, context references or capability inheritance crosses the boundary.
+ */
+export async function loadHandoverPin(tx:Prisma.TransactionClient,org:string,actor:string,targetAgentId:string,id:string,now:Date,learning?:MarketingLearningService):Promise<HandoverPin>{
+ const source=await tx.approval.findFirst({where:{organizationId:org,id,objectType:SPECIALIST_REHEARSAL,decision:'APPROVED'}});
+ if(!source||source.requestedBy!==actor||source.objectId===targetAgentId||!source.decidedBy||source.decidedBy===actor||!source.decidedAt||!source.scopeExpiresAt||source.decidedAt>=source.scopeExpiresAt||!source.scopeDigest)
+ throw new ConflictException('Completed independent source specialist approval required');
+ const s=readRehearsal(source);
+ if(s.input.handoverApprovalId!==undefined||s.input.brainMode!==SPECIALIST_DECISION_MODE)throw new ConflictException('Only a single-hop decision rehearsal may be handed over');
+ await validateRehearsal(tx,source,now,learning);
+ const reviewer=await tx.user.findFirst({where:{organizationId:org,id:source.decidedBy,disabledAt:null},select:{id:true,email:true,role:true,oidcSubject:true}});
+ if(!reviewer?.oidcSubject)throw new ConflictException('Current source reviewer required');
+ const identity={organizationId:org,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
+ await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+ await assertActorPermissionInTenantTransaction(tx,identity,'DECIDE_APPROVAL');
+ const executionId=id+'-execution';
+ const row=await tx.agentExecution.findFirst({where:{organizationId:org,id:executionId,agentId:s.input.agentId,correlationId:id,status:'COMPLETED'}});
+ const d=row?.decision as Record<string,unknown>|undefined;
+ const template=d?.templateDecision as {executionAllowed?:unknown}|undefined;
+ if(!d||d.schema!=='medsol.specialist-rehearsal-result.v1'||d.approvalId!==id||d.scopeDigest!==source.scopeDigest||d.agentId!==s.input.agentId||d.templateAgentId!==s.templateId||d.templateDigest!==s.templateDigest||
+ d.fixtureOnly!==true||d.outputHumanApproved!==false||d.autonomousExecutionAuthorized!==false||d.modelCallsAuthorized!==false||d.toolCallsAuthorized!==false||d.memoryWritesAuthorized!==false||d.externalEffectsAuthorized!==false||template?.executionAllowed!==true||!d.missionPlan||!d.specialistDecision)
+ throw new ConflictException('Source specialist execution provenance invalid');
+ const reg=await tx.approval.findFirst({where:{organizationId:org,id:s.registrationId,objectType:SPECIALIST_REGISTRATION,decision:'APPROVED'}});
+ if(!reg||reg.scopeDigest!==s.registrationDigest)throw new ConflictException('Source registration changed');
+ const plan=specialistMissionPlan({mission:s.configuration?.mission??readSpecialist(reg).input.mission,objective:s.input.objective,market:s.input.market,capability:s.capability,references:s.contextPin?.references.map(r=>r.citationRef)??[],...(s.configuration?.reviewSkills!==undefined?{reviewSkills:s.configuration.reviewSkills}:{})});
+ const expected=specialistDecision(plan,true),digest=specialistPlanDigest(expected);
+ if(!expected.draftEligible||specialistPlanDigest(plan)!==d.missionPlanDigest||specialistPlanDigest(d.missionPlan)!==d.missionPlanDigest||digest!==d.specialistDecisionDigest||specialistPlanDigest(d.specialistDecision)!==digest)
+ throw new ConflictException('Source specialist decision integrity invalid');
+ return normalizeHandover({approvalId:id,executionId,sourceAgentId:s.input.agentId,sourceScopeDigest:source.scopeDigest,sourceDecisionDigest:digest,disposition:'DRAFT_FOR_REVIEW',sourceEvidenceTransferred:false,externalEffectsAuthorized:false});
 }
