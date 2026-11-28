@@ -173,7 +173,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
         (request.method === "POST" && (
           (path.length === 2 && (id === "manifests"||id === "team-preview"||id === "specialists")) ||
           (path.length === 3 && id === "manifests" && action === "preview") ||
-          (path.length === 3 && id === "specialists" && ["rehearse","execute-rehearsal"].includes(action??"")) ||
+          (path.length === 3 && id === "specialists" && ["rehearse","execute-rehearsal","execute-batch"].includes(action??"")) ||
           (path.length === 4 && id === "manifests" && !!action &&
            ["approve","activate","revoke","rollback"].includes(operation??""))
         ))
