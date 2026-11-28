@@ -13,6 +13,7 @@ import {SPECIALIST_DECISION_MODE,specialistDecision} from './specialist-decision
 import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
+import {parseSpecialistBatch,dispatchSpecialistBatch} from './specialist-batch-dispatch.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
  constructor(private readonly db:PrismaService,@Optional() private readonly model?:GovernedModelService,@Optional() private readonly learning?:MarketingLearningService){for(const manifest of AGENT_ROSTER)this.registry.register(new MarketingDomainAgent(manifest));this.runtime=new AgentRuntime(this.registry)}
@@ -37,6 +38,26 @@ import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin
    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_REQUESTED',objectType:'Agent',objectId:input.agentId,correlationId:id,after:{scopeDigest:rehearsalDigest(scope),externalEffectsAuthorized:false}}});
    return{approvalId:id,decision:'PENDING',...scope,replayed:false};
   });
+ }
+ async executeSpecialistBatch(identity:VerifiedIdentity,raw:unknown){
+  const batch=parseSpecialistBatch(raw),org=identity.organizationId;
+  if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist batch requires offline reasoning');
+  await withMarketingTenant(this.db,org,async tx=>{
+   await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
+   const rows=await tx.approval.findMany({where:{organizationId:org,objectType:SPECIALIST_REHEARSAL,id:{in:batch.approvalIds}}});
+   if(rows.length!==batch.approvalIds.length)throw new ConflictException('All batch approvals must be present in tenant');
+   const agents=new Set<string>();
+   for(const id of batch.approvalIds){
+    const a=rows.find(row=>row.id===id)!;
+    const s=readRehearsal(a);
+    if(a.requestedBy!==identity.userId||a.decision!=='APPROVED'||!a.decidedBy||a.decidedBy===a.requestedBy||!a.decidedAt||!a.scopeExpiresAt||a.decidedAt>=a.scopeExpiresAt||s.input.brainMode!==SPECIALIST_DECISION_MODE||agents.has(a.objectId))
+     throw new ConflictException('Batch requires distinct specialists and exact independent operator approvals');
+    agents.add(a.objectId);
+    // No new execution rights are granted. Current scope and reviewer are
+    // rechecked by the canonical execution method at each dispatch.
+   }
+  });
+  return dispatchSpecialistBatch(batch.approvalIds,id=>this.executeSpecialistRehearsal(identity,{approvalId:id,fixtureOnly:true}));
  }
  async executeSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='approvalId,fixtureOnly')throw new BadRequestException('Exact approved rehearsal reference required');
