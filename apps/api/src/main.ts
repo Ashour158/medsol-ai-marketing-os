@@ -73,6 +73,7 @@ import {SyntheticAudienceEmailService} from './synthetic-audience-email.service.
  @Get('marketing/agents/manifests/baseline/:id') agentManifestBaseline(@Req() req:any,@Param('id') id:string){return this.agentManifests.baseline(req.identity.organizationId,req.identity,id)}
  @Get('marketing/agents/manifests') agentManifestsList(@Req() req:any){return this.agentManifests.list(req.identity.organizationId,req.identity,req.query?.agentId)}
  @Post('marketing/agents/specialists/rehearse') requestSpecialistRehearsal(@Req() req:any,@Body() b:any){return this.agents.requestSpecialistRehearsal(req.identity,b)}
+ @Post('marketing/agents/specialists/allocation-preview') previewSpecialistAllocation(@Req() req:any,@Body() b:unknown){return this.agents.previewSpecialistAllocation(req.identity,b)}
  @Post('marketing/agents/specialists/execute-batch') executeSpecialistBatch(@Req() req:any,@Body() b:unknown){return this.agents.executeSpecialistBatch(req.identity,b)}
  @Post('marketing/agents/specialists/execute-rehearsal') executeSpecialistRehearsal(@Req() req:any,@Body() b:any){return this.agents.executeSpecialistRehearsal(req.identity,b)}
  @Get('marketing/agents/specialists') specialistRegistry(@Req() req:any){return this.agentManifests.specialistRegistry(req.identity.organizationId,req.identity)}
