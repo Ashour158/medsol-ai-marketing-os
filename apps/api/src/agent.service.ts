@@ -11,6 +11,7 @@ import {lockSpecialist,readSpecialist,SPECIALIST_REGISTRATION} from './offline-s
 import {SPECIALIST_BRAIN_MODE,specialistMissionPlan,specialistPlanDigest} from './specialist-mission-brain.js';
 import {SPECIALIST_DECISION_MODE,specialistDecision} from './specialist-decision-brain.js';
 import {REASONING_EVALUATION_MODE,evaluateSpecialistReasoning} from './specialist-reasoning-evaluation.js';
+import {STRUCTURED_DRAFT_MODE,prepareStructuredDraftFixture,structuredDraftFixture,structuredDraftFixtureReceipt} from './specialist-structured-model-draft.js';
 import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
@@ -155,6 +156,12 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
      const expected=evaluateSpecialistReasoning(d.missionPlan as ReturnType<typeof specialistMissionPlan>,d.specialistDecision as ReturnType<typeof specialistDecision>,scope.contextPin);
      if(specialistPlanDigest(expected)!==d.reasoningEvaluationDigest||specialistPlanDigest(d.reasoningEvaluation)!==d.reasoningEvaluationDigest)throw new ConflictException('Historical decision evaluation integrity invalid');
     }else if(d.reasoningEvaluation!==undefined||d.reasoningEvaluationDigest!==undefined)throw new ConflictException('Unexpected historical decision evaluation');
+    if(scope.input.structuredDraftMode===STRUCTURED_DRAFT_MODE&&prior.status==='COMPLETED'){
+     if(!scope.contextPin||!d.missionPlan||!d.specialistDecision||!a.scopeDigest||!d.structuredDraft)throw new ConflictException('Historical structured draft fixture missing');
+     const prepared=prepareStructuredDraftFixture({organizationId:org,approvalId:id,scopeDigest:a.scopeDigest,templateAgentId:scope.templateId,plan:d.missionPlan as ReturnType<typeof specialistMissionPlan>,decision:d.specialistDecision as ReturnType<typeof specialistDecision>,contextPin:scope.contextPin});
+     const expected=structuredDraftFixtureReceipt(prepared,structuredDraftFixture(prepared));
+     if(specialistPlanDigest(expected)!==d.structuredDraftDigest||specialistPlanDigest(d.structuredDraft)!==d.structuredDraftDigest)throw new ConflictException('Historical structured draft integrity invalid');
+    }else if(d.structuredDraft!==undefined||d.structuredDraftDigest!==undefined)throw new ConflictException('Unexpected historical structured draft');
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
    await validateRehearsal(tx,a,new Date(),this.learning);
@@ -183,11 +190,16 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
     if(!this.model)throw new ConflictException('Governed model fixture service unavailable');
     providerContracts=await this.model.rehearseSpecialistContracts({organizationId:org,correlationId:id,agentId:scope.templateId,decisionDigest:specialistPlanDigest(independentDecision)});
    }
+   let structuredDraft:Awaited<ReturnType<GovernedModelService['rehearseStructuredSpecialistDraft']>>|undefined;
+   if(scope.input.structuredDraftMode===STRUCTURED_DRAFT_MODE&&independentDecision?.draftEligible){
+    if(!this.model||!scope.contextPin||!missionPlan||!a.scopeDigest)throw new ConflictException('Structured fixture scope unavailable');
+    structuredDraft=await this.model.rehearseStructuredSpecialistDraft({organizationId:org,approvalId:id,scopeDigest:a.scopeDigest,templateAgentId:scope.templateId,plan:missionPlan,decision:independentDecision,contextPin:scope.contextPin});
+   }
    const reasoningEvaluation=scope.input.evaluationMode===REASONING_EVALUATION_MODE&&missionPlan&&independentDecision?evaluateSpecialistReasoning(missionPlan,independentDecision,scope.contextPin):undefined;
    if(scope.input.evaluationMode===REASONING_EVALUATION_MODE&&!reasoningEvaluation)throw new ConflictException('Specialist decision evaluation missing');
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
-    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(reasoningEvaluation?{reasoningEvaluation,reasoningEvaluationDigest:specialistPlanDigest(reasoningEvaluation)}:{}),...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(structuredDraft?{structuredDraft,structuredDraftDigest:specialistPlanDigest(structuredDraft)}:{}),...(reasoningEvaluation?{reasoningEvaluation,reasoningEvaluationDigest:specialistPlanDigest(reasoningEvaluation)}:{}),...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
     autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
    const status=(independentDecision?independentDecision.draftEligible:templateDecision.executionAllowed)?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
