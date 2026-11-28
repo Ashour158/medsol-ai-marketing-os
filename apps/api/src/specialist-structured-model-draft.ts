@@ -72,3 +72,22 @@ export async function runStructuredSpecialistDraft(prepared:Prepared,complete:(r
  const result=await complete(prepared.request);
  return validateSpecialistModelDraft(prepared,result);
 }
+
+export const STRUCTURED_DRAFT_MODE='STRUCTURED_DRAFT_FIXTURE_V1' as const;
+export const STRUCTURED_DRAFT_LIMITS={maxOutputTokens:512,timeoutMs:1000,estimatedCostMicros:0} as const;
+/** Deliberately fixed response, not a language model or generated claims.
+ * Same request/output schema is used by future separately authorized inference.
+ */
+export function structuredDraftFixture(prepared:Prepared):ModelResult{
+ const text=JSON.stringify({schema:CONTRACT,requestDigest:prepared.requestDigest,disposition:'DRAFT_FOR_REVIEW',summary:'Offline structured response fixture for independent review only.',recommendations:[{text:'Ask a reviewer to inspect the pinned evidence before drafting.',evidenceAliases:[prepared.aliases[0]!.alias]}],limitations:['Underlying source contents were not sent or verified. No AI inference was performed.'],reviewQuestions:['Does the reviewed evidence support the proposed task?']});
+ return{text,inputTokens:Math.ceil(prepared.request.input.length/4),outputTokens:Math.ceil(text.length/4),actualCostMicros:0,model:'synthetic:local-structured-v1'};
+}
+export function structuredDraftFixtureReceipt(prepared:Prepared,result:unknown){
+ const expected=structuredDraftFixture(prepared);
+ const observed=validateSpecialistModelDraft(prepared,result);
+ if(specialistPlanDigest(result)!==specialistPlanDigest(expected))fail('Unexpected offline structured fixture result');
+ return{schema:'medsol.specialist-structured-draft-rehearsal.v1',mode:STRUCTURED_DRAFT_MODE,requestDigest:prepared.requestDigest,...observed,fixtureOnly:true,providerRequestsMade:0,realModelInvocations:0,externalEffectsAuthorized:false};
+}
+export function prepareStructuredDraftFixture(i:Omit<ReviewedInput,'maxOutputTokens'|'timeoutMs'|'estimatedCostMicros'>){
+ return prepareSpecialistModelDraft({...i,...STRUCTURED_DRAFT_LIMITS});
+}
