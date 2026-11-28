@@ -2,7 +2,7 @@
 import {useRef,useState} from "react";
 type Identity={organizationId:string;userId:string;role:string};
 type Agent={id:string;name:string};
-type Configuration={version:number;mission:string;evidenceRequired:boolean;maxObjectiveChars:number};
+type Configuration={version:number;mission:string;evidenceRequired:boolean;maxObjectiveChars:number;reviewSkills?:string[]};
 type Row={configuration?:Configuration|null;agentId:string;approvalId:string;decision?:string;status?:string;input:{name:string;slug:string;mission:string;templateAgentId:string};proposedCapability:string;templateRisk:string;executionAuthorized:false;reviewExpiresAt:string};
 type Registry={organizationId:string;records:Row[];reviews:Row[];historyCapped:boolean;configurations?:{approvalId:string;decision:string;version:number;input:{agentId:string;mission:string}}[];configurationHistoryCapped?:boolean;retirements?:{approvalId:string;decision:string;input:{agentId:string;reason:string}}[];retirementHistoryCapped?:boolean;fixtureOnly:true;executionAuthorized:false;externalEffectsAuthorized:false};
 export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
@@ -14,6 +14,7 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean;missionPlan?:{alignmentSignal:string;evidenceStatus:string;sharedTerms:string[];tasks:{kind:string;description:string}[]}}|null>(null);
  const [retireAgent,setRetireAgent]=useState(""),[retireReason,setRetireReason]=useState("");
  const [configAgent,setConfigAgent]=useState(""),[configMission,setConfigMission]=useState(""),[configEvidence,setConfigEvidence]=useState(false),[configLimit,setConfigLimit]=useState("500"),[configVersion,setConfigVersion]=useState(0);
+ const [configSkills,setConfigSkills]=useState<string[]>([]);
  const configKey=useRef("");
  const lock=useRef(false),key=useRef(""),rehearsalKey=useRef(""),retirementKey=useRef("");
  async function api(path:string,body?:unknown){
@@ -42,18 +43,19 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
     await refresh();setNotice("Registration review "+v.approvalId+" · "+v.decision+". Use the existing Approval inbox with a different administrator.");
    })}>Request independent specialist registration</button>
   </div><h4>Registered specialist identities ({registry.records.length})</h4>
-  {registry.records.map(row=><article key={row.agentId}><strong>{row.input.name}</strong> · {row.status}<p>{row.agentId} · template {row.input.templateAgentId} · risk {row.templateRisk}</p><p>{row.configuration?.mission??row.input.mission}</p><p>Configuration v{row.configuration?.version??0} · {row.configuration?.evidenceRequired?"Reviewed context required":"Reviewed context optional"} · objective limit {row.configuration?.maxObjectiveChars??500}</p></article>)}
+  {registry.records.map(row=><article key={row.agentId}><strong>{row.input.name}</strong> · {row.status}<p>{row.agentId} · template {row.input.templateAgentId} · risk {row.templateRisk}</p><p>{row.configuration?.mission??row.input.mission}</p><p>Configuration v{row.configuration?.version??0} · {row.configuration?.evidenceRequired?"Reviewed context required":"Reviewed context optional"} · objective limit {row.configuration?.maxObjectiveChars??500} · competencies {row.configuration?.reviewSkills?.join(", ")||"None"}</p></article>)}
   <h4>Versioned specialist configuration</h4>
   <p>A different administrator must approve each revision. Changes cannot grant capabilities; they apply to future rehearsals and invalidate outstanding approvals.</p>
   <div className="alpha-grid">
-   <label>Specialist to configure<select disabled={busy} value={configAgent} onChange={e=>{const row=registry.records.find(r=>r.agentId===e.target.value);setConfigAgent(e.target.value);setConfigMission(row?.configuration?.mission??row?.input.mission??"");setConfigEvidence(row?.configuration?.evidenceRequired??false);setConfigLimit(String(row?.configuration?.maxObjectiveChars??500));setConfigVersion(row?.configuration?.version??0);configKey.current="";}}><option value="">Choose paused specialist</option>{registry.records.filter(r=>r.status==="PAUSED").map(r=><option key={r.agentId} value={r.agentId}>{r.input.name}</option>)}</select></label>
+   <label>Specialist to configure<select disabled={busy} value={configAgent} onChange={e=>{const row=registry.records.find(r=>r.agentId===e.target.value);setConfigAgent(e.target.value);setConfigMission(row?.configuration?.mission??row?.input.mission??"");setConfigEvidence(row?.configuration?.evidenceRequired??false);setConfigLimit(String(row?.configuration?.maxObjectiveChars??500));setConfigVersion(row?.configuration?.version??0);setConfigSkills(row?.configuration?.reviewSkills??[]);configKey.current="";}}><option value="">Choose paused specialist</option>{registry.records.filter(r=>r.status==="PAUSED").map(r=><option key={r.agentId} value={r.agentId}>{r.input.name}</option>)}</select></label>
    <label>Revised specialist mission<textarea disabled={busy} maxLength={500} value={configMission} onChange={e=>{setConfigMission(e.target.value);configKey.current="";}}/></label>
    <label><input type="checkbox" checked={configEvidence} disabled={busy} onChange={e=>{setConfigEvidence(e.target.checked);configKey.current="";}}/> Require reviewed knowledge context</label>
    <label>Maximum objective characters<input type="number" min={12} max={500} disabled={busy} value={configLimit} onChange={e=>{setConfigLimit(e.target.value);configKey.current="";}}/></label>
+   <fieldset disabled={busy}><legend>Reviewed planning competencies (draft checklists only)</legend>{["CLAIM_LIMITATIONS","EVIDENCE_GAPS","AUDIENCE_FIT","MEASUREMENT_DESIGN"].map(skill=><label key={skill} style={{display:"block"}}><input type="checkbox" checked={configSkills.includes(skill)} onChange={e=>{setConfigSkills(prev=>e.target.checked?[...prev,skill]:prev.filter(x=>x!==skill));configKey.current="";}}/> {skill.replaceAll("_"," ")}</label>)}</fieldset>
    <p>Reviewing revision {configVersion+1} from version {configVersion}. Reload and reselect the specialist after approval.</p>
    <button type="button" disabled={busy||!registry.records.some(r=>r.agentId===configAgent&&r.status==="PAUSED"&&(r.configuration?.version??0)===configVersion)||configMission.trim().length<12||!Number.isInteger(Number(configLimit))||Number(configLimit)<12||Number(configLimit)>500||configVersion>=50} onClick={()=>void run(async()=>{
     const requestKey=configKey.current||"fixture-"+crypto.randomUUID();configKey.current=requestKey;
-    const v=await api("/specialists",{action:"CONFIGURE",agentId:configAgent,requestKey,mission:configMission,evidenceRequired:configEvidence,maxObjectiveChars:Number(configLimit),expectedVersion:configVersion,fixtureOnly:true});
+    const v=await api("/specialists",{action:"CONFIGURE",agentId:configAgent,requestKey,mission:configMission,evidenceRequired:configEvidence,maxObjectiveChars:Number(configLimit),expectedVersion:configVersion,reviewSkills:configSkills,fixtureOnly:true});
     if(v.executionAuthorized!==false||v.externalEffectsAuthorized!==false||v.version!==configVersion+1)throw Error("Unexpected configuration authority");
     await refresh();setNotice("Configuration review "+v.approvalId+" · "+v.decision+". A different administrator must approve.");
    })}>Request specialist configuration review</button>
@@ -77,13 +79,13 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
   <h4>Independently reviewed specialist rehearsal</h4>
   <p>One approved fixture assessment through the canonical template. This does not activate the specialist, change permissions or approve its output. Do not enter confidential or real customer data.</p>
   <div className="alpha-grid">
-   <label>Rehearsal specialist<select value={rehearsalAgent} disabled={busy} onChange={e=>{setRehearsalAgent(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}><option value="">Choose paused specialist</option>{registry.records.filter(row=>row.status==="PAUSED").map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
+   <label>Rehearsal specialist<select value={rehearsalAgent} disabled={busy} onChange={e=>{setRehearsalAgent(e.target.value);if(registry.records.find(r=>r.agentId===e.target.value)?.configuration?.reviewSkills?.length)setMissionPlanEnabled(true);rehearsalKey.current="";setRehearsalResult(null);}}><option value="">Choose paused specialist</option>{registry.records.filter(row=>row.status==="PAUSED").map(row=><option key={row.agentId} value={row.agentId}>{row.input.name}</option>)}</select></label>
    <label>Fixture assessment objective<textarea maxLength={500} value={objective} disabled={busy} onChange={e=>{setObjective(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Fixture assessment market<input maxLength={100} value={market} disabled={busy} onChange={e=>{setMarket(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Optional reviewed specialist context query<input maxLength={200} value={contextQuery} disabled={busy} onChange={e=>{setContextQuery(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label><input type="checkbox" checked={missionPlanEnabled} disabled={busy} onChange={e=>{setMissionPlanEnabled(e.target.checked);rehearsalKey.current="";setRehearsalResult(null);}}/> Include mission-specific offline planning (review required)</label>
    <p className="alpha-subtle">If supplied, the exact source and memory citations must remain eligible at approval and execution. The engine receives references only, not raw knowledge text.</p>
-   <button type="button" disabled={busy||!registry.records.some(row=>row.agentId===rehearsalAgent&&row.status==="PAUSED")||objective.trim().length<12||market.trim().length<2||(!!contextQuery&&contextQuery.trim().length<3)} onClick={()=>void run(async()=>{
+   <button type="button" disabled={busy||!registry.records.some(row=>row.agentId===rehearsalAgent&&row.status==="PAUSED")||(!missionPlanEnabled&&!!registry.records.find(r=>r.agentId===rehearsalAgent)?.configuration?.reviewSkills?.length)||objective.trim().length<12||market.trim().length<2||(!!contextQuery&&contextQuery.trim().length<3)} onClick={()=>void run(async()=>{
     const requestKey=rehearsalKey.current||"fixture-"+crypto.randomUUID();rehearsalKey.current=requestKey;
     const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true,...(missionPlanEnabled?{brainMode:"MISSION_PLAN_V1"}:{}),...(contextQuery.trim()?{contextQuery:contextQuery.trim()}:{})});
     if(v.fixtureOnly!==true||v.externalEffectsAuthorized!==false||v.autonomousExecutionAuthorized!==false)throw Error("Unexpected rehearsal authority");
