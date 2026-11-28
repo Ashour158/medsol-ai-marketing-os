@@ -399,6 +399,19 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(allocationResult).toMatchObject({status:201,data:{recommendedAgentId:specialistId,previewOnly:true,automaticAssignment:false,executionAuthorized:false,externalEffectsAuthorized:false,candidates:[expect.objectContaining({agentId:specialistId,eligible:true,referenceCount:2}),expect.objectContaining({agentId:targetId,eligible:false,referenceCount:1,reasons:expect.arrayContaining(['REQUIRED_SKILLS_MISSING'])})]}});
  expect(JSON.stringify(allocationResult.data)).not.toContain(doc.data.id);
  expect(JSON.stringify(allocationResult.data)).not.toContain(targetSource.data.id);
+ const allocationCommand={allocation,expectedAgentId:specialistId,expectedPreviewDigest:allocationResult.data.previewDigest,requestKey:'fixture-'+randomUUID(),fixtureOnly:true};
+ const allocationRequestPath=specialistPath+'/allocation-request';
+ expect((await invoke(r,allocationRequestPath,{...allocationCommand,expectedAgentId:targetId})).status).toBe(409);
+ expect((await invoke(r,allocationRequestPath,{...allocationCommand,expectedPreviewDigest:'sha256:'+'0'.repeat(64)})).status).toBe(409);
+ const allocated=await invoke(r,allocationRequestPath,allocationCommand);
+ expect(allocated).toMatchObject({status:201,data:{decision:'PENDING',replayed:false,input:{agentId:specialistId,allocationRequestDigest:expect.stringMatching(/^sha256:/)},autonomousExecutionAuthorized:false,externalEffectsAuthorized:false}});
+ expect((await invoke(r,allocationRequestPath,allocationCommand)).data.replayed).toBe(true);
+ expect((await invoke(r,allocationRequestPath,{...allocationCommand,allocation:{...allocation,market:'Different market'}})).status).toBe(409);
+ expect((await invoke(r,taskPath,{...decisionTask,requestKey:'fixture-'+randomUUID(),allocationRequestDigest:allocated.data.input.allocationRequestDigest})).status).toBe(400);
+ expect((await invoke(r,executePath,{approvalId:allocated.data.approvalId,fixtureOnly:true})).status).toBe(409);
+ expect((await invoke(reviewer,'approvals/decide',decide(allocated.data.approvalId,'reviewer'))).status).toBe(201);
+ expect(await invoke(r,executePath,{approvalId:allocated.data.approvalId,fixtureOnly:true})).toMatchObject({status:201,data:{status:'COMPLETED',decision:{specialistDecision:{disposition:'DRAFT_FOR_REVIEW'}}}});
+
  expect((await invoke(r,allocationPath,{...allocation,candidateIds:[specialistId,specialistId]})).status).toBe(400);
  const handoverTask={...decisionTask,requestKey:'fixture-'+randomUUID(),agentId:targetId,handoverApprovalId:decisionApproval.data.approvalId};
  expect((await invoke(r,taskPath,{...handoverTask,agentId:specialistId,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
@@ -463,6 +476,8 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const revoked=await invoke(reviewer,'learning/knowledge/'+doc.data.id+'/revoke',{reason:'Withdraw exclusive specialist synthetic evidence after evaluation'});
  expect(revoked).toMatchObject({status:201,data:{status:'REVOKED',scrubbedMemories:1}});
  expect((await context(r)).data).toMatchObject({results:[],memories:[]});
+ expect((await invoke(r,allocationRequestPath,{...allocationCommand,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
+ expect((await invoke(r,allocationRequestPath,allocationCommand)).data.replayed).toBe(true);
  expect(await invoke(r,allocationPath,allocation)).toMatchObject({status:201,data:{recommendedAgentId:null,candidates:expect.arrayContaining([expect.objectContaining({agentId:specialistId,eligible:false,referenceCount:0,reasons:expect.arrayContaining(['NO_REVIEWED_REFERENCES'])})])}});
  expect((await invoke(reviewer,'approvals/decide',decide(pendingHandover.data.approvalId,'reviewer'))).status).toBe(409);
  expect((await invoke(r,executePath,{approvalId:approvedHandover.data.approvalId,fixtureOnly:true})).status).toBe(409);
