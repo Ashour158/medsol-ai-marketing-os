@@ -142,6 +142,7 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
    </p>)}
   </div>}
   <h4>Human-curated agent memory</h4>
+  <p className="alpha-subtle">Enter a canonical ID or the exact reviewed MKT-SPECIALIST- identity from Agent Studio. Specialists have exclusive ACLs; template knowledge is not inherited.</p>
   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:10}}>
    <label style={labelStyle}>Stable memory key
     <input style={style} value={memoryKey} onChange={e=>setMemoryKey(e.target.value)}
@@ -246,7 +247,7 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
    <button disabled={busy||reason.length<12} style={btn}
     onClick={()=>void task(async()=>{
      setLast(await api("knowledge/feedback",{query:feedbackQuery,
-      chunkId:feedbackChunk,label:feedbackLabel,reason}));
+      chunkId:feedbackChunk,label:feedbackLabel,reason,...(agentId.startsWith("MKT-SPECIALIST-")?{agentId}:{})}));
     })}>Record reviewed feedback</button>
    <button disabled={busy} style={{...btn,background:"#475569"}}
     onClick={()=>void task(async()=>setFeedback(await api("knowledge/feedback")))}>
@@ -259,7 +260,7 @@ export default function MemoryGraphStudio({identity}:{identity:Identity|null}){
   </label>
   <button disabled={busy} style={btn}
    onClick={()=>void task(async()=>setLast(await api("knowledge/evaluate",{
-    k:5,cases:JSON.parse(evalCases) as unknown})))}>
+    k:5,cases:JSON.parse(evalCases) as unknown,...(agentId.startsWith("MKT-SPECIALIST-")?{agentId}:{})})))}>
    Run offline retrieval evaluation (no auto-learning)</button>
   {error&&<p role="alert" style={{color:"#b91c1c"}}>{error}</p>}
   {last!==null&&<pre style={{fontSize:12,padding:10,background:"#f8fafc",

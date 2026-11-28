@@ -67,3 +67,19 @@ export async function installReviewedSpecialist(tx:Prisma.TransactionClient,a:Ap
  await tx.auditEvent.create({data:{organizationId:a.organizationId,actorType:'HUMAN',actorId:reviewer,action:'OFFLINE_SPECIALIST_REGISTERED_PAUSED',objectType:'Agent',objectId:s.agentId,correlationId:a.id,
   after:{approvalId:a.id,scopeDigest:a.scopeDigest,executionAuthorized:false,externalEffectsAuthorized:false}}});
 }
+
+/** Registered specialist identity only; no template inheritance of source ACLs. */
+export const isSpecialistId=(v:unknown):v is string=>typeof v==='string'&&/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(v);
+export async function assertReviewedSpecialist(tx:Prisma.TransactionClient,org:string,id:string){
+ if(!isSpecialistId(id))throw new ForbiddenException('Explicit registered specialist identity required');
+ await tx.$queryRaw`SELECT "id" FROM "Agent" WHERE "organizationId"=${org} AND "id"=${id} FOR SHARE`;
+ const agent=await tx.agent.findFirst({where:{organizationId:org,id}});
+ const approvals=await tx.approval.findMany({where:{organizationId:org,objectType:SPECIALIST_REGISTRATION,objectId:id,decision:'APPROVED'},take:2});
+ const a=approvals[0];
+ if(!agent||agent.status!=='PAUSED'||agent.version!==1||!Array.isArray(agent.capabilities)||agent.capabilities.length!==0||
+ approvals.length!==1||!a?.decidedBy||a.decidedBy===a.requestedBy||!a.decidedAt||!a.scopeExpiresAt||a.decidedAt>=a.scopeExpiresAt)
+ throw new ForbiddenException('Reviewed paused specialist identity required in tenant');
+ const scope=readSpecialist(a);
+ if(scope.input.name!==agent.name)throw new ConflictException('Specialist identity evidence changed');
+ return scope;
+}
