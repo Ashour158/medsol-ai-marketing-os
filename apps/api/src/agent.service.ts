@@ -10,6 +10,7 @@ import {SPECIALIST_REHEARSAL,rehearsalInput,rehearsalId,rehearsalScope,rehearsal
 import {lockSpecialist,readSpecialist,SPECIALIST_REGISTRATION} from './offline-specialist.js';
 import {SPECIALIST_BRAIN_MODE,specialistMissionPlan,specialistPlanDigest} from './specialist-mission-brain.js';
 import {SPECIALIST_DECISION_MODE,specialistDecision} from './specialist-decision-brain.js';
+import {REASONING_EVALUATION_MODE,evaluateSpecialistReasoning} from './specialist-reasoning-evaluation.js';
 import {configPinTuple,type ConfigPin} from './offline-specialist-config.js';
 import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
@@ -125,6 +126,11 @@ import {allocationInput,rankSpecialists,type AllocationCandidate} from './specia
      const keys=['OPENAI','ANTHROPIC','GEMINI','LOCAL'];
      if(!contracts||contracts.schema!=='medsol.specialist-provider-contracts.v1'||contracts.decisionDigest!==d.specialistDecisionDigest||contracts.providerRequestsMade!==0||contracts.realModelInvocations!==0||contracts.actualCostMicros!==0||contracts.modelQualityEvaluated!==false||contracts.externalEffectsAuthorized!==false||!Array.isArray(contracts.results)||contracts.results.length!==4||contracts.results.some((r,i)=>r.providerKey!==keys[i]||r.model!=='synthetic:'+keys[i]!.toLowerCase()||r.actualCostMicros!==0||r.passed!==true||typeof r.inputTokens!=='number'||!Number.isSafeInteger(r.inputTokens)||r.inputTokens<0||typeof r.outputTokens!=='number'||!Number.isSafeInteger(r.outputTokens)||r.outputTokens<0||r.outputTokens>256)||specialistPlanDigest(contracts)!==d.providerContractsDigest)throw new ConflictException('Historical synthetic provider contracts invalid');
     }else if(d.providerContracts!==undefined||d.providerContractsDigest!==undefined)throw new ConflictException('Unexpected historical provider contracts');
+    if(scope.input.evaluationMode===REASONING_EVALUATION_MODE){
+     if(!d.missionPlan||!d.specialistDecision||!d.reasoningEvaluation)throw new ConflictException('Historical decision evaluation missing');
+     const expected=evaluateSpecialistReasoning(d.missionPlan as ReturnType<typeof specialistMissionPlan>,d.specialistDecision as ReturnType<typeof specialistDecision>,scope.contextPin);
+     if(specialistPlanDigest(expected)!==d.reasoningEvaluationDigest||specialistPlanDigest(d.reasoningEvaluation)!==d.reasoningEvaluationDigest)throw new ConflictException('Historical decision evaluation integrity invalid');
+    }else if(d.reasoningEvaluation!==undefined||d.reasoningEvaluationDigest!==undefined)throw new ConflictException('Unexpected historical decision evaluation');
     return{executionId,status:prior.status,decision:prior.decision,replayed:true,externalEffectsAuthorized:false};
    }
    await validateRehearsal(tx,a,new Date(),this.learning);
@@ -153,9 +159,11 @@ import {allocationInput,rankSpecialists,type AllocationCandidate} from './specia
     if(!this.model)throw new ConflictException('Governed model fixture service unavailable');
     providerContracts=await this.model.rehearseSpecialistContracts({organizationId:org,correlationId:id,agentId:scope.templateId,decisionDigest:specialistPlanDigest(independentDecision)});
    }
+   const reasoningEvaluation=scope.input.evaluationMode===REASONING_EVALUATION_MODE&&missionPlan&&independentDecision?evaluateSpecialistReasoning(missionPlan,independentDecision,scope.contextPin):undefined;
+   if(scope.input.evaluationMode===REASONING_EVALUATION_MODE&&!reasoningEvaluation)throw new ConflictException('Specialist decision evaluation missing');
    const decision={schema:'medsol.specialist-rehearsal-result.v1',agentId:scope.input.agentId,templateAgentId:scope.templateId,
     templateVersion:scope.templateVersion,templateDigest:scope.templateDigest,registrationId:scope.registrationId,
-    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
+    approvalId:id,scopeDigest:a.scopeDigest,templateDecision,...(reasoningEvaluation?{reasoningEvaluation,reasoningEvaluationDigest:specialistPlanDigest(reasoningEvaluation)}:{}),...(providerContracts?{providerContracts,providerContractsDigest:specialistPlanDigest(providerContracts)}:{}),...(scope.handover?{handover:scope.handover}:{}),...(independentDecision?{specialistDecision:independentDecision,specialistDecisionDigest:specialistPlanDigest(independentDecision)}:{}),...(scope.configuration?{configuration:scope.configuration}:{}),...(missionPlan?{missionPlan,missionPlanDigest:specialistPlanDigest(missionPlan)}:{}),...(scope.contextPin?{contextEvidence:{pin:scope.contextPin,independentlyVerified:false,sourceTextCopied:false}}:{}),fixtureOnly:true,outputHumanApproved:false,
     autonomousExecutionAuthorized:false,modelCallsAuthorized:false,toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
    const status=(independentDecision?independentDecision.draftEligible:templateDecision.executionAllowed)?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
