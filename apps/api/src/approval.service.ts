@@ -9,6 +9,7 @@ import {SYNTHETIC_PRICING,readPriceProposal,validatePriceProposalApproval} from 
 import {SYNTHETIC_CAMPAIGN_PLAN,readChannelPlan,validateChannelPlanApproval} from './synthetic-campaign-channel-plan.js';
 import {ACTIVATION_REVIEW,readActivationReview,validateActivationReview} from './customer-activation-review.js';
 import {SPECIALIST_REHEARSAL,readRehearsal,validateRehearsal} from './offline-specialist-rehearsal.js';
+import {SPECIALIST_OUTPUT_REVIEW,readOutputReview,validateOutputReview} from './specialist-output-review.js';
 import {SPECIALIST_REGISTRATION,readSpecialist,installReviewedSpecialist} from './offline-specialist.js';
 import {SPECIALIST_RETIREMENT,readRetirement,retireReviewedSpecialist} from './offline-specialist-retirement.js';
 import {SPECIALIST_CONFIG,readConfig,approveSpecialistConfig} from './offline-specialist-config.js';
@@ -34,12 +35,14 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
    .map(a=>{
     const {id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt}=a;
     const s=objectType===SPECIALIST_REHEARSAL?readRehearsal(a):undefined;
+    const output=objectType===SPECIALIST_OUTPUT_REVIEW?readOutputReview(a):undefined;
     const retirement=objectType===SPECIALIST_RETIREMENT?readRetirement(a):undefined;
     const configuration=objectType===SPECIALIST_CONFIG?readConfig(a):undefined;
     return{id,objectType,objectId,requiredAuthority,riskLevel,workflowExecutionId,scopeDigest,scopeExpiresAt,createdAt,
+     ...(output?{specialistOutputReview:{sourceApprovalId:output.sourceApprovalId,sourceExecutionId:output.sourceExecutionId,agentId:output.agentId,requestedBy:output.requestedBy,structuredDraftDigest:output.structuredDraftDigest,draft:output.draft,fixtureOnly:true,scientificVerification:false,executionAuthorized:false,externalEffectsAuthorized:false}}:{}),
      ...(configuration?{specialistConfiguration:{agentId:configuration.input.agentId,mission:configuration.input.mission,evidenceRequired:configuration.input.evidenceRequired,maxObjectiveChars:configuration.input.maxObjectiveChars,version:configuration.version,reviewSkills:configuration.input.reviewSkills??null,skillEvaluation:configuration.skillEvaluation??null,learningEvidence:configuration.learningEvidence??null,requestedBy:configuration.requestedBy,externalEffectsAuthorized:false}}:{}),
      ...(retirement?{specialistRetirement:{agentId:retirement.input.agentId,reason:retirement.input.reason,requestedBy:retirement.requestedBy,expectedStatus:retirement.expectedStatus,targetStatus:retirement.targetStatus,externalEffectsAuthorized:false}}:{}),
-     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,brainMode:s.input.brainMode??null,configuration:s.configuration??null,handover:s.handover??null,simulationMode:s.input.simulationMode??null,evaluationMode:s.input.evaluationMode??null,allocationRequestDigest:s.input.allocationRequestDigest??null,externalEffectsAuthorized:false}}:{})};
+     ...(s?{specialistReview:{objective:s.input.objective,market:s.input.market,templateId:s.templateId,templateVersion:s.templateVersion,templateDigest:s.templateDigest,requestedBy:s.requestedBy,contextPin:s.contextPin??null,brainMode:s.input.brainMode??null,configuration:s.configuration??null,handover:s.handover??null,simulationMode:s.input.simulationMode??null,evaluationMode:s.input.evaluationMode??null,allocationRequestDigest:s.input.allocationRequestDigest??null,structuredDraftMode:s.input.structuredDraftMode??null,externalEffectsAuthorized:false}}:{})};
    });
  })}
 
@@ -143,6 +146,14 @@ import {EXACT_APPROVAL_EXECUTION_GRACE_MS,exactCreativeScopeHash,isExactCreative
     if(cmd.approverUserId===scope.requestedBy||!reviewer.oidcSubject)throw new ForbiddenException('Independent OIDC loyalty review required');
     await assertActorPermissionInTenantTransaction(tx,{organizationId:cmd.organizationId,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject},'DECIDE_APPROVAL');
     if(cmd.decision==='APPROVED')await validateLoyaltyApproval(tx,a,new Date());
+   }
+   if(a.objectType===SPECIALIST_OUTPUT_REVIEW){
+    const scope=readOutputReview(a);
+    if(cmd.approverUserId===scope.requestedBy||!reviewer.oidcSubject)throw new ForbiddenException('Independent OIDC specialist output reviewer required');
+    const actor={organizationId:cmd.organizationId,userId:reviewer.id,email:reviewer.email,role:reviewer.role,subject:reviewer.oidcSubject};
+    await assertActorPermissionInTenantTransaction(tx,actor,'MANAGE_TENANT');
+    await assertActorPermissionInTenantTransaction(tx,actor,'DECIDE_APPROVAL');
+    if(cmd.decision==='APPROVED')await validateOutputReview(tx,a,new Date(),this.learning);
    }
    if(a.objectType===SPECIALIST_REHEARSAL){
     const scope=readRehearsal(a);
