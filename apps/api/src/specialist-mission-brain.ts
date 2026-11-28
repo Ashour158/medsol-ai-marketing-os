@@ -18,6 +18,11 @@ export function specialistMissionPlan(i:BrainInput){
   humanReviewRequired:true,scientificVerification:false,autonomousExecutionAuthorized:false,modelCallsAuthorized:false,
   toolCallsAuthorized:false,memoryWritesAuthorized:false,externalEffectsAuthorized:false};
 }
-export function specialistPlanDigest(p:ReturnType<typeof specialistMissionPlan>){
- return 'sha256:'+createHash('sha256').update(JSON.stringify(p)).digest('hex');
+function canonical(value:unknown):unknown{
+ if(Array.isArray(value))return value.map(canonical);
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>[k,canonical(v)]));
+ return value;
+}
+export function specialistPlanDigest(p:unknown){
+ return 'sha256:'+createHash('sha256').update(JSON.stringify(canonical(p))).digest('hex');
 }
