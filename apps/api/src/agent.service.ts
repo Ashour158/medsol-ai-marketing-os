@@ -16,6 +16,7 @@ import {MarketingLearningService} from './marketing-learning.service.js';
 import {loadSpecialistContextPin,contextPinTuple} from './specialist-context-pin.js';
 import {parseSpecialistBatch,dispatchSpecialistBatch} from './specialist-batch-dispatch.js';
 import {parseDurableBatch,batchCommandId,durableBatchState,reconstructDurableBatch,durableBatchView,DURABLE_SPECIALIST_BATCH,DURABLE_SPECIALIST_STAGE,batchStageId} from './specialist-durable-dispatch.js';
+import {SPECIALIST_SCHEDULE,SPECIALIST_SCHEDULE_EVENT,specialistScheduleConfigured,scheduleCommandId,makeScheduleGrant,readScheduleGrant,reconstructSchedule,scheduleEvent,type ScheduleEventStatus,type ScheduleGrant} from './specialist-schedule.js';
 import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreviewDigest,allocationRequestDigest,type AllocationInput,type AllocationCandidate} from './specialist-allocation.js';
 @Injectable() export class AgentService{
  private readonly registry=new AgentRegistry();private readonly runtime:AgentRuntime;
@@ -112,6 +113,9 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
    return pins;
  }
  async coordinateSpecialistBatch(identity:VerifiedIdentity,raw:unknown){
+  return this.coordinateBatch(identity,raw);
+ }
+ private async coordinateBatch(identity:VerifiedIdentity,raw:unknown,scheduledDigest?:string){
   const cmd=parseDurableBatch(raw),org=identity.organizationId,commandId=batchCommandId(cmd.requestKey);
   if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist batch requires offline reasoning');
   return withMarketingTenant(this.db,org,async tx=>{
@@ -131,6 +135,12 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
    if(prior.status!=='REGISTERED')throw new ConflictException('Immutable batch root status mismatch');
    const stageRows=await tx.commandReceipt.findMany({where:{organizationId:org,correlationId:commandId,commandType:DURABLE_SPECIALIST_STAGE},take:5});
    const state=reconstructDurableBatch(prior.response,stageRows,org,identity.userId,cmd.requestKey),view=durableBatchView(state);
+   const scheduleId=scheduleCommandId(cmd.requestKey);
+   const schedule=await this.readSchedule(tx,org,cmd.requestKey),grant=schedule?.grant;
+   if(grant&&(grant.owner!==identity.userId||grant.planDigest!==state.planDigest||grant.initialCursor>view.cursor))throw new ConflictException('Schedule does not match durable batch');
+   if(schedule&&['ACTIVE','CLAIMED','NEEDS_INTERVENTION'].includes(schedule.status)&&schedule.cursor!==view.cursor)throw new ConflictException('Schedule cursor does not match durable batch');
+   const scheduleView=()=>({schedulerConfigured:specialistScheduleConfigured(),scheduleStatus:schedule?.status??null,scheduleExpiresAt:grant?.expiresAt??null});
+   if(scheduledDigest!==undefined&&(!specialistScheduleConfigured()||cmd.action!=='ADVANCE'||schedule?.status!=='CLAIMED'||grant?.digest!==scheduledDigest||Date.parse(grant.expiresAt)<=Date.now()||schedule.cursor!==cmd.expectedCursor))throw new ConflictException('Current claimed schedule grant required');
    if(cmd.action==='CREATE'&&JSON.stringify(cmd.approvalIds)!==JSON.stringify(state.approvalIds))throw new ConflictException('Immutable batch key already used');
    const pins=await this.specialistBatchPins(tx,identity,state.approvalIds);
    if(JSON.stringify(pins)!==JSON.stringify(state.scopeDigests))throw new ConflictException('Durable batch approval scope changed');
@@ -141,17 +151,98 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
     const replay=await this.executeSpecialistInTransaction(tx,identity,stage.approvalId);
     if(!replay.replayed||replay.executionId!==stage.executionId||replay.status!==stage.status)throw new ConflictException('Durable batch replay mismatch');
    }
-   if(cmd.action!=='ADVANCE')return{...view,advanced:false};
+   if(cmd.action==='SCHEDULE'){
+    if(!specialistScheduleConfigured()||!view.nextApprovalId||cmd.expectedCursor!==view.cursor)throw new ConflictException('Explicit enabled scheduler and current incomplete batch required');
+    if(schedule)throw new ConflictException('A schedule already exists; use manual recovery after cancellation or intervention');
+    const newGrant=makeScheduleGrant(org,identity.userId,cmd.requestKey,state.planDigest,view.cursor,new Date());
+    await tx.commandReceipt.create({data:{organizationId:org,commandId:scheduleId,commandType:SPECIALIST_SCHEDULE,correlationId:commandId,status:'ACTIVE',response:newGrant}});
+    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_BATCH_SCHEDULED',objectType:'CommandReceipt',objectId:scheduleId,correlationId:commandId,after:{grantDigest:newGrant.digest,expiresAt:newGrant.expiresAt,externalEffectsAuthorized:false}}});
+    return{...view,advanced:false,schedulerConfigured:true,scheduleStatus:'ACTIVE',scheduleExpiresAt:newGrant.expiresAt};
+   }
+   if(cmd.action==='CANCEL_SCHEDULE'){
+    if(!schedule||!['ACTIVE','CLAIMED','NEEDS_INTERVENTION'].includes(schedule.status))throw new ConflictException('No cancellable schedule');
+    await this.appendScheduleEvent(tx,org,schedule.grant,'CANCELLED',schedule.cursor);
+    await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_BATCH_SCHEDULE_CANCELLED',objectType:'CommandReceipt',objectId:scheduleId,correlationId:commandId,after:{externalEffectsAuthorized:false}}});
+    return{...view,advanced:false,...scheduleView(),scheduleStatus:'CANCELLED'};
+   }
+   if(cmd.action!=='ADVANCE')return{...view,advanced:false,...scheduleView()};
+   if(scheduledDigest===undefined&&schedule&&['ACTIVE','CLAIMED','NEEDS_INTERVENTION'].includes(schedule.status))throw new ConflictException('Cancel schedule before manual advancement');
    if(cmd.expectedCursor>view.cursor)throw new ConflictException('Durable batch cursor mismatch');
-   if(cmd.expectedCursor<view.cursor||!view.nextApprovalId)return{...view,advanced:false};
-   const result=await this.executeSpecialistInTransaction(tx,identity,view.nextApprovalId);
+   if(cmd.expectedCursor<view.cursor||!view.nextApprovalId){if(scheduledDigest!==undefined)throw new ConflictException('Scheduled cursor no longer current');return{...view,advanced:false,...scheduleView()};}
+   const result=await this.executeSpecialistInTransaction(tx,identity,view.nextApprovalId,scheduledDigest);
    if(result.status!=='COMPLETED'&&result.status!=='BLOCKED')throw new ConflictException('Invalid durable batch stage result');
    state.stages.push({approvalId:view.nextApprovalId,executionId:result.executionId,status:result.status});
    const updated=durableBatchView(state);
    await tx.commandReceipt.create({data:{organizationId:org,commandId:batchStageId(cmd.requestKey,view.cursor),commandType:DURABLE_SPECIALIST_STAGE,correlationId:commandId,status:result.status,response:{schema:'medsol.specialist-batch-stage.v1',planDigest:state.planDigest,index:view.cursor,stage:state.stages[view.cursor]!}}});
-   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_BATCH_ADVANCED',objectType:'CommandReceipt',objectId:commandId,correlationId:commandId,after:{planDigest:state.planDigest,cursor:updated.cursor,stageStatus:result.status,externalEffectsAuthorized:false}}});
-   return{...updated,advanced:true};
+   const scheduleStatus=scheduledDigest!==undefined?(updated.status==='COMPLETED'?'COMPLETED':updated.status==='HALTED'?'HALTED':'ACTIVE'):schedule?.status??null;
+   if(scheduledDigest!==undefined){if(!grant)throw new ConflictException('Missing schedule grant');await this.appendScheduleEvent(tx,org,grant,updated.status==='COMPLETED'?'COMPLETED':updated.status==='HALTED'?'HALTED':'ADVANCED',view.cursor);}
+   await tx.auditEvent.create({data:{organizationId:org,actorType:scheduledDigest?'SYSTEM':'HUMAN',actorId:scheduledDigest?'SPECIALIST_SCHEDULER':identity.userId,action:'OFFLINE_SPECIALIST_BATCH_ADVANCED',objectType:'CommandReceipt',objectId:commandId,correlationId:commandId,after:{planDigest:state.planDigest,cursor:updated.cursor,stageStatus:result.status,...(scheduledDigest?{scheduleGrantDigest:scheduledDigest,delegatedBy:identity.userId}:{}),externalEffectsAuthorized:false}}});
+   return{...updated,advanced:true,...scheduleView(),scheduleStatus};
   });
+ }
+ private async readSchedule(tx:Prisma.TransactionClient,org:string,key:string){
+  const commandId=scheduleCommandId(key);
+  const root=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:org,commandId}}});
+  if(!root)return undefined;
+  if(root.commandType!==SPECIALIST_SCHEDULE||root.correlationId!==batchCommandId(key)||root.status!=='ACTIVE')throw new ConflictException('Invalid immutable schedule root');
+  const grant=readScheduleGrant(root.response,org,key);
+  const rows=await tx.commandReceipt.findMany({where:{organizationId:org,commandType:SPECIALIST_SCHEDULE_EVENT,correlationId:commandId},take:10});
+  return reconstructSchedule(grant,rows,new Date());
+ }
+ private async appendScheduleEvent(tx:Prisma.TransactionClient,org:string,grant:ScheduleGrant,status:ScheduleEventStatus,cursor:number){
+  await tx.commandReceipt.create({data:{organizationId:org,...scheduleEvent(grant,status,cursor)}});
+ }
+ /** Internal worker only. Both the plan and the schedule ledger are append-only.
+  * A claim is committed before execution; an unmatched claim is never retried.
+  * The existing tenant-scoped coordinator commits stage and outcome together.
+  */
+ async runDueSpecialistSchedule(org:string){
+  if(!specialistScheduleConfigured())return{status:'DISABLED'};
+  const claim=await withMarketingTenant(this.db,org,async tx=>{
+   const now=new Date().toISOString();
+   const eligible=await tx.$queryRaw<Array<{commandId:string}>>`
+    SELECT r."commandId" FROM "CommandReceipt" r
+    WHERE r."organizationId"=${org} AND r."commandType"=${SPECIALIST_SCHEDULE} AND r.status='ACTIVE'
+     AND r.response->>'expiresAt'>${now}
+     AND NOT EXISTS (SELECT 1 FROM "CommandReceipt" e WHERE e."organizationId"=r."organizationId" AND e."correlationId"=r."commandId" AND e."commandType"=${SPECIALIST_SCHEDULE_EVENT} AND e.status IN ('COMPLETED','HALTED','NEEDS_INTERVENTION','CANCELLED'))
+     AND NOT EXISTS (SELECT 1 FROM "CommandReceipt" c WHERE c."organizationId"=r."organizationId" AND c."correlationId"=r."commandId" AND c."commandType"=${SPECIALIST_SCHEDULE_EVENT} AND c.status='CLAIMED'
+      AND NOT EXISTS (SELECT 1 FROM "CommandReceipt" o WHERE o."organizationId"=c."organizationId" AND o."correlationId"=c."correlationId" AND o."commandType"=${SPECIALIST_SCHEDULE_EVENT} AND o."commandId"=replace(c."commandId",':claim:',':outcome:')))
+    ORDER BY r."createdAt",r.id LIMIT 1`;
+   const next=eligible[0];if(!next)return null;
+   const key=next.commandId.slice(SPECIALIST_SCHEDULE.length+1);
+   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${org+':'+batchCommandId(key)})::bigint)::text AS lock_result`;
+   const schedule=await this.readSchedule(tx,org,key);
+   if(!schedule||schedule.status!=='ACTIVE')return null;
+   const g=schedule.grant,commandId=batchCommandId(key);
+   const batch=await tx.commandReceipt.findUnique({where:{organizationId_commandId:{organizationId:org,commandId}}});
+   if(!batch||batch.commandType!==DURABLE_SPECIALIST_BATCH||batch.status!=='REGISTERED')throw new ConflictException('Scheduled batch missing');
+   const stages=await tx.commandReceipt.findMany({where:{organizationId:org,correlationId:commandId,commandType:DURABLE_SPECIALIST_STAGE},take:5});
+   const state=reconstructDurableBatch(batch.response,stages,org,g.owner,key),view=durableBatchView(state);
+   if(g.planDigest!==state.planDigest||schedule.cursor!==view.cursor||!view.nextApprovalId)throw new ConflictException('Scheduled plan no longer eligible');
+   const user=await tx.user.findFirst({where:{organizationId:org,id:g.owner,disabledAt:null},select:{id:true,oidcSubject:true,role:true,email:true}});
+   await this.appendScheduleEvent(tx,org,g,'CLAIMED',view.cursor);
+   await tx.auditEvent.create({data:{organizationId:org,actorType:'SYSTEM',actorId:'SPECIALIST_SCHEDULER',action:'OFFLINE_SPECIALIST_BATCH_SCHEDULE_CLAIMED',objectType:'CommandReceipt',objectId:next.commandId,correlationId:commandId,after:{grantDigest:g.digest,cursor:view.cursor,delegatedBy:g.owner,externalEffectsAuthorized:false}}});
+   return{key,grant:g,cursor:view.cursor,user};
+  });
+  if(!claim)return{status:'EMPTY_OR_CLAIMED'};
+  try{
+   if(!claim.user?.oidcSubject)throw new ForbiddenException('Current schedule owner required');
+   // Reconstruct only a current delegated owner authorization descriptor from
+   // canonical IAM; never create or claim a human login/session.
+   const identity:VerifiedIdentity={organizationId:org,userId:claim.user.id,subject:claim.user.oidcSubject,role:claim.user.role,email:claim.user.email};
+   const result=await this.coordinateBatch(identity,{action:'ADVANCE',requestKey:claim.key,expectedCursor:claim.cursor,fixtureOnly:true},claim.grant.digest);
+   return{status:result.status};
+  }catch{
+   await withMarketingTenant(this.db,org,async tx=>{
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${org+':'+batchCommandId(claim.key)})::bigint)::text AS lock_result`;
+    const schedule=await this.readSchedule(tx,org,claim.key);
+    if(schedule?.status==='CLAIMED'&&schedule.cursor===claim.cursor&&schedule.grant.digest===claim.grant.digest){
+     await this.appendScheduleEvent(tx,org,claim.grant,'NEEDS_INTERVENTION',claim.cursor);
+     await tx.auditEvent.create({data:{organizationId:org,actorType:'SYSTEM',actorId:'SPECIALIST_SCHEDULER',action:'OFFLINE_SPECIALIST_BATCH_SCHEDULE_HALTED',objectType:'CommandReceipt',objectId:scheduleCommandId(claim.key),correlationId:batchCommandId(claim.key),after:{grantDigest:claim.grant.digest,cursor:claim.cursor,externalEffectsAuthorized:false}}});
+    }
+   });
+   return{status:'NEEDS_INTERVENTION'};
+  }
  }
  async executeSpecialistRehearsal(identity:VerifiedIdentity,raw:unknown){
   if(!raw||typeof raw!=='object'||Array.isArray(raw)||Object.keys(raw).sort().join(',')!=='approvalId,fixtureOnly')throw new BadRequestException('Exact approved rehearsal reference required');
@@ -160,7 +251,7 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
   if(process.env.MARKETING_AI_REASONING_ENABLED==='true')throw new ForbiddenException('Specialist rehearsal requires offline reasoning');
   return withMarketingTenant(this.db,identity.organizationId,tx=>this.executeSpecialistInTransaction(tx,identity,v.approvalId as string));
  }
- private async executeSpecialistInTransaction(tx:Prisma.TransactionClient,identity:VerifiedIdentity,id:string){
+ private async executeSpecialistInTransaction(tx:Prisma.TransactionClient,identity:VerifiedIdentity,id:string,scheduledDigest?:string){
    const org=identity.organizationId,executionId=id+'-execution';
    await assertActorPermissionInTenantTransaction(tx,identity,'MANAGE_TENANT');
    await tx.$queryRaw`SELECT "id" FROM "Approval" WHERE "organizationId"=${org} AND "id"=${id} FOR UPDATE`;
@@ -244,7 +335,7 @@ import {allocationInput,rankSpecialists,allocationRequestInput,allocationPreview
    const status=(independentDecision?independentDecision.draftEligible:templateDecision.executionAllowed)?'COMPLETED':'BLOCKED';
    await tx.agentExecution.create({data:{id:executionId,organizationId:org,agentId:scope.input.agentId,correlationId:id,
     input,decision:decision as unknown as Prisma.InputJsonValue,status,completedAt:new Date()}});
-   await tx.auditEvent.create({data:{organizationId:org,actorType:'HUMAN',actorId:identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_EXECUTED',objectType:'AgentExecution',objectId:executionId,correlationId:id,after:{scopeDigest:a.scopeDigest,status,externalEffectsAuthorized:false}}});
+   await tx.auditEvent.create({data:{organizationId:org,actorType:scheduledDigest?'SYSTEM':'HUMAN',actorId:scheduledDigest?'SPECIALIST_SCHEDULER':identity.userId,action:'OFFLINE_SPECIALIST_REHEARSAL_EXECUTED',objectType:'AgentExecution',objectId:executionId,correlationId:id,after:{scopeDigest:a.scopeDigest,status,...(scheduledDigest?{scheduleGrantDigest:scheduledDigest,delegatedBy:identity.userId}:{}),externalEffectsAuthorized:false}}});
    return{executionId,status,decision,replayed:false,externalEffectsAuthorized:false};
  }
  async execute(agentId:string,i:{organizationId:string;correlationId:string;causationId?:string;input:unknown;capabilities:string[]}){
