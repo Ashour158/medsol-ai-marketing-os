@@ -2,6 +2,8 @@ import {BadRequestException,ConflictException} from '@nestjs/common';
 import {parseSpecialistBatch} from './specialist-batch-dispatch.js';
 import {specialistPlanDigest} from './specialist-mission-brain.js';
 export const DURABLE_SPECIALIST_BATCH='SPECIALIST_BATCH_COORDINATION';
+export const DURABLE_SPECIALIST_STAGE='SPECIALIST_BATCH_STAGE';
+export const batchStageId=(key:string,index:number)=>batchCommandId(key)+':stage:'+index;
 export function parseDurableBatch(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact durable batch command required');
  const v=raw as Record<string,unknown>,keys=Object.keys(v).sort().join(',');
@@ -29,4 +31,20 @@ export function durableBatchView(s:DurableBatchState){
  const cursor=s.stages.length,halted=s.stages.some(x=>x.status==='BLOCKED');
  const status=halted?'HALTED':cursor===s.approvalIds.length?'COMPLETED':cursor?'IN_PROGRESS':'REGISTERED';
  return{schema:s.schema,requestKey:s.requestKey,planDigest:s.planDigest,cursor,status,nextApprovalId:status==='REGISTERED'||status==='IN_PROGRESS'?s.approvalIds[cursor]:null,items:s.approvalIds.map((approvalId,i)=>s.stages[i]??{approvalId,status:'NOT_REACHED'}),fixtureOnly:true,automaticRetry:false,autonomousExecutionAuthorized:false,externalEffectsAuthorized:false};
+}
+
+/** The canonical CommandReceipt ledger is append-only. The root record is
+ * immutable and every visited stage has a deterministic separate receipt.
+ * No UPDATE or DELETE permission is required or granted.
+ */
+export function reconstructDurableBatch(root:unknown,rows:readonly {commandId:string;commandType:string;correlationId:string;status:string;response:unknown}[],org:string,actor:string,key:string):DurableBatchState{
+ const state=readDurableBatch(root,org,actor,key);
+ if(state.stages.length||rows.length>state.approvalIds.length)throw new ConflictException('Invalid immutable batch root or stage count');
+ const stages:BatchStage[]=[];
+ for(let i=0;i<rows.length;i++){
+  const row=rows.find(r=>r.commandId===batchStageId(key,i)),raw=row?.response as {schema?:unknown;planDigest?:unknown;index?:unknown;stage?:BatchStage}|null;
+  if(!row||row.commandType!==DURABLE_SPECIALIST_STAGE||row.correlationId!==batchCommandId(key)||!raw||raw.schema!=='medsol.specialist-batch-stage.v1'||raw.planDigest!==state.planDigest||raw.index!==i||!raw.stage||row.status!==raw.stage.status)throw new ConflictException('Invalid immutable stage receipt');
+  stages.push(raw.stage);
+ }
+ return readDurableBatch({...state,stages},org,actor,key);
 }
