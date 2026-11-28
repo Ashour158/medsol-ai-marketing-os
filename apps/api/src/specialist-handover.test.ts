@@ -21,6 +21,20 @@ describe('bounded specialist handover',()=>{
   expect(()=>handoverTuple({...pin,executionId:'other'})).toThrow();
   expect(()=>handoverTuple({...pin,sourceEvidenceTransferred:true} as unknown as HandoverPin)).toThrow();
  });
+ it('pins ordered ancestry and rejects cycles or excessive depth',async()=>{
+  const ancestor='MKT-SPECIALIST-root';
+  const multi={...pin,ancestorAgentIds:[ancestor,sourceId]};
+  const input=rehearsalInput({...raw,handoverApprovalId:id});
+  const scope=rehearsalScope('tenant-a','operator-a',input,template,expiry,undefined,multi);
+  expect(scope.handover?.ancestorAgentIds).toEqual([ancestor,sourceId]);
+  expect(rehearsalDigest(scope)).not.toBe(rehearsalDigest(rehearsalScope('tenant-a','operator-a',input,template,expiry,undefined,pin)));
+  expect(()=>handoverTuple({...multi,ancestorAgentIds:[sourceId,sourceId]})).toThrow();
+  expect(()=>handoverTuple({...multi,ancestorAgentIds:[sourceId,ancestor]})).toThrow();
+  expect(()=>handoverTuple({...multi,ancestorAgentIds:[ancestor,'MKT-SPECIALIST-one','MKT-SPECIALIST-two',sourceId]})).toThrow();
+  expect(()=>rehearsalScope('tenant-a','operator-a',input,template,expiry,undefined,{...multi,ancestorAgentIds:[targetId,sourceId]})).toThrow();
+  const tx={approval:{findFirst:async()=>{throw Error('unexpected query');}}} as unknown as Prisma.TransactionClient;
+  await expect(loadHandoverPin(tx,'tenant-a','operator-a',targetId,id,new Date(),undefined,[ancestor,'MKT-SPECIALIST-one','MKT-SPECIALIST-two'])).rejects.toThrow('excessive collaboration depth');
+ });
  it('denies missing, self, and other-operator source approvals before retrieval',async()=>{
   for(const source of [null,{requestedBy:'other',objectId:sourceId},{requestedBy:'operator-a',objectId:targetId}]){
    const tx={approval:{findFirst:async()=>source}} as unknown as Prisma.TransactionClient;
