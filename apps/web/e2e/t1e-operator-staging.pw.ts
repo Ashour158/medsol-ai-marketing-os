@@ -326,15 +326,16 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const evaluation=await invoke(r,'learning/knowledge/evaluate',{agentId:specialistId,k:1,cases});
  expect(evaluation).toMatchObject({status:201,data:{specialistAgentId:specialistId,recallAtK:1,automaticSkillRelease:false}});
  // Context-bound execution pins only reviewed citation metadata, not raw source or memory text.
- const contextualTask={...task,requestKey:'fixture-'+randomUUID(),contextQuery:marker};
+ const contextualTask={...task,requestKey:'fixture-'+randomUUID(),contextQuery:marker,brainMode:'MISSION_PLAN_V1'};
  const contextual=await invoke(r,taskPath,contextualTask);
  expect(contextual).toMatchObject({status:201,data:{contextPin:{query:marker,references:expect.arrayContaining([expect.objectContaining({kind:'SOURCE',documentId:doc.data.id}),expect.objectContaining({kind:'MEMORY',recordId:proposedMemory.data.memoryId})])}}});
  const pending=await invoke(reviewer,'approvals/pending');
- expect(pending.data).toContainEqual(expect.objectContaining({id:contextual.data.approvalId,specialistReview:expect.objectContaining({contextPin:contextual.data.contextPin})}));
+ expect(pending.data).toContainEqual(expect.objectContaining({id:contextual.data.approvalId,specialistReview:expect.objectContaining({contextPin:contextual.data.contextPin,brainMode:'MISSION_PLAN_V1'})}));
  expect((await invoke(reviewer,'approvals/decide',decide(contextual.data.approvalId,'reviewer'))).status).toBe(201);
  const contextualCommand={approvalId:contextual.data.approvalId,fixtureOnly:true};
  const contextualResult=await invoke(r,executePath,contextualCommand);
  expect(contextualResult).toMatchObject({status:201,data:{status:'COMPLETED',decision:{contextEvidence:{pin:contextual.data.contextPin,independentlyVerified:false,sourceTextCopied:false},templateDecision:{payload:{evidence:{references:contextual.data.contextPin.references.map((x:any)=>x.citationRef),verified:false}}}}}});
+ expect(contextualResult.data.decision).toMatchObject({missionPlan:{mode:'MISSION_PLAN_V1',objective:task.objective,evidenceStatus:'REFERENCES_ONLY_UNVERIFIED',humanReviewRequired:true,scientificVerification:false,externalEffectsAuthorized:false},missionPlanDigest:expect.stringMatching(/^sha256:[0-9a-f]{64}$/)});
  expect(JSON.stringify(contextualResult.data)).not.toContain(source.text);
  expect(JSON.stringify(contextualResult.data)).not.toContain(memory.content);
  expect((await invoke(r,executePath,contextualCommand)).data.replayed).toBe(true);

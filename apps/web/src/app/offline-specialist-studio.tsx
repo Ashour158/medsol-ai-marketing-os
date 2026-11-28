@@ -9,8 +9,8 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
  const [name,setName]=useState(""),[slug,setSlug]=useState(""),[mission,setMission]=useState(""),[template,setTemplate]=useState("");
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [rehearsalAgent,setRehearsalAgent]=useState(""),[objective,setObjective]=useState(""),[market,setMarket]=useState("");
- const [contextQuery,setContextQuery]=useState("");
- const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean}|null>(null);
+ const [contextQuery,setContextQuery]=useState(""),[missionPlanEnabled,setMissionPlanEnabled]=useState(false);
+ const [rehearsalRef,setRehearsalRef]=useState(""),[rehearsalResult,setRehearsalResult]=useState<{executionId:string;status:string;replayed:boolean;missionPlan?:{alignmentSignal:string;evidenceStatus:string;sharedTerms:string[];tasks:{kind:string;description:string}[]}}|null>(null);
  const lock=useRef(false),key=useRef(""),rehearsalKey=useRef("");
  async function api(path:string,body?:unknown){
   const r=await fetch("/api/marketing/agents"+path,{method:body===undefined?"GET":"POST",cache:"no-store",credentials:"same-origin",...(body===undefined?{}:{headers:{"content-type":"application/json"},body:JSON.stringify(body)})});
@@ -46,10 +46,11 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
    <label>Fixture assessment objective<textarea maxLength={500} value={objective} disabled={busy} onChange={e=>{setObjective(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Fixture assessment market<input maxLength={100} value={market} disabled={busy} onChange={e=>{setMarket(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
    <label>Optional reviewed specialist context query<input maxLength={200} value={contextQuery} disabled={busy} onChange={e=>{setContextQuery(e.target.value);rehearsalKey.current="";setRehearsalResult(null);}}/></label>
+   <label><input type="checkbox" checked={missionPlanEnabled} disabled={busy} onChange={e=>{setMissionPlanEnabled(e.target.checked);rehearsalKey.current="";setRehearsalResult(null);}}/> Include mission-specific offline planning (review required)</label>
    <p className="alpha-subtle">If supplied, the exact source and memory citations must remain eligible at approval and execution. The engine receives references only, not raw knowledge text.</p>
    <button type="button" disabled={busy||!rehearsalAgent||objective.trim().length<12||market.trim().length<2||(!!contextQuery&&contextQuery.trim().length<3)} onClick={()=>void run(async()=>{
     const requestKey=rehearsalKey.current||"fixture-"+crypto.randomUUID();rehearsalKey.current=requestKey;
-    const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true,...(contextQuery.trim()?{contextQuery:contextQuery.trim()}:{})});
+    const v=await api("/specialists/rehearse",{agentId:rehearsalAgent,requestKey,objective,market,fixtureOnly:true,...(missionPlanEnabled?{brainMode:"MISSION_PLAN_V1"}:{}),...(contextQuery.trim()?{contextQuery:contextQuery.trim()}:{})});
     if(v.fixtureOnly!==true||v.externalEffectsAuthorized!==false||v.autonomousExecutionAuthorized!==false)throw Error("Unexpected rehearsal authority");
     setRehearsalRef(v.approvalId);setRehearsalResult(null);setNotice("Exact rehearsal review "+v.approvalId+" · "+v.decision+(v.contextPin?" · "+v.contextPin.references.length+" pinned evidence references":"")+". A different administrator must approve through the Approval inbox.");
    })}>Request exact specialist rehearsal review</button>
@@ -57,10 +58,10 @@ export default function OfflineSpecialistStudio({identity}:{identity:Identity}){
    <button type="button" disabled={busy||!/^specialist-run-[0-9a-f]{64}$/.test(rehearsalRef)} onClick={()=>void run(async()=>{
     const v=await api("/specialists/execute-rehearsal",{approvalId:rehearsalRef,fixtureOnly:true});
     if(v.externalEffectsAuthorized!==false||!["COMPLETED","BLOCKED"].includes(v.status)||typeof v.executionId!=="string")throw Error("Invalid rehearsal result");
-    setRehearsalResult({executionId:v.executionId,status:v.status,replayed:v.replayed===true});
+    setRehearsalResult({executionId:v.executionId,status:v.status,replayed:v.replayed===true,...(v.decision?.missionPlan?{missionPlan:v.decision.missionPlan}:{})});
    })}>Execute approved specialist rehearsal</button>
   </div>
-  {rehearsalResult&&<div role="status"><strong>{rehearsalResult.status}</strong> · {rehearsalResult.replayed?"Historical receipt (no new execution)":"Draft recorded in AgentExecution"}<p style={{overflowWrap:"anywhere"}}>Execution reference: {rehearsalResult.executionId}</p><p>Output still requires review. No live provider, model or tool call.</p></div>}
+  {rehearsalResult&&<div role="status"><strong>{rehearsalResult.status}</strong> · {rehearsalResult.replayed?"Historical receipt (no new execution)":"Draft recorded in AgentExecution"}<p style={{overflowWrap:"anywhere"}}>Execution reference: {rehearsalResult.executionId}</p>{rehearsalResult.missionPlan&&<div><h5>Mission planning draft</h5><p>{rehearsalResult.missionPlan.alignmentSignal} · {rehearsalResult.missionPlan.evidenceStatus}</p><p>Shared terms: {rehearsalResult.missionPlan.sharedTerms.join(", ")||"None"}</p><ol>{rehearsalResult.missionPlan.tasks.map(task=><li key={task.kind}>{task.description}</li>)}</ol></div>}<p>Output still requires review. No live provider, model or tool call.</p></div>}
   <h4>Registration reviews</h4>{registry.historyCapped&&<p>Showing latest 100 reviews.</p>}
   {registry.reviews.map(row=><div key={row.approvalId} style={{overflowWrap:"anywhere"}}>{row.input.name} · {row.decision} · {row.approvalId}</div>)}</>}
   {notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}

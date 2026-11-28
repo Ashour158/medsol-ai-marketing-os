@@ -6,19 +6,21 @@ import {agentReleaseDigest,baselineAgentReleaseManifest,parseAgentReleaseManifes
 import {assertActorPermissionInTenantTransaction} from './tenant-role-policy.service.js';
 import type {MarketingLearningService} from './marketing-learning.service.js';
 import {contextPinTuple,parseContextPin,loadSpecialistContextPin,type SpecialistContextPin} from './specialist-context-pin.js';
+import {SPECIALIST_BRAIN_MODE} from './specialist-mission-brain.js';
 export const SPECIALIST_REHEARSAL='OfflineSpecialistRehearsal';
 const hash=(v:unknown)=>'sha256:'+createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export function rehearsalInput(raw:unknown){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new BadRequestException('Exact specialist rehearsal required');
  const v=raw as Record<string,unknown>;
- if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
+ if(!['agentId,fixtureOnly,market,objective,requestKey','agentId,contextQuery,fixtureOnly,market,objective,requestKey','agentId,brainMode,fixtureOnly,market,objective,requestKey','agentId,brainMode,contextQuery,fixtureOnly,market,objective,requestKey'].includes(Object.keys(v).sort().join(','))||
+ (Object.hasOwn(v,'brainMode')&&v.brainMode!==SPECIALIST_BRAIN_MODE)||
  (Object.hasOwn(v,'contextQuery')&&(typeof v.contextQuery!=='string'||v.contextQuery.trim().length<3||v.contextQuery.length>200))||
  v.fixtureOnly!==true||typeof v.requestKey!=='string'||!/^fixture-[A-Za-z0-9_-]{8,100}$/.test(v.requestKey)||
  typeof v.agentId!=='string'||!/^MKT-SPECIALIST-[a-z][a-z0-9-]{2,63}$/.test(v.agentId)||
  typeof v.objective!=='string'||v.objective.trim().length<12||v.objective.length>500||
  typeof v.market!=='string'||v.market.trim().length<2||v.market.length>100)
  throw new BadRequestException('Bounded fixture objective, market and specialist identity required');
- return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{})};
+ return{agentId:v.agentId,requestKey:v.requestKey,objective:v.objective.trim(),market:v.market.trim(),fixtureOnly:true as const,...(v.brainMode===SPECIALIST_BRAIN_MODE?{brainMode:SPECIALIST_BRAIN_MODE}:{}),...(typeof v.contextQuery==='string'?{contextQuery:v.contextQuery.trim()}:{})};
 }
 type Input=ReturnType<typeof rehearsalInput>;
 export const rehearsalId=(org:string,key:string)=>'specialist-run-'+hash([org,key]).slice(7);
@@ -67,7 +69,7 @@ export function rehearsalDigest(s:Scope){
  const i=s.input;
  return hash([s.schema,s.organizationId,s.requestedBy,i.agentId,i.requestKey,i.objective,i.market,i.fixtureOnly,
   s.registrationId,s.registrationDigest,s.templateId,s.templateVersion,s.templateDigest,s.templateInstalled,s.capability,s.maxInputBytes,s.expiresAt,
-  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[])]);
+  s.fixtureOnly,s.autonomousExecutionAuthorized,s.modelCallsAuthorized,s.toolCallsAuthorized,s.memoryWritesAuthorized,s.externalEffectsAuthorized,...(i.contextQuery!==undefined?[i.contextQuery,contextPinTuple(parseContextPin(s.contextPin,i.contextQuery))]:[]),...(i.brainMode!==undefined?[i.brainMode]:[])]);
 }
 export function readRehearsal(a:Approval):Scope{
  try{
