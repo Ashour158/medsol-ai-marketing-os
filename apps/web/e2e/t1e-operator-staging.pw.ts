@@ -378,6 +378,18 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(contractResult.data.decision).toMatchObject({reasoningEvaluation:{mode:'DECISION_EVALUATION_V1',passedCases:8,totalCases:8,evidenceDiagnostics:{sourceReferences:1,memoryReferences:1,distinctDocuments:1,independentlyVerified:false},modelQualityEvaluated:false,scientificVerification:false,automaticLearning:false,externalEffectsAuthorized:false},reasoningEvaluationDigest:expect.stringMatching(/^sha256:/)});
  expect(contractResult.data.decision).toMatchObject({structuredDraft:{schema:'medsol.specialist-structured-draft-rehearsal.v1',mode:'STRUCTURED_DRAFT_FIXTURE_V1',model:'synthetic:local-structured-v1',draft:{disposition:'DRAFT_FOR_REVIEW',recommendations:[{evidenceAliases:['E1']}]},providerRequestsMade:0,realModelInvocations:0,actualCostMicros:0,outputHumanApproved:false,scientificVerification:false,executionAuthorized:false,externalEffectsAuthorized:false},structuredDraftDigest:expect.stringMatching(/^sha256:/)});
  expect(await invoke(r,executePath,contractCommand)).toMatchObject({status:201,data:{replayed:true,decision:{structuredDraft:contractResult.data.decision.structuredDraft,structuredDraftDigest:contractResult.data.decision.structuredDraftDigest}}});
+ const outputId=contractResult.data.decision.outputReviewId;
+ expect(outputId).toMatch(/^specialist-output-[a-f0-9]{64}$/);
+ expect((await invoke(reviewer,'approvals/pending')).data).toContainEqual(expect.objectContaining({id:outputId,objectType:'OfflineSpecialistOutputReview',specialistOutputReview:expect.objectContaining({sourceApprovalId:contractApproval.data.approvalId,structuredDraftDigest:contractResult.data.decision.structuredDraftDigest,draft:contractResult.data.decision.structuredDraft.draft,externalEffectsAuthorized:false})}));
+ expect((await invoke(r,'approvals/decide',decide(outputId,'admin'))).status).toBe(403);
+ expect(await invoke(reviewer,'approvals/decide',decide(outputId,'reviewer'))).toMatchObject({status:201,data:{approvalId:outputId,decision:'APPROVED'}});
+ expect(await invoke(r,executePath,contractCommand)).toMatchObject({status:201,data:{replayed:true,decision:{outputReviewId:outputId,outputHumanApproved:false,externalEffectsAuthorized:false}}});
+ const staleOutputSource=await invoke(r,taskPath,{...contractTask,requestKey:'fixture-'+randomUUID()});
+ expect(staleOutputSource.status).toBe(201);
+ expect((await invoke(reviewer,'approvals/decide',decide(staleOutputSource.data.approvalId,'reviewer'))).status).toBe(201);
+ const staleOutput=await invoke(r,executePath,{approvalId:staleOutputSource.data.approvalId,fixtureOnly:true});
+ expect(staleOutput).toMatchObject({status:201,data:{status:'COMPLETED',decision:{outputReviewId:expect.stringMatching(/^specialist-output-/)}}});
+
  const unrelated=await invoke(r,taskPath,{...decisionTask,requestKey:'fixture-'+randomUUID(),objective:'Compose unrelated advertisements',simulationMode:'PROVIDER_CONTRACT_V1',evaluationMode:'DECISION_EVALUATION_V1',structuredDraftMode:'STRUCTURED_DRAFT_FIXTURE_V1'});
  expect(unrelated.status).toBe(201);
  expect((await invoke(reviewer,'approvals/decide',decide(unrelated.data.approvalId,'reviewer'))).status).toBe(201);
@@ -385,6 +397,7 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  expect(unrelatedResult).toMatchObject({status:201,data:{status:'BLOCKED',decision:{specialistDecision:{disposition:'ESCALATE_SCOPE',draftEligible:false}}}});
  expect(unrelatedResult.data.decision).not.toHaveProperty('providerContracts');
  expect(unrelatedResult.data.decision).not.toHaveProperty('structuredDraft');
+ expect(unrelatedResult.data.decision).not.toHaveProperty('outputReviewId');
  expect(unrelatedResult.data.decision.reasoningEvaluation).toMatchObject({passedCases:8,totalCases:8,modelQualityEvaluated:false,externalEffectsAuthorized:false});
  // Separate reviewed specialist receives provenance only; it retrieves its own evidence.
  const target=await invoke(r,specialistPath,{...definition,requestKey:'fixture-'+randomUUID(),slug:'zzz-handover-'+randomUUID().slice(0,12),name:'Synthetic handover specialist'});
@@ -478,6 +491,8 @@ test('T1E-006 provisioned roles cannot impersonate a second tenant even with a s
  const revoked=await invoke(reviewer,'learning/knowledge/'+doc.data.id+'/revoke',{reason:'Withdraw exclusive specialist synthetic evidence after evaluation'});
  expect(revoked).toMatchObject({status:201,data:{status:'REVOKED',scrubbedMemories:1}});
  expect((await context(r)).data).toMatchObject({results:[],memories:[]});
+ expect((await invoke(reviewer,'approvals/decide',decide(staleOutput.data.decision.outputReviewId,'reviewer'))).status).toBe(409);
+ expect(await invoke(r,executePath,{approvalId:staleOutputSource.data.approvalId,fixtureOnly:true})).toMatchObject({status:201,data:{replayed:true,decision:{outputReviewId:staleOutput.data.decision.outputReviewId,outputHumanApproved:false}}});
  expect((await invoke(r,allocationRequestPath,{...allocationCommand,requestKey:'fixture-'+randomUUID()})).status).toBe(409);
  expect((await invoke(r,allocationRequestPath,allocationCommand)).data.replayed).toBe(true);
  expect(await invoke(r,allocationPath,allocation)).toMatchObject({status:201,data:{recommendedAgentId:null,candidates:expect.arrayContaining([expect.objectContaining({agentId:specialistId,eligible:false,referenceCount:0,reasons:expect.arrayContaining(['NO_REVIEWED_REFERENCES'])})])}});
