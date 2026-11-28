@@ -459,7 +459,7 @@ export class MarketingLearningService {
  async contextForAgent(org:string,agentId:string,query:unknown,
   existingTx?:Prisma.TransactionClient){
   if(!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId))
-   throw new ForbiddenException('Unknown agent cannot retrieve knowledge');
+   throw new ForbiddenException('Unknown canonical agent or registered specialist cannot retrieve knowledge');
   const load=async(tx:Prisma.TransactionClient)=>{
    if(isSpecialistId(agentId))await assertReviewedSpecialist(tx,org,agentId);
    const base=await this.knowledgeRetrieve(org,query,agentId,3,tx);
@@ -518,7 +518,7 @@ export class MarketingLearningService {
  }){
   const agentId=raw?.agentId;
   if(typeof agentId!=="string"||(!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId)))
-   throw new ForbiddenException("Registered agent identity required");
+   throw new ForbiddenException("Canonical agent or reviewed specialist identity required");
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,"READ_AUDIT");
    if(isSpecialistId(agentId))await assertActorPermissionInTenantTransaction(tx,identity,"READ_AUDIT");
@@ -724,7 +724,7 @@ export class MarketingLearningService {
   const documentId=this.knowledgeId(raw?.documentId,'memory source ID');
   const agentId=required(raw?.agentId,'agent ID',100);
   if(!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId))
-   throw new ForbiddenException('Memory must use an immutable registered agent ID');
+   throw new ForbiddenException('Memory must use an immutable canonical agent ID or reviewed specialist ID');
   const memoryKey=this.knowledgeId(raw?.memoryKey,'memory key');
   if(memoryKey.length<12)throw new BadRequestException('Stable memory key needs 12+ characters');
   const content=required(raw?.content,'memory content',1200);
@@ -838,7 +838,7 @@ export class MarketingLearningService {
  async memoriesForReviewer(org:string,identity:VerifiedIdentity,agentIdRaw?:unknown){
   const agentId=agentIdRaw===undefined?undefined:required(agentIdRaw,'agent ID',100);
   if(agentId&&!AGENT_ROSTER.some(a=>a.id===agentId)&&!isSpecialistId(agentId))
-   throw new BadRequestException('Unknown registered agent');
+   throw new BadRequestException('Unknown canonical agent or registered specialist');
   return this.knowledgeTx(org,async tx=>{
    await this.knowledgeActor(tx,org,identity,'READ_AUDIT');
    if(agentId&&isSpecialistId(agentId)){await assertActorPermissionInTenantTransaction(tx,identity,'READ_AUDIT');await assertReviewedSpecialist(tx,org,agentId);}
